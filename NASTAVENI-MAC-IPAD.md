@@ -7,7 +7,7 @@ server opravdu zapisuje na disk, a zkontroloval JS i Python na syntaktické chyb
 
 ## Jak to funguje (princip)
 - **Mac = primární úložiště.** Malý Python program běží na pozadí a při každé změně
-  zapisuje data na disk do `~/Documents/FILIP-CRM-data`.
+  zapisuje data na disk do `~/Documents/Codex/FILIP-CRM-data`.
 - **iPad nemá přístup k disku Macu**, proto jede přes Google (jedna sdílená tabulka
   jako "přenosová schránka" mezi zařízeními).
 - **GitHub Pages** drží jen samotnou aplikaci (HTML/JS), ne klientská data.
@@ -29,7 +29,7 @@ server opravdu zapisuje na disk, a zkontroloval JS i Python na syntaktické chyb
 2. Ověř v prohlížeči: `http://127.0.0.1:48730/status` → má vrátit `"ok": true`.
 3. Otevři CRM (lokálně nebo z GitHub Pages) → záložka **Záloha** → zkontroluj,
    že je vidět „Diskové úložiště funguje".
-4. Data odteď leží v `~/Documents/FILIP-CRM-data` (stav, přílohy, časové zálohy).
+4. Data odteď leží v `~/Documents/Codex/FILIP-CRM-data` (stav, přílohy, časové zálohy).
 
 Chceš to jen vypnout/dočasně spustit ručně? K tomu slouží
 `stop-local-crm-storage-autostart.command` a `start-local-crm-storage.command`.
@@ -62,15 +62,15 @@ záloha z iPadu, a pokud ano, převezme ji a uloží na disk.
 ## Shrnutí – kdo je „primární"
 | Zařízení | Kde jsou data | Role |
 |---|---|---|
-| Mac | `~/Documents/FILIP-CRM-data` (disk) | primární, trvalé úložiště |
+| Mac | `~/Documents/Codex/FILIP-CRM-data` (disk) | primární, trvalé úložiště |
 | iPad | prohlížeč (localStorage) | dočasné, jen mezi synchronizacemi |
 | Google Sheet | Apps Script | přenosový/synchronizační most |
 | GitHub | jen kód aplikace | žádná klientská data |
 
 ## Co jsem opravil oproti původnímu souboru
-- Cesta k datům na Macu byla natvrdo `/Users/a./Documents/Codex/FILIP-CRM-data`
-  (fungovala jen na počítači předchozího vlastníka) → teď `~/Documents/FILIP-CRM-data`,
-  funguje na libovolném Macu/účtu.
+- Cesta k datům na Macu je nastavena přes domovskou složku:
+  `~/Documents/Codex/FILIP-CRM-data`.
+  Uživatel tak má všechno pod hlavní složkou `Codex`, ale klientská data nejsou uvnitř Git repozitáře.
 - Skripty hledaly Python na cestě, která na tvém Macu neexistuje → teď používají
   systémový `python3` a při chybě srozumitelně napíšou, co nainstalovat.
 - Ověřil jsem funkčnost: JS prošel syntaktickou kontrolou, Python skripty se

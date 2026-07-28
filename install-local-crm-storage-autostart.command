@@ -1,11 +1,16 @@
 #!/bin/zsh
 set -e
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
-DATA_DIR="$HOME/Documents/FILIP-CRM-data"
+DATA_DIR="$HOME/Documents/Codex/FILIP-CRM-data"
 PLIST="$HOME/Library/LaunchAgents/cz.filipcrm.local-storage.plist"
 mkdir -p "$HOME/Library/LaunchAgents" "$APP_DIR/logs" "$DATA_DIR"
 
-PYTHON_BIN="$(command -v python3 || true)"
+CODEX_PYTHON="$HOME/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3"
+if [ -x "$CODEX_PYTHON" ]; then
+  PYTHON_BIN="$CODEX_PYTHON"
+else
+  PYTHON_BIN="$(command -v python3 || true)"
+fi
 if [ -z "$PYTHON_BIN" ]; then
   echo "Nenasel jsem python3. Nainstaluj Python 3 (napr. z python.org) a spust tento soubor znovu."
   read -k 1 "?Stiskni libovolnou klavesu pro zavreni..."
