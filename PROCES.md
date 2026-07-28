@@ -1,4 +1,3 @@
-[PROCES.md](https://github.com/user-attachments/files/30384156/PROCES.md)
 # FILIP CRM - proces stavby
 
 ## Cil
@@ -46,7 +45,8 @@ Postavit jeden samostatny CRM system nad klienty, smlouvami, obchody, doporuceni
 - V prilezitostech jde stav menit primo v hlavni tabulce. U radku ze smlouvy se tim meni jen CRM/pipeline stav prilezitosti, ne puvodni smluvni stav jako Odeslana vypoved nebo Email.
 - V karte klienta jsou prilezitosti zobrazene jako produktove slozky: Zivot, Auto, Nemovitost, Hypoteka, Uvery, Penze, Investice, FKI, Ostatni a vlastni oblasti. Poznamka k reseni zustava primo u konkretni prilezitosti. Rychle stitky v prehledu/X-sell panelu jsou klikatelne a preskoci do portfolia na danou oblast.
 - Zprava smlouvy je velky pracovni editor. Enter vlozi novy datovany zaznam, Shift+Enter udela jen obycejny novy radek. Ke smlouve lze pripojit mensi obrazky nebo PDF, ktere se ukladaji primo ke smlouve v lokalnich datech a Google zaloze.
-- Historie klienta obsahuje prvni bezpecnou fazi Apple Mail napojeni. CRM nestahuje ani neuklada e-maily, jen zkopiruje hledani podle e-mailu klienta, dalsich e-mailu klienta, jmena a cisel smluv. V nastaveni se ukladaji poradenske e-maily jen jako orientacni seznam pro praci s historii. Nepouzivat prazdny `message://` odkaz, Apple Mail ho odmita chybou 1030.
+- Historie klienta obsahuje Apple Mail mezivrstvu. Lokalni export `export-apple-mail.command` vytvori `apple-mail-export.json` jen z hlavicek zprav: datum, predmet, od/komu/kopie a `message://` odkaz. CRM tyto hlavicky importuje, sparuje ke klientum podle e-mailu a ukaze je v historii. Obsah e-mailu se neuklada. Nepouzivat prazdny `message://` odkaz, Apple Mail ho odmita chybou 1030.
+- Prakticky smer Apple Mailu je lokalni pomocnik `start-apple-mail-sync.command`, ktery bezi jen na Macu na `127.0.0.1`. CRM pak umi tlacitkem `Synchronizovat Apple Mail` nacist nove hlavicky bez rucniho vybirani JSON souboru. Rucni JSON import zustava jako zaloha.
 - Psaní e-mailu klientovi jde pres vychozi e-mailovou aplikaci v macOS, typicky Apple Mail.
 - Aktivita u klienta ma vetsi editor. Enter vlozi novy datovany zaznam, Shift+Enter udela obycejny novy radek.
 - Rodne cislo / ICO je globalni spojovaci klic celeho CRM. Kdyz se stejna hodnota objevi u klienta, smlouvy, investice nebo FKI, ma se vse automaticky pripojit k jedne klientské karte. Pokud se jmeno v FKI lisi od jmena v CRM, CRM zachova puvodni jmeno jako alias a pouzije hlavni jmeno z karty klienta.
@@ -60,7 +60,7 @@ Postavit jeden samostatny CRM system nad klienty, smlouvami, obchody, doporuceni
 - Lepsi filtry u smluv a obchodu
 - Rychle akce Telefon / WhatsApp / Email podle preferovane komunikace
 - Automaticky zapis do Google Kalendare pres Google API nebo Apps Script, pokud bude potreba zapis bez rucniho potvrzeni
-- Plne napojeni Apple Mailu jako v Raynetu bude potrebovat samostatny lokalni import hlavicek e-mailu z Macu. Do CRM staci ukladat datum, predmet, odesilatele/prijemce, klienta a odkaz `message://`, aby klik otevrel konkretni zpravu v Apple Mailu. Obsah e-mailu neukladat, pokud to nebude vyslovene potreba.
+- Apple Mail dal rozsirovat pres kontrolovany lokalni export hlavicek. Dalsi krok muze byt automaticke pravidelne spousteni exportu nebo import vybranych zprav z Mailu.
 - Gmail resit jen jako pripadnou specialni variantu pro vybrane spolupracujici klienty/kolegy, ne jako hlavni e-mailove prostredi CRM.
 - Investice jako plnohodnotny modul podle `investment-crm.html`: bezne investice a FKI oddelene, investicni zaznamy, fondy, AUM, hodnoty fondu, klientsky report
 - Importy pro jednotlive moduly resit postupne: nejdriv JSON a CSV pro klienty, smlouvy, obchody, typare, investice, FKI a poznamky. Screenshot import az jako samostatny kontrolovany krok s OCR/AI vrstvou a povinnym nahledem pred ulozenim, aby se nedvojili klienti, smlouvy ani obchody.
@@ -85,6 +85,12 @@ Postavit jeden samostatny CRM system nad klienty, smlouvami, obchody, doporuceni
 - `investment-crm.html`: FKI klienti, investicni transakce, fondy, aktualni hodnota investic, AUM, nasledna provize a klientsky investicni report.
 
 CRM nema byt slepenec obrazovek. Klient je hlavni karta a jednotlive moduly jsou pohledy nad stejnymi daty.
+
+## Pravidlo investic a FKI
+- FKI evidence / investicni zaznamy jsou hlavni zdroj pro AUM a aktualni hodnotu portfolia klienta.
+- Obchody typu FKI nebo Investice jsou zdroj pro vykon, mesicni evidenci a provize, ale pokud uz existuje investicni evidence podle RČ/IČO, nesmi se znovu pricitat do AUM klienta.
+- Smlouvy typu FKI/Investice se do klientskych investic pouziji jen jako zalozni zdroj, kdyz ke klientovi zatim neexistuje investicni evidence ani investicni obchod.
+- Novy obchod typu FKI/Investice se standardne nema automaticky propsat do smluv. Pokud se ma vytvorit navazany produkt, musi se to zvolit vedome.
 
 ## Pravidla dalsich uprav
 - Neprepisovat stare nastroje bez duvodu.

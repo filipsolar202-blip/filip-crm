@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DPS vs DIP – model 2027</title>
+<style>
+:root{--bg:#f6f8fc;--card:#ffffffee;--ink:#101216;--muted:#6b7280;--line:#dfe5ee;--blue:#1f6fff;--blueBg:#eaf2ff;--green:#12824f;--greenBg:#edf9f1;--orange:#d97706;--orangeBg:#fff7e8;--purple:#6d3fd6;--purpleBg:#f3ecff;--red:#bf1e2e;--redBg:#fff0f2;--shadow:0 18px 48px rgba(15,23,42,.08);--radius:22px}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:radial-gradient(circle at top left,#fff 0,#f7f9fd 48%,#edf2f8 100%);color:var(--ink)}
+.wrapper{max-width:1440px;margin:0 auto;padding:28px 24px 60px}.card{background:var(--card);border:1px solid rgba(220,226,236,.95);box-shadow:var(--shadow);border-radius:var(--radius);backdrop-filter:blur(16px)}
+.topbar{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;margin-bottom:22px}.kicker{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:950}.topbar h1{font-size:38px;line-height:1.04;letter-spacing:-.045em;margin:8px 0 8px}.lead{font-size:15px;line-height:1.45;color:#303640;max-width:780px;margin:0}.actions{display:flex;gap:12px;flex-wrap:wrap;justify-content:flex-end}.btn{border:1px solid var(--line);border-radius:12px;padding:12px 17px;font-weight:950;cursor:pointer;background:#fff;color:#111}.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}.btn.dark{background:#111;color:#fff;border-color:#111}
+.setup{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:20px}.panel{padding:20px}.panelTitle{display:flex;align-items:center;gap:12px;margin:0 0 16px}.icon{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;background:var(--blueBg);font-size:21px}.panelTitle h2{font-size:22px;letter-spacing:-.03em;margin:0}.clientGrid{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:#fff}.clientTop{display:grid;grid-template-columns:1.2fr .8fr .8fr}.clientBottom{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--line)}.cell{padding:18px;border-right:1px solid var(--line)}.cell:last-child{border-right:0}.field label,.cell label{display:block;font-size:12px;color:var(--muted);font-weight:900;margin-bottom:6px}.field input,.field select,.cell input{width:100%;border:0;outline:0;background:transparent;font-size:20px;font-weight:950;color:#111;padding:0}.cell .bigBlue{font-size:22px;color:var(--blue);font-weight:950}.cell small,.field small{display:block;color:var(--muted);font-size:12px;font-weight:750;margin-top:4px;line-height:1.25}.pill{margin-top:12px;padding:10px 12px;border-radius:12px;background:var(--blueBg);border:1px solid #cfe0ff;color:#174a9e;font-size:13px;font-weight:850}
+.investGrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.investBox{border:1px solid var(--line);border-radius:16px;background:#fff;padding:15px}.investBox.dip{border-color:#d6c7ff;background:linear-gradient(180deg,#fff,#fcfaff)}.field{border:1px solid var(--line);border-radius:14px;background:#fff;padding:12px;margin-bottom:10px}.miniFields{display:grid;grid-template-columns:1fr 1fr;gap:10px}.full{grid-column:1/-1}.toggleRow{margin-top:12px;border:1px solid var(--line);background:#fff;border-radius:14px;padding:12px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-weight:950}.toggleRow input{width:22px;height:22px;accent-color:var(--blue)}.allocationBox{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px}.allocationBox .field{margin:0}.muted{color:var(--muted)}
+.mainGrid{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:18px;margin-bottom:18px}.chartCard{padding:22px}.sectionHead{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:8px}.sectionHead h2{font-size:22px;margin:0;letter-spacing:-.03em}.chartSwitch{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:#fff;border-radius:999px;padding:9px 13px;font-size:13px;font-weight:900}.chartSwitch input{accent-color:var(--blue);width:17px;height:17px}canvas{width:100%;height:410px}.legend{display:flex;gap:18px;align-items:center;justify-content:center;margin:8px 0 0;color:#48505d;font-size:12px}.dot{display:inline-flex;width:12px;height:12px;border-radius:4px;margin-right:6px;vertical-align:-1px}.dot.dps{background:#f59e0b}.dot.dip{background:#16a34a}.dot.combo{background:#2563eb}.info{font-size:12px;color:var(--muted);line-height:1.45;margin:12px 2px 0;text-align:center}.metricStack{display:grid;gap:12px}.metric{padding:18px;border-radius:16px;border:1px solid var(--line);background:#fff;position:relative;overflow:hidden}.metric:after{content:"";position:absolute;right:16px;top:50%;transform:translateY(-50%);width:42px;height:42px;border-radius:50%;opacity:.55}.metric small{display:block;font-size:12px;color:var(--muted);font-weight:950;margin-bottom:8px}.metric b{display:block;font-size:26px;letter-spacing:-.04em}.metric.green{background:linear-gradient(180deg,#fff,var(--greenBg));border-color:#bbebc8}.metric.green b{color:var(--green)}.metric.orange{background:linear-gradient(180deg,#fff,var(--orangeBg));border-color:#f3d19b}.metric.orange b{color:#b26000}.metric.purple{background:linear-gradient(180deg,#fff,var(--purpleBg));border-color:#ddcdfd}.metric.purple b{color:var(--purple)}.metric.red{background:linear-gradient(180deg,#fff,var(--redBg));border-color:#f2b9c0}.metric.red b{color:var(--red)}.metric.blue{background:linear-gradient(180deg,#fff,var(--blueBg));border-color:#cfe0ff}.metric.blue b{color:var(--blue)}.mark{display:inline-flex;margin-top:8px;padding:4px 9px;border-radius:999px;font-size:11px;font-weight:950}.mark.good{background:#dff7eb;color:#08784e}.mark.bad{background:#ffe1e6;color:#aa2032}.mark.purple{background:#eadcff;color:#5b21b6}
+.tablesGrid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px}.tableCard{padding:20px;overflow:auto}.tableCard h2{font-size:22px;letter-spacing:-.03em;margin:0 0 16px}table{width:100%;border-collapse:collapse;background:#fff;border-radius:14px;overflow:hidden}th,td{border:1px solid #dfe3ea;padding:11px 10px;text-align:right;vertical-align:middle;font-size:13px}th:first-child,td:first-child{text-align:left;font-weight:850}th{background:#f6f8fb;color:#4d5563}.cell-winner{background:#f0fff7!important;color:#08784e;font-weight:950}.cell-loser{background:#fff3f4!important;color:#aa2032}.warn{padding:13px;border-radius:14px;background:#fff9e8;border:1px solid #ecd59a;margin-top:12px;font-size:13px;line-height:1.38}.goodnote{background:#f0fff7;border-color:#bfead2;color:#0c6143}.miniControls{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}.miniControls .field{margin:0}.comparison{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px}.product{padding:18px}.product h3{font-size:20px;margin:6px 0 8px;letter-spacing:-.03em}.badge{display:inline-flex;padding:6px 10px;border-radius:999px;font-size:11px;font-weight:950;letter-spacing:.05em;text-transform:uppercase}.dps .badge{background:#fff0d8;color:#b26000}.dip .badge{background:#dcfce7;color:#166534}.combo .badge{background:#e8efff;color:#244c9c}.big{font-size:27px;letter-spacing:-.05em;font-weight:950;margin:6px 0 12px}.breakdown{display:grid;gap:7px}.barrow{display:grid;grid-template-columns:126px 1fr 90px;gap:8px;align-items:center;font-size:12px}.bar{height:10px;background:#eef1f5;border-radius:99px;overflow:hidden}.fill{height:100%;border-radius:99px}.f1{background:#111}.f2{background:var(--blue)}.f3{background:#f59e0b}.f4{background:#16a34a}.f5{background:var(--purple)}.recommend{padding:20px;background:linear-gradient(180deg,#fff,#f8fbff);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:18px}.recommend h2{font-size:22px;margin:0 0 8px}.recommend p{margin:0;color:#303640;line-height:1.45;font-size:15px}.productDiff table td:nth-child(2){background:#fffaf1}.productDiff table td:nth-child(3){background:#f7fffb}
+.hiddenBox{display:none}
+@media(max-width:1100px){.topbar,.setup,.mainGrid,.tablesGrid{grid-template-columns:1fr;display:grid}.actions{justify-content:flex-start}.comparison{grid-template-columns:1fr}.allocationBox{grid-template-columns:1fr 1fr}.topbar h1{font-size:32px}}@media(max-width:680px){.wrapper{padding:16px}.clientTop,.clientBottom,.investGrid,.miniFields,.allocationBox{grid-template-columns:1fr}.cell{border-right:0;border-bottom:1px solid var(--line)}.cell:last-child{border-bottom:0}.metric b{font-size:23px}canvas{height:320px}}
+@media print{@page{size:A4;margin:8mm}body{background:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.wrapper{padding:0;max-width:none}.card{box-shadow:none!important;background:#fff!important}.actions,.productDiff{display:none!important}.topbar{display:block}.topbar h1{font-size:25px}.lead{font-size:11px}.setup{grid-template-columns:1fr 1fr;gap:3mm}.panel{padding:3mm}.panelTitle h2{font-size:14px}.icon{width:26px;height:26px}.cell,.field,.investBox{padding:2mm}.field input,.field select,.cell input{font-size:11px}.cell .bigBlue{font-size:13px}.mainGrid{grid-template-columns:1fr 48mm;gap:3mm}.chartCard{padding:3mm}canvas{height:190px!important}.metric{padding:3mm}.metric b{font-size:13px}.tablesGrid,.comparison{grid-template-columns:1fr 1fr;gap:3mm}.tableCard,.product,.recommend{padding:3mm}th,td{font-size:8px;padding:3px}.barrow{grid-template-columns:55px 1fr 50px;font-size:8px}.legend,.info,.warn{font-size:8px}.comparison{page-break-before:auto}.product:nth-child(3){display:none}}
+
+/* Vizuální verze 2027 – výraznější klientská karta a samostatné strategie */
+.setup{grid-template-columns:1.45fr 1fr 1fr;align-items:stretch}.clientPanel,.strategyCard{min-height:100%}.strategyCard{padding:24px 24px 22px;position:relative;overflow:hidden}.strategyCard:before{content:"";position:absolute;right:20px;top:30px;width:120px;height:120px;border-radius:36px;opacity:.09;transform:rotate(-8deg)}.strategyCard.dps{border-color:#ffd4a3;background:linear-gradient(135deg,#fff 0%,#fff7ed 100%)}.strategyCard.dip{border-color:#d8c5ff;background:linear-gradient(135deg,#fff 0%,#fbf7ff 100%)}.strategyCard.dps:before{background:#f97316}.strategyCard.dip:before{background:#7c3aed}.strategyLabel{font-size:15px;text-transform:uppercase;letter-spacing:.06em;font-weight:1000;margin-bottom:4px}.strategyCard.dps .strategyLabel{color:#ea580c}.strategyCard.dip .strategyLabel{color:#7c3aed}.strategySelect{width:100%;border:0;background:transparent;outline:0;font-size:34px;letter-spacing:-.055em;font-weight:1000;padding:0 28px 8px 0;appearance:auto}.strategyCard.dps .strategySelect{color:#ea580c}.strategyCard.dip .strategySelect{color:#7c3aed}.strategyStats{border-top:1px solid rgba(100,116,139,.22);margin-top:12px;padding-top:14px;display:grid;gap:14px}.strategyStat label{display:block;font-size:12px;color:#465163;font-weight:950;margin-bottom:4px}.strategyStat input{border:0;background:transparent;outline:0;width:100%;font-size:36px;line-height:1;font-weight:1000;letter-spacing:-.055em;padding:0}.strategyCard.dps .strategyStat input{color:#ea580c}.strategyCard.dip .strategyStat input{color:#7c3aed}.strategyStat small{display:block;color:#465163;font-weight:850;margin-top:4px}.fixedFee{font-size:29px;font-weight:1000;letter-spacing:-.045em}.strategyCard.dps .fixedFee{color:#ea580c}.chartControls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:flex-end}.chartSwitch.reinvest{border-color:#cfe0ff;background:#f7faff}.chartSwitch.reinvest input{width:18px;height:18px}.clientPanel .panelTitle h2{color:#0052cc;text-transform:uppercase;font-size:17px;letter-spacing:.03em}.clientPanel .icon{background:#eaf2ff;color:#0052cc}.clientTop{grid-template-columns:1.2fr .8fr .8fr .8fr}.horizonCell input{pointer-events:none}.topbar h1{font-size:36px}.lead{max-width:700px}@media(max-width:1200px){.setup{grid-template-columns:1fr 1fr}.clientPanel{grid-column:1/-1}}@media(max-width:760px){.setup{grid-template-columns:1fr}.strategySelect{font-size:28px}.strategyStat input{font-size:30px}.clientTop{grid-template-columns:1fr}.chartControls{justify-content:flex-start}}
+
+
+
+/* Opravený tiskový report - A4 na šířku bez ořezu obsahu */
+@media print{
+  @page{size:A4 landscape;margin:5mm}
+  html,body{margin:0!important;background:#fff!important;width:auto!important;height:auto!important;overflow:visible!important;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+  body{font-size:7px!important;line-height:1.15!important}
+  .wrapper{max-width:none!important;width:100%!important;margin:0!important;padding:0!important;display:grid!important;grid-template-columns:1fr .78fr!important;grid-auto-rows:auto!important;gap:2mm!important;overflow:visible!important}
+  .card{box-shadow:none!important;background:#fff!important;border:0.35pt solid #dfe5ee!important;border-radius:8px!important;backdrop-filter:none!important;break-inside:avoid!important;page-break-inside:avoid!important}
+  .actions,.productDiff{display:none!important}
+  .topbar{grid-column:1/-1!important;display:block!important;margin:0!important;padding:0!important;break-inside:avoid!important;page-break-inside:avoid!important}
+  .kicker{display:none!important}
+  .topbar h1{font-size:16px!important;line-height:1!important;margin:0 0 1mm!important;letter-spacing:-.04em!important}
+  .lead{font-size:7.2px!important;line-height:1.2!important;max-width:180mm!important;margin:0!important;color:#334155!important}
+
+  .setup{grid-column:1/-1!important;display:grid!important;grid-template-columns:1.35fr .95fr .95fr!important;gap:2mm!important;margin:0!important;align-items:stretch!important;break-inside:avoid!important;page-break-inside:avoid!important}
+  .panel,.strategyCard{padding:2.2mm!important;min-height:0!important}
+  .clientPanel{grid-column:auto!important}
+  .clientPanel .panelTitle{gap:1.4mm!important;margin:0 0 1.5mm!important}
+  .clientPanel .panelTitle h2{font-size:9px!important;line-height:1!important;letter-spacing:.02em!important}
+  .icon{width:15px!important;height:15px!important;font-size:9px!important}
+  .clientGrid{border-radius:6px!important}
+  .clientTop{grid-template-columns:1.2fr .75fr .75fr .75fr!important}
+  .clientBottom{grid-template-columns:1fr 1fr!important}
+  .cell{padding:1.7mm!important}
+  .cell label,.field label,.strategyStat label{font-size:6.2px!important;line-height:1.05!important;margin-bottom:.6mm!important}
+  .cell input,.field input,.field select{font-size:8.6px!important;line-height:1.05!important}
+  .cell .bigBlue{font-size:10.5px!important;line-height:1.05!important}
+  .cell small,.field small,.strategyStat small{font-size:5.9px!important;line-height:1.08!important;margin-top:.4mm!important}
+  .pill{margin-top:1.4mm!important;padding:1.2mm 1.8mm!important;border-radius:5px!important;font-size:6.2px!important;line-height:1.12!important}
+  .miniFields,#manualAllocationBox{display:none!important}
+
+  .strategyCard{padding:2.4mm!important;border-radius:8px!important}
+  .strategyCard:before{width:30px!important;height:30px!important;right:4mm!important;top:4mm!important;border-radius:9px!important;opacity:.08!important}
+  .strategyLabel{font-size:9.2px!important;line-height:1.05!important;margin:0 0 .6mm!important;letter-spacing:.04em!important}
+  .strategySelect{font-size:15px!important;line-height:1!important;padding:0 5mm 1mm 0!important}
+  .strategyStats{margin-top:1.2mm!important;padding-top:1.4mm!important;gap:1.5mm!important}
+  .strategyStat input{font-size:15px!important;line-height:1!important}
+  .fixedFee{font-size:13px!important;line-height:1!important}
+  #taxInfo{font-size:6.2px!important;line-height:1.12!important;padding:1.2mm 1.8mm!important;margin-top:1.3mm!important}
+
+  .mainGrid{grid-column:1/-1!important;display:grid!important;grid-template-columns:minmax(0,1fr) 76mm!important;gap:2mm!important;margin:0!important;break-inside:avoid!important;page-break-inside:avoid!important}
+  .chartCard{padding:2.4mm!important;min-height:0!important}
+  .sectionHead{margin:0 0 1mm!important;align-items:center!important}
+  .sectionHead h2{font-size:9px!important;line-height:1!important;margin:0!important;text-transform:uppercase!important}
+  .chartControls{gap:1.2mm!important}
+  .chartSwitch{padding:1mm 1.7mm!important;font-size:6.2px!important;border-radius:20px!important}
+  .chartSwitch input{width:8px!important;height:8px!important}
+  canvas{height:54mm!important;max-height:54mm!important;width:100%!important}
+  .legend{font-size:6px!important;margin:.8mm 0 0!important;gap:4mm!important}
+  .dot{width:6px!important;height:6px!important;margin-right:.8mm!important}
+  .info{font-size:5.8px!important;margin:.8mm 0 0!important;line-height:1.12!important}
+  .metricStack{display:grid!important;gap:1.2mm!important}
+  .metric{padding:1.8mm 9mm 1.8mm 2.4mm!important;border-radius:7px!important;min-height:0!important}
+  .metric:after{width:15px!important;height:15px!important;right:2.5mm!important}
+  .metric small{font-size:6.1px!important;line-height:1.05!important;margin-bottom:.6mm!important}
+  .metric b{font-size:11.5px!important;line-height:1!important;margin:0!important}
+  .mark{font-size:5.4px!important;padding:.5mm 1.2mm!important;margin-top:.6mm!important}
+
+  .tablesGrid{grid-column:1/2!important;display:grid!important;grid-template-columns:1fr 1fr!important;gap:2mm!important;margin:0!important;break-inside:avoid!important;page-break-inside:avoid!important}
+  .tableCard{padding:2.2mm!important;overflow:visible!important;border-radius:8px!important;break-inside:avoid!important;page-break-inside:avoid!important}
+  .tableCard h2{font-size:8.8px!important;line-height:1!important;margin:0 0 1.4mm!important;text-transform:uppercase!important}
+  .miniControls{display:grid!important;grid-template-columns:1fr 1fr!important;gap:1.5mm!important;margin-bottom:1.2mm!important}
+  .miniControls .field{padding:1.2mm!important;margin:0!important;border-radius:6px!important}
+  table{border-radius:5px!important;break-inside:avoid!important;page-break-inside:avoid!important}
+  th,td{font-size:5.2px!important;line-height:1.05!important;padding:.85mm .75mm!important;border-width:.25pt!important}
+  .warn{font-size:5.6px!important;line-height:1.08!important;padding:1mm 1.4mm!important;margin-top:1mm!important;border-radius:5px!important}
+
+  .comparison{grid-column:2/3!important;display:grid!important;grid-template-columns:1fr 1fr!important;gap:2mm!important;margin:0!important;break-inside:avoid!important;page-break-inside:avoid!important}
+  .product{padding:2.2mm!important;border-radius:8px!important;break-inside:avoid!important;page-break-inside:avoid!important}
+  .product.combo{display:none!important}
+  .product h3{font-size:9px!important;line-height:1.05!important;margin:.8mm 0!important}
+  .product .big{font-size:12px!important;line-height:1!important;margin:.8mm 0 1.2mm!important}
+  .badge{font-size:5.7px!important;padding:.6mm 1.2mm!important}
+  .barrow{grid-template-columns:23mm 1fr 18mm!important;gap:1mm!important;font-size:5.1px!important;line-height:1.05!important}
+  .bar{height:3px!important}
+  .breakdown{gap:1mm!important}
+
+  .recommend{grid-column:1/-1!important;padding:2mm 2.5mm!important;margin:0!important;border-radius:8px!important;break-inside:avoid!important;page-break-inside:avoid!important}
+  .recommend h2{font-size:8.8px!important;margin:0 0 .8mm!important;line-height:1!important}
+  .recommend p{font-size:6.4px!important;line-height:1.16!important;margin:0!important}
+}
+
+/* v2 - sjednoceni do Fairlife light glass stylu */
+:root{color-scheme:light;--bg:#eef4f8;--card:rgba(255,255,255,.66);--ink:#172033;--muted:#64748b;--line:rgba(205,218,232,.68);--blue:#2563eb;--blueBg:rgba(219,234,254,.78);--green:#15803d;--greenBg:rgba(220,252,231,.76);--orange:#b45309;--orangeBg:rgba(255,247,237,.86);--purple:#7c3aed;--purpleBg:rgba(237,233,254,.78);--red:#b91c1c;--redBg:rgba(254,226,226,.78);--shadow:0 24px 70px rgba(23,32,51,.12);--radius:22px;--glass-shadow:0 20px 60px rgba(23,32,51,.10),inset 0 1px 0 rgba(255,255,255,.92)}
+body{min-height:100vh;background:linear-gradient(120deg,rgba(255,255,255,.95),rgba(255,255,255,.66) 42%,rgba(235,244,249,.82)),linear-gradient(180deg,#fff 0,var(--bg) 24rem),var(--bg);overflow-x:hidden}
+body:before{content:"";position:fixed;inset:0;z-index:-2;pointer-events:none;background:url("fairlife-lion-watermark.png") center 50%/min(88vw,900px) auto no-repeat;opacity:.07;filter:saturate(.9) contrast(1.06)}
+body:after{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:linear-gradient(90deg,rgba(255,255,255,.94),rgba(255,255,255,.56) 56%,rgba(255,255,255,.78)),repeating-linear-gradient(135deg,rgba(15,118,110,.035) 0 1px,transparent 1px 18px)}
+.wrapper{max-width:1280px;padding:28px 18px 56px}
+.card{background:rgba(255,255,255,.62);border:1px solid rgba(255,255,255,.82);box-shadow:var(--glass-shadow);backdrop-filter:blur(24px) saturate(155%);-webkit-backdrop-filter:blur(24px) saturate(155%)}
+.topbar{background:rgba(255,255,255,.54);border:1px solid rgba(255,255,255,.78);border-radius:28px;padding:22px 24px;box-shadow:0 18px 52px rgba(23,32,51,.08),inset 0 1px 0 rgba(255,255,255,.92)}
+.kicker{color:#61738b;letter-spacing:.08em}.topbar h1{color:#172033;font-size:36px;letter-spacing:0}.lead{color:#475569}
+.btn{min-height:40px;border:1px solid rgba(255,255,255,.76);background:rgba(255,255,255,.68);border-radius:13px;color:#172033;font-weight:850;box-shadow:inset 0 1px 0 rgba(255,255,255,.86),0 8px 22px rgba(23,32,51,.06);backdrop-filter:blur(18px) saturate(150%);-webkit-backdrop-filter:blur(18px) saturate(150%);transition:transform .14s,box-shadow .14s,background .14s}
+.btn:hover{background:rgba(255,255,255,.86);transform:translateY(-1px);box-shadow:0 14px 34px rgba(23,32,51,.10),inset 0 1px 0 rgba(255,255,255,.92)}
+.btn.primary{background:linear-gradient(135deg,#2563eb,#0891b2);border-color:rgba(255,255,255,.76);color:#fff}
+.setup{gap:14px}.clientGrid,.field,.investBox,.toggleRow,table,.warn,.goodnote,.chartSwitch{background:rgba(255,255,255,.72);border-color:rgba(205,218,232,.74);box-shadow:inset 0 1px 0 rgba(255,255,255,.82)}
+.cell{border-color:rgba(205,218,232,.64)}.field input,.field select,.cell input,.strategySelect,.strategyStat input{color:#172033;letter-spacing:0}
+.strategyCard.dps{border-color:rgba(251,146,60,.44);background:linear-gradient(135deg,rgba(255,255,255,.76),rgba(255,247,237,.72))}
+.strategyCard.dip{border-color:rgba(124,58,237,.34);background:linear-gradient(135deg,rgba(255,255,255,.76),rgba(245,243,255,.72))}
+.strategyCard.dps .strategyLabel,.strategyCard.dps .strategySelect,.strategyCard.dps .strategyStat input,.strategyCard.dps .fixedFee{color:#b45309}
+.strategyCard.dip .strategyLabel,.strategyCard.dip .strategySelect,.strategyCard.dip .strategyStat input{color:#5b21b6}
+.metric{background:rgba(255,255,255,.70);border-color:rgba(255,255,255,.78);box-shadow:0 8px 22px rgba(23,32,51,.055),inset 0 1px 0 rgba(255,255,255,.88)}
+.comparison{grid-template-columns:repeat(3,minmax(0,1fr))}.product h3,.sectionHead h2,.tableCard h2,.recommend h2{color:#172033;letter-spacing:0}.badge{letter-spacing:.02em}
+th{background:rgba(248,251,255,.82);color:#334155}td,th{border-color:rgba(205,218,232,.72)}
+.recommend{background:linear-gradient(135deg,rgba(255,255,255,.74),rgba(239,246,255,.66));box-shadow:var(--glass-shadow)}
+.client-export .actions,.client-export .productDiff{display:none!important}.client-export .wrapper{max-width:1180px}.client-export .topbar{margin-bottom:18px}
+@media(max-width:1100px){.comparison{grid-template-columns:1fr}.topbar{display:grid;grid-template-columns:1fr}.actions{justify-content:flex-start}}
+
+</style>
+</head>
+<body>
+<div class="wrapper">
+  <header class="topbar">
+    <div>
+      <div class="kicker">DPS vs DIP · model podle plánovaných pravidel 2027</div>
+      <h1>DPS vs DIP – model podle pravidel 2027</h1>
+      <p class="lead">Objektivní porovnání penzijního spoření, dlouhodobého investičního produktu a jejich optimální kombinace.</p>
+    </div>
+    <div class="actions"><button class="btn" onclick="resetModel()">↻ Vrátit do výchozího</button><button class="btn primary" onclick="exportClientHTML()">HTML pro klienta</button><button class="btn" onclick="window.print()">🖨 Tisk / Uložit PDF</button></div>
+  </header>
+
+  <section class="setup">
+    <div class="card panel clientPanel">
+      <div class="panelTitle"><div class="icon">♙</div><h2>Informace o klientovi</h2></div>
+      <div class="clientGrid">
+        <div class="clientTop">
+          <div class="cell"><label>Jméno klienta</label><input id="clientName" value="Bhardwaj"></div>
+          <div class="cell"><label>Aktuální věk</label><input id="age" type="number" value="30" min="1" max="64"><small>let</small></div>
+          <div class="cell"><label>Cílový věk</label><input id="targetAge" type="number" value="65" min="18" max="80"><small>let</small></div>
+          <div class="cell horizonCell"><label>Investiční horizont</label><input id="horizonView" value="35" disabled><small>let</small></div>
+        </div>
+        <div class="clientBottom">
+          <div class="cell"><label>Vlastní příspěvek celkem</label><input id="own" class="bigBlue" type="number" value="1500" min="0" step="100"><small id="ownYear">Kč/měs.</small></div>
+          <div class="cell"><label>Příspěvek zaměstnavatele celkem</label><input id="employer" class="bigBlue" type="number" value="2500" min="0" step="100"><small id="empYear">Kč/měs.</small></div>
+        </div>
+      </div>
+      <div class="pill" id="supportPill">Státní podpora: načítám…</div>
+      <div class="miniFields" style="margin-top:12px">
+        <div class="field"><label>Režim kombinace</label><select id="allocationMode"><option value="auto">Automaticky</option><option value="manual">Ručně rozdělit</option></select><small>auto: DPS do 1 700 Kč, zbytek DIP</small></div>
+        <div class="field"><label>Zaměstnavatel v automatické kombinaci</label><select id="comboEmployer"><option value="dps">do DPS</option><option value="dip">do DIP</option></select><small>platí pouze pro automatický režim</small></div>
+      </div>
+      <div id="manualAllocationBox" class="allocationBox hiddenBox">
+        <div class="field"><label>Klient do DPS</label><input id="manualDpsOwn" type="number" value="1700" min="0" step="100"><small>Kč/měs.</small></div>
+        <div class="field"><label>Klient do DIP</label><input id="manualDipOwn" type="number" value="0" min="0" step="100"><small>Kč/měs.</small></div>
+        <div class="field"><label>Zaměstnavatel do DPS</label><input id="manualDpsEmp" type="number" value="2500" min="0" step="100"><small>Kč/měs.</small></div>
+        <div class="field"><label>Zaměstnavatel do DIP</label><input id="manualDipEmp" type="number" value="0" min="0" step="100"><small>Kč/měs.</small></div>
+      </div>
+    </div>
+
+    <div class="card strategyCard dps">
+      <div class="strategyLabel">DPS – strategie</div>
+      <select class="strategySelect" id="dpsStrategy"><option value="dynamic">Dynamická</option><option value="balanced">Vyvážená</option><option value="conservative">Konzervativní</option></select>
+      <div class="strategyStats">
+        <div class="strategyStat"><label>Modelové zhodnocení DPS p.a.</label><input id="dpsGross" type="number" step="0.1" value="7.0"><small>před poplatkem</small></div>
+        <div class="strategyStat"><label>Poplatek DPS</label><div class="fixedFee">0,5 % p.a.</div><small>bez výkonnostní odměny</small></div>
+      </div>
+    </div>
+
+    <div class="card strategyCard dip">
+      <div class="strategyLabel">DIP – strategie</div>
+      <select class="strategySelect" id="dipStrategy"><option value="dynamic">Dynamická</option><option value="balanced">Vyvážená</option><option value="conservative">Konzervativní</option></select>
+      <div class="strategyStats">
+        <div class="strategyStat"><label>Modelové zhodnocení DIP p.a.</label><input id="dipGross" type="number" step="0.1" value="9.0"><small>před poplatkem DIP</small></div>
+        <div class="strategyStat"><label>Poplatek DIP</label><input id="dipFee" type="number" step="0.1" value="0.8" min="0.4" max="3"><small>nastavitelný 0,4–3 % p.a.</small></div>
+      </div>
+      <div class="pill" id="taxInfo" style="background:#f7faff;color:#244c9c;margin-top:16px">Daňová úspora DIP: načítám…</div>
+    </div>
+  </section>
+
+  <section class="mainGrid">
+    <div class="card chartCard">
+      <div class="sectionHead"><h2>Vývoj hodnoty portfolia v čase</h2><div class="chartControls"><label class="chartSwitch reinvest"><input id="reinvestTax" type="checkbox" checked> Reinvestovat daňovou úsporu DIP</label><label class="chartSwitch"><input id="showCombo" type="checkbox" checked> Zobrazit kombinaci</label></div></div>
+      <canvas id="chart" width="1000" height="430"></canvas>
+      <div class="legend"><span><i class="dot dps"></i>DPS</span><span><i class="dot dip"></i>DIP</span><span><i class="dot combo"></i>Kombinace DPS + DIP</span></div>
+      <p class="info">Modelové zhodnocení. Nejedná se o zaručený výnos. Minulé výnosy nejsou zárukou výnosů budoucích.</p>
+    </div>
+    <aside class="metricStack">
+      <div class="metric green" id="metricDip"><small>DIP konečná hodnota</small><b id="mDip">0 Kč</b><span id="dipRank"></span></div>
+      <div class="metric orange" id="metricDps"><small>DPS konečná hodnota</small><b id="mDps">0 Kč</b><span id="dpsRank"></span></div>
+      <div class="metric purple" id="metricCombo"><small>Kombinace DPS + DIP</small><b id="mCombo">0 Kč</b><span id="comboRank"></span></div>
+      <div class="metric red"><small>Rozdíl nejlepší − nejhorší</small><b id="mDiff">0 Kč</b></div>
+      <div class="metric blue"><small>Daňová úspora DIP / rok</small><b id="mTax">0 Kč</b></div>
+    </aside>
+  </section>
+
+  <section class="tablesGrid">
+    <div class="card tableCard">
+      <h2>Rychlé porovnání příspěvků</h2>
+      <table id="scenarioTable"></table>
+      <div class="warn goodnote" id="comboNote">Načítám rozdělení…</div>
+    </div>
+    <div class="card tableCard">
+      <h2>Předčasné ukončení</h2>
+      <div class="miniControls">
+        <div class="field"><label>Výběr ve věku</label><input id="withdrawAge" type="number" value="59" min="18" max="80"></div>
+        <div class="field"><label>Podmínka</label><input value="60+ / 120 měs." disabled></div>
+      </div>
+      <table id="earlyTable"></table>
+      <div class="warn" id="earlyNote"></div>
+    </div>
+  </section>
+
+  <section class="comparison">
+    <div class="card product dps"><span class="badge">DPS</span><h3>Doplňkové penzijní spoření</h3><div class="big" id="dpsTotal">0 Kč</div><div class="breakdown" id="dpsBreak"></div></div>
+    <div class="card product dip"><span class="badge">DIP</span><h3>Dlouhodobý investiční produkt</h3><div class="big" id="dipTotal">0 Kč</div><div class="breakdown" id="dipBreak"></div></div>
+    <div class="card product combo"><span class="badge">Kombinace</span><h3>DPS do limitu + DIP nad limit</h3><div class="big" id="comboTotal">0 Kč</div><div class="breakdown" id="comboBreak"></div></div>
+  </section>
+
+  <section class="recommend"><h2>Automatické shrnutí</h2><p id="recommendText">Načítám doporučení…</p></section>
+
+  <section class="card tableCard productDiff">
+    <h2>Hlavní rozdíly mezi produkty</h2>
+    <table><tr><th>Vlastnost</th><th>DPS</th><th>DIP</th></tr><tr><td>Státní příspěvek</td><td>Ano, dle vlastního vkladu klienta</td><td>Ne</td></tr><tr><td>Daňová úleva</td><td>Ano, zejména z vkladů nad 1 700 Kč/měs.</td><td>Ano, z vlastních vkladů do zákonného limitu</td></tr><tr><td>Příspěvek zaměstnavatele</td><td>Ano</td><td>Ano</td></tr><tr><td>Investiční možnosti</td><td>Fondy penzijní společnosti</td><td>Širší výběr instrumentů podle poskytovatele</td></tr><tr><td>Poplatky v modelu</td><td>0,5 % p.a., bez výkonnostní odměny</td><td>Nastavitelné 0,4–3 % p.a.</td></tr></table>
+  </section>
+</div>
+
+<script>
+const $=id=>document.getElementById(id); const fmt=n=>Math.round(n).toLocaleString('cs-CZ')+' Kč'; const pct=n=>(Math.round(n*100)/100).toLocaleString('cs-CZ')+' %';
+const strategyReturns={dynamic:7,balanced:5,conservative:3.5};
+const DPS_FEE=.005, TAX_LIMIT=48000, TAX_RATE=.15, DPS_LIMIT=1700;
+function inputVal(id){return Number($(id).value)||0}
+function monthlyRate(annual){return Math.pow(1+Math.max(annual,-.99),1/12)-1}
+function stateContributionForAge(own, age){ if(own<500)return 0; const base=Math.min(own,DPS_LIMIT); const rate=age<30?.40:.20; return base*rate; }
+function taxDip(own){return Math.min(own*12,TAX_LIMIT)*TAX_RATE}
+function taxDps(own){return Math.min(Math.max((own-DPS_LIMIT)*12,0),TAX_LIMIT)*TAX_RATE}
+function getAllocation(){const mode=$('allocationMode').value;const totalOwn=inputVal('own'),totalEmp=inputVal('employer');if(mode==='manual'){return{mode,dpsOwn:inputVal('manualDpsOwn'),dipOwn:inputVal('manualDipOwn'),dpsEmp:inputVal('manualDpsEmp'),dipEmp:inputVal('manualDipEmp'),totalOwn:inputVal('manualDpsOwn')+inputVal('manualDipOwn'),totalEmp:inputVal('manualDpsEmp')+inputVal('manualDipEmp')}}const dpsOwn=Math.min(totalOwn,DPS_LIMIT),dipOwn=Math.max(totalOwn-DPS_LIMIT,0);return{mode,dpsOwn,dipOwn,dpsEmp:$('comboEmployer').value==='dps'?totalEmp:0,dipEmp:$('comboEmployer').value==='dip'?totalEmp:0,totalOwn,totalEmp}}
+function syncManualFields(){const mode=$('allocationMode').value;const box=$('manualAllocationBox');if(mode==='auto'){box.classList.add('hiddenBox');const totalOwn=inputVal('own'),totalEmp=inputVal('employer');$('manualDpsOwn').value=Math.min(totalOwn,DPS_LIMIT);$('manualDipOwn').value=Math.max(totalOwn-DPS_LIMIT,0);$('manualDpsEmp').value=$('comboEmployer').value==='dps'?totalEmp:0;$('manualDipEmp').value=$('comboEmployer').value==='dip'?totalEmp:0;}else{box.classList.remove('hiddenBox');}}
+function annualStateForCurrentAge(own, age){let sum=0;for(let m=0;m<12;m++)sum+=stateContributionForAge(own,age+m/12);return sum}
+function calcProduct({product,own,emp,yearsOverride=null}){const age=inputVal('age'),target=inputVal('targetAge'),years=yearsOverride??Math.max(0,target-age),reinvest=$('reinvestTax').checked;const dpsAnnual=inputVal('dpsGross')/100-DPS_FEE;const dipAnnual=inputVal('dipGross')/100-inputVal('dipFee')/100;const mdps=monthlyRate(dpsAnnual),mdip=monthlyRate(dipAnnual);let ownEmp=0,state=0,statePrincipal=0,taxBucket=0,taxPrincipal=0,series=[];for(let y=0;y<years;y++){for(let m=0;m<12;m++){const exactAge=age+y+m/12;if(product==='dps'){const sc=stateContributionForAge(own,exactAge);statePrincipal+=sc;ownEmp=(ownEmp+own+emp)*(1+mdps);state=(state+sc)*(1+mdps)}else{ownEmp=(ownEmp+own+emp)*(1+mdip);taxBucket*=1+mdip}if(product==='dip'&&m===11){const td=taxDip(own);taxPrincipal+=td;if(reinvest)taxBucket+=td}}series.push({year:Math.floor(age+y+1),total:ownEmp+state+taxBucket,ownEmp,state,statePrincipal,taxBucket,taxPrincipal})}return{product,age,years,own,emp,annual:product==='dps'?dpsAnnual:dipAnnual,ownEmp,state,statePrincipal,taxBucket,taxPrincipal,total:ownEmp+state+taxBucket,series,taxYear:product==='dip'?taxDip(own):taxDps(own),stateYear:product==='dps'?annualStateForCurrentAge(own,age):0}}
+function calcCombo(yearsOverride=null){const a=getAllocation();const dps=calcProduct({product:'dps',own:a.dpsOwn,emp:a.dpsEmp,yearsOverride});const dip=calcProduct({product:'dip',own:a.dipOwn,emp:a.dipEmp,yearsOverride});const series=dps.series.map((s,i)=>({year:s.year,total:s.total+(dip.series[i]?.total||0),dps:s.total,dip:dip.series[i]?.total||0}));return{...a,dps,dip,total:dps.total+dip.total,series,taxYear:taxDip(a.dipOwn),stateYear:annualStateForCurrentAge(a.dpsOwn,inputVal('age'))}}
+function getAll(yearsOverride=null){const a=getAllocation();return{dps:calcProduct({product:'dps',own:a.totalOwn,emp:a.totalEmp,yearsOverride}),dip:calcProduct({product:'dip',own:a.totalOwn,emp:a.totalEmp,yearsOverride}),combo:calcCombo(yearsOverride)}}
+function barRows(el,rows){const max=Math.max(...rows.map(r=>Math.abs(r.v)),1);el.innerHTML=rows.map((r,i)=>`<div class="barrow"><span>${r.n}</span><div class="bar"><div class="fill f${i+1}" style="width:${Math.max(2,Math.abs(r.v)/max*100)}%"></div></div><b>${fmt(r.v)}</b></div>`).join('')}
+function draw(all){const c=$('chart'),ctx=c.getContext('2d'),w=c.width,h=c.height;ctx.clearRect(0,0,w,h);const base=all.dps.series;if(!base.length)return;const showCombo=$('showCombo').checked;const pad={l:78,r:28,t:24,b:50};const vals=[...all.dps.series.map(d=>d.total),...all.dip.series.map(d=>d.total),...(showCombo?all.combo.series.map(d=>d.total):[])];const max=Math.max(...vals,1)*1.08;const x=i=>pad.l+(w-pad.l-pad.r)*(base.length<=1?0:i/(base.length-1));const y=v=>pad.t+(h-pad.t-pad.b)*(1-v/max);ctx.strokeStyle='#e5e9f0';ctx.lineWidth=1;ctx.font='12px Inter,Arial';ctx.fillStyle='#667085';for(let i=0;i<=6;i++){let yy=pad.t+(h-pad.t-pad.b)*i/6;ctx.beginPath();ctx.moveTo(pad.l,yy);ctx.lineTo(w-pad.r,yy);ctx.stroke();let val=max*(1-i/6);ctx.fillText(Math.round(val).toLocaleString('cs-CZ'),8,yy+4)}ctx.fillStyle='#667085';ctx.save();ctx.translate(18,h/2);ctx.rotate(-Math.PI/2);ctx.fillText('Hodnota portfolia (Kč)',0,0);ctx.restore();function area(arr,color,alpha){ctx.beginPath();arr.forEach((d,i)=>i?ctx.lineTo(x(i),y(d.total)):ctx.moveTo(x(i),y(d.total)));ctx.lineTo(x(arr.length-1),y(0));ctx.lineTo(x(0),y(0));ctx.closePath();ctx.globalAlpha=alpha;ctx.fillStyle=color;ctx.fill();ctx.globalAlpha=1}function line(arr,color){ctx.strokeStyle=color;ctx.lineWidth=3.2;ctx.beginPath();arr.forEach((d,i)=>i?ctx.lineTo(x(i),y(d.total)):ctx.moveTo(x(i),y(d.total)));ctx.stroke();arr.forEach((d,i)=>{if(i%Math.ceil(arr.length/8)===0||i===arr.length-1){ctx.fillStyle=color;ctx.beginPath();ctx.arc(x(i),y(d.total),3.5,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke();}})}area(all.dps.series,'#f59e0b',.12);area(all.dip.series,'#16a34a',.10);if(showCombo)area(all.combo.series,'#2563eb',.09);line(all.dps.series,'#f59e0b');line(all.dip.series,'#16a34a');if(showCombo)line(all.combo.series,'#2563eb');ctx.strokeStyle='#e5e9f0';ctx.fillStyle='#667085';ctx.font='12px Inter,Arial';const step=Math.max(1,Math.ceil(base.length/7));for(let i=0;i<base.length;i+=step){ctx.beginPath();ctx.moveTo(x(i),pad.t);ctx.lineTo(x(i),h-pad.b);ctx.stroke();ctx.fillText(base[i].year,x(i)-10,h-24)}ctx.fillText('Věk',w/2,h-8);const last={dps:all.dps.series.at(-1),dip:all.dip.series.at(-1),combo:all.combo.series.at(-1)};const boxW=190,boxH=78,bx=w-pad.r-boxW-18,by=pad.t+50;ctx.fillStyle='rgba(255,255,255,.92)';ctx.strokeStyle='#dfe5ee';ctx.lineWidth=1;roundRect(ctx,bx,by,boxW,boxH,10,true,true);ctx.fillStyle='#111';ctx.font='800 12px Inter,Arial';ctx.fillText(`Věk ${last.dps.year}`,bx+12,by+18);ctx.font='12px Inter,Arial';[['#16a34a','DIP',last.dip.total],['#2563eb','Kombinace',last.combo.total],['#f59e0b','DPS',last.dps.total]].forEach((r,i)=>{ctx.fillStyle=r[0];ctx.beginPath();ctx.arc(bx+14,by+38+i*17,4,0,Math.PI*2);ctx.fill();ctx.fillStyle=r[0];ctx.fillText(`${r[1]}: ${fmt(r[2])}`,bx+25,by+42+i*17)})}
+function roundRect(ctx,x,y,w,h,r,fill,stroke){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();if(fill)ctx.fill();if(stroke)ctx.stroke()}
+function rankInfo(all){const arr=[['dps',all.dps.total],['dip',all.dip.total],['combo',all.combo.total]].sort((a,b)=>b[1]-a[1]);return{best:arr[0][0],worst:arr.at(-1)[0],diff:arr[0][1]-arr.at(-1)[1]}}
+function productLabel(k){return k==='dps'?'DPS':k==='dip'?'DIP':'Kombinace DPS + DIP'}
+function update(){if(inputVal('targetAge')<inputVal('age')) $('targetAge').value=$('age').value;syncManualFields();const alloc=getAllocation();const all=getAll();const win=rankInfo(all);$('mDps').textContent=fmt(all.dps.total);$('mDip').textContent=fmt(all.dip.total);$('mCombo').textContent=fmt(all.combo.total);$('mDiff').textContent=fmt(win.diff);$('mTax').textContent=fmt(taxDip(alloc.totalOwn));$('dpsRank').innerHTML=win.best==='dps'?'<span class="mark good">Nejlepší</span>':win.worst==='dps'?'<span class="mark bad">Nejnižší</span>':'';$('dipRank').innerHTML=win.best==='dip'?'<span class="mark good">Nejlepší</span>':win.worst==='dip'?'<span class="mark bad">Nejnižší</span>':'';$('comboRank').innerHTML=win.best==='combo'?'<span class="mark good">Nejlepší</span>':'<span class="mark purple">Strategie</span>';$('dpsTotal').textContent=fmt(all.dps.total);$('dipTotal').textContent=fmt(all.dip.total);$('comboTotal').textContent=fmt(all.combo.total);const vklady=(alloc.totalOwn+alloc.totalEmp)*12*all.dps.years;barRows($('dpsBreak'),[{n:'vlastní + zaměstnavatel',v:vklady},{n:'státní příspěvky',v:all.dps.statePrincipal},{n:'celkový výnos',v:all.dps.total-vklady-all.dps.statePrincipal}]);barRows($('dipBreak'),[{n:'vlastní + zaměstnavatel',v:vklady},{n:'reinvestovaná daň',v:all.dip.taxBucket},{n:'celkový výnos',v:all.dip.total-vklady-all.dip.taxBucket}]);const comboVklady=(all.combo.dpsOwn+all.combo.dipOwn+all.combo.dpsEmp+all.combo.dipEmp)*12*all.dps.years;barRows($('comboBreak'),[{n:'vlastní + zaměstnavatel',v:comboVklady},{n:'státní podpora',v:all.combo.dps.statePrincipal},{n:'reinvestovaná daň',v:all.combo.dip.taxBucket},{n:'celkový výnos',v:all.combo.total-comboVklady-all.combo.dps.statePrincipal-all.combo.dip.taxBucket}]);draw(all);scenarios();early();params();allocationView();recommend(all,win)}
+function scenarios(){const owns=[1000,1500,1700,2500,5000];const oldOwn=$('own').value,oldMode=$('allocationMode').value;$('allocationMode').value='auto';$('scenarioTable').innerHTML='<tr><th>Vlastní vklad</th><th>DPS stát/rok</th><th>DIP daň/rok</th><th>DPS</th><th>DIP</th><th>Kombinace</th></tr>'+owns.map(o=>{$('own').value=o;syncManualFields();const r=getAll();const arr=[r.dps.total,r.dip.total,r.combo.total],max=Math.max(...arr);return `<tr><td>${fmt(o)}/měs.</td><td>${fmt(r.dps.stateYear)}</td><td>${fmt(taxDip(o))}</td><td class="${r.dps.total===max?'cell-winner':''}">${fmt(r.dps.total)}</td><td class="${r.dip.total===max?'cell-winner':''}">${fmt(r.dip.total)}</td><td class="${r.combo.total===max?'cell-winner':''}">${fmt(r.combo.total)}</td></tr>`}).join('');$('own').value=oldOwn;$('allocationMode').value=oldMode;syncManualFields()}
+function early(){const wa=inputVal('withdrawAge'),age=inputVal('age'),yrs=Math.max(0,wa-age),all=getAll(yrs),ok=wa>=60&&yrs>=10;function cleanDps(r){return r.total-(ok?0:r.statePrincipal)-(ok?0:taxDps(r.own)*yrs)}function cleanDip(r){return r.total-(ok?0:r.taxPrincipal)}const dpsClean=cleanDps(all.dps),dipClean=cleanDip(all.dip),comboClean=cleanDps(all.combo.dps)+cleanDip(all.combo.dip);const vals=[dpsClean,dipClean,comboClean],max=Math.max(...vals);$('earlyTable').innerHTML=`<tr><th>Scénář v ${wa} letech</th><th>DPS</th><th>DIP</th><th>Kombinace</th></tr><tr><td>Hodnota před výběrem</td><td>${fmt(all.dps.total)}</td><td>${fmt(all.dip.total)}</td><td>${fmt(all.combo.total)}</td></tr><tr><td>Vrácení státní podpory</td><td>${fmt(ok?0:all.dps.statePrincipal)}</td><td>0 Kč</td><td>${fmt(ok?0:all.combo.dps.statePrincipal)}</td></tr><tr><td>Dodanění daňových výhod</td><td>${fmt(ok?0:taxDps(all.dps.own)*yrs)}</td><td>${fmt(ok?0:all.dip.taxPrincipal)}</td><td>${fmt(ok?0:taxDps(all.combo.dps.own)*yrs+all.combo.dip.taxPrincipal)}</td></tr><tr><td>Čistá hodnota po výběru</td><td class="${dpsClean===max?'cell-winner':'cell-loser'}">${fmt(dpsClean)}</td><td class="${dipClean===max?'cell-winner':'cell-loser'}">${fmt(dipClean)}</td><td class="${comboClean===max?'cell-winner':'cell-loser'}">${fmt(comboClean)}</td></tr>`;$('earlyNote').innerHTML=ok?'<strong>Podmínky jsou splněny.</strong> Model již neodečítá státní podporu ani daňové výhody.':'<strong>Podmínky nejsou splněny.</strong> Model zjednodušeně odečítá u DPS jistinu státních příspěvků a případné daňové výhody, u DIP odečítá reinvestované daňové výhody.'}
+function params(){const age=inputVal('age'),rate=age<30?40:20,max=age<30?680:340; if($('horizonView')) $('horizonView').value=Math.max(0,inputVal('targetAge')-age);$('supportPill').textContent=age<30?`Klient má do 30 let: státní podpora ${rate} %, max. ${fmt(max)}/měs.`:`Klient má 30+ let: státní podpora ${rate} %, max. ${fmt(max)}/měs.`;$('ownYear').textContent=`${fmt(inputVal('own')*12)} / rok`;$('empYear').textContent=`${fmt(inputVal('employer')*12)} / rok`;$('taxInfo').textContent=`Daňová úspora DIP při celé vlastní platbě do DIP: ${fmt(taxDip(inputVal('own')))} ročně. Čisté zhodnocení DPS: ${pct((inputVal('dpsGross')/100-DPS_FEE)*100)}, DIP: ${pct((inputVal('dipGross')/100-inputVal('dipFee')/100)*100)}.`}
+function allocationView(){const a=getAllocation();$('comboNote').innerHTML=`<strong>Kombinace:</strong> ${a.mode==='auto'?'automaticky':'ručně'} nastaveno ${fmt(a.dpsOwn)}/měs. vlastního vkladu do DPS a ${fmt(a.dipOwn)}/měs. do DIP. Zaměstnavatel: ${fmt(a.dpsEmp)}/měs. DPS, ${fmt(a.dipEmp)}/měs. DIP.`}
+function recommend(all,win){const a=getAllocation(),own=a.totalOwn;let text;if(own<=DPS_LIMIT){text=`Při vlastním příspěvku ${fmt(own)}/měs. je hlavní otázka DPS vs. DIP. U částek do ${fmt(DPS_LIMIT)} je DPS silné díky státní podpoře, zvlášť u klientů do 30 let. Nejvyšší modelová hodnota nyní vychází: ${productLabel(win.best)}.`}else{text=`Protože vlastní příspěvek přesahuje ${fmt(DPS_LIMIT)}/měs., dává smysl ukázat kombinaci: prvních ${fmt(DPS_LIMIT)} do DPS kvůli plné státní podpoře a zbytek ${fmt(Math.max(own-DPS_LIMIT,0))} do DIP kvůli širším investičním možnostem a daňové úspoře. Nejvyšší modelová hodnota nyní vychází: ${productLabel(win.best)}.`}if(!$('reinvestTax').checked)text+=' Daňová úspora DIP není v tomto scénáři reinvestována.';$('recommendText').textContent=text}
+function escapeHTML(value){return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]))}
+function clientFileName(){const raw=($('clientName')?.value||'klient').trim();const safe=raw.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]+/g,'-').replace(/^-|-$/g,'').toLowerCase();return 'dps-vs-dip-'+(safe||'klient')+'.html'}
+function freezeFormState(clone){clone.querySelectorAll('input,select,textarea').forEach(el=>{const src=el.id?$(el.id):null;if(!src)return;if(el.tagName==='SELECT'){Array.from(el.options).forEach((opt,i)=>{if(i===src.selectedIndex)opt.setAttribute('selected','selected');else opt.removeAttribute('selected')})}else if(el.type==='checkbox'||el.type==='radio'){if(src.checked)el.setAttribute('checked','checked');else el.removeAttribute('checked')}else{el.setAttribute('value',src.value)}})}
+function exportClientHTML(){update();const source=document.querySelector('.wrapper');if(!source)return;const clone=source.cloneNode(true);freezeFormState(clone);clone.querySelectorAll('canvas').forEach(canvasClone=>{const original=canvasClone.id?$(canvasClone.id):null;if(!original||typeof original.toDataURL!=='function')return;const img=document.createElement('img');img.src=original.toDataURL('image/png');img.alt='Graf DPS vs DIP';img.style.width='100%';img.style.height='auto';img.style.display='block';canvasClone.replaceWith(img)});const styles=Array.from(document.querySelectorAll('style')).map(s=>s.textContent).join('\n');const client=$('clientName')?.value||'Klient';const html=`<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DPS vs DIP - ${escapeHTML(client)}</title>
+<style>
+${styles}
+body{margin:0;padding:18px}
+.client-export-shell{max-width:1180px;margin:0 auto}
+.client-export-shell .wrapper{padding:0!important;max-width:1180px!important}
+.actions,.productDiff{display:none!important}
+img{object-fit:contain;background:rgba(255,255,255,.72);border:1px solid rgba(205,218,232,.72);border-radius:18px}
+@media(max-width:760px){body{padding:10px}.topbar,.setup,.mainGrid,.tablesGrid,.comparison{grid-template-columns:1fr!important}.topbar h1{font-size:30px!important}}
+</style>
+</head>
+<body class="client-export">
+<div class="client-export-shell">${clone.outerHTML}</div>
+</body>
+</html>`;const blob=new Blob([html],{type:'text/html;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=clientFileName();document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url)}
+function resetModel(){$('clientName').value='Bhardwaj';$('age').value=30;$('targetAge').value=65;$('dpsStrategy').value='dynamic';$('dipStrategy').value='dynamic';$('dpsGross').value=7.0;$('dipGross').value=9.0;$('dipFee').value=.8;$('own').value=1500;$('employer').value=2500;$('allocationMode').value='auto';$('comboEmployer').value='dps';$('manualDpsOwn').value=1700;$('manualDipOwn').value=0;$('manualDpsEmp').value=2500;$('manualDipEmp').value=0;$('reinvestTax').checked=true;$('showCombo').checked=true;$('withdrawAge').value=59;update()}
+$('dpsStrategy').addEventListener('change',()=>{$('dpsGross').value=strategyReturns[$('dpsStrategy').value];update()});$('dipStrategy').addEventListener('change',()=>{$('dipGross').value=strategyReturns[$('dipStrategy').value];update()});document.querySelectorAll('input,select').forEach(el=>{el.addEventListener('input',update);el.addEventListener('change',update)});update();
+</script>
+</body>
+</html>
