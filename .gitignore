@@ -1,0 +1,9 @@
+.DS_Store
+logs/
+*.log
+FILIP-CRM-data/
+CRM-záloha*
+CRM-zaloha*
+*-backup*
+*-backups/
+node_modules/
