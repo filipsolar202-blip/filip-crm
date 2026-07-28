@@ -13,7 +13,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 
 PORT = int(os.environ.get("FILIP_CRM_STORAGE_PORT", "48730"))
-BASE_DIR = Path(os.environ.get("FILIP_CRM_DATA_DIR", "/Users/a./Documents/Codex/FILIP-CRM-data")).expanduser()
+BASE_DIR = Path(os.environ.get("FILIP_CRM_DATA_DIR", "~/Documents/FILIP-CRM-data")).expanduser()
 STATE_FILE = BASE_DIR / "state" / "crm-state.json"
 BACKUP_DIR = BASE_DIR / "backups"
 ATTACHMENT_DIR = BASE_DIR / "attachments"

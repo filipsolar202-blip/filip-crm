@@ -1,0 +1,11 @@
+TATO SLOZKA JE PRIPRAVENA K NAHRANI NA GITHUB
+
+Postup:
+1. Otevri slozku NAHRAT-NA-GITHUB.
+2. Oznac vsechny soubory a slozky uvnitr.
+3. Pretahni je na GitHub do repozitare filip-crm pres Add file -> Upload files.
+4. Potvrd commit.
+5. Nenahravej FILIP-CRM-data, klientské exporty, PDF ani logy. Ty tady schvalne nejsou.
+
+Poznamka:
+ZIP NAHRAT-NA-GITHUB.zip je jen kontrolni kopie. Pro GitHub Pages je lepsi nahrat rozbalene soubory ze slozky, ne samotny ZIP.

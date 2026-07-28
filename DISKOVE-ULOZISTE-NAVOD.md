@@ -2,9 +2,9 @@
 
 ## Kde jsou data
 
-Hlavni data CRM jsou po teto uprave ulozena zde:
+Hlavni data CRM jsou ulozena zde:
 
-`/Users/a./Documents/Codex/FILIP-CRM-data`
+`~/Documents/FILIP-CRM-data` (tedy slozka `FILIP-CRM-data` primo ve tve slozce Dokumenty)
 
 Uvnitř jsou hlavni slozky:
 

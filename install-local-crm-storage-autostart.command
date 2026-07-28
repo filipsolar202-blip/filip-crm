@@ -1,12 +1,17 @@
 #!/bin/zsh
 set -e
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
+DATA_DIR="$HOME/Documents/FILIP-CRM-data"
 PLIST="$HOME/Library/LaunchAgents/cz.filipcrm.local-storage.plist"
-mkdir -p "$HOME/Library/LaunchAgents" "$APP_DIR/logs" "/Users/a./Documents/Codex/FILIP-CRM-data"
-PYTHON_BIN="/usr/bin/python3"
-if [ -x "/Users/a./.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3" ]; then
-  PYTHON_BIN="/Users/a./.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3"
+mkdir -p "$HOME/Library/LaunchAgents" "$APP_DIR/logs" "$DATA_DIR"
+
+PYTHON_BIN="$(command -v python3 || true)"
+if [ -z "$PYTHON_BIN" ]; then
+  echo "Nenasel jsem python3. Nainstaluj Python 3 (napr. z python.org) a spust tento soubor znovu."
+  read -k 1 "?Stiskni libovolnou klavesu pro zavreni..."
+  exit 1
 fi
+
 cat > "$PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -19,6 +24,11 @@ cat > "$PLIST" <<PLIST
     <string>$PYTHON_BIN</string>
     <string>$APP_DIR/tools/local_crm_storage.py</string>
   </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>FILIP_CRM_DATA_DIR</key>
+    <string>$DATA_DIR</string>
+  </dict>
   <key>WorkingDirectory</key>
   <string>$APP_DIR</string>
   <key>RunAtLoad</key>
@@ -37,9 +47,10 @@ launchctl load "$PLIST"
 echo "FILIP CRM - diskove uloziste je nastavene na pozadi."
 echo ""
 echo "Data:"
-echo "/Users/a./Documents/Codex/FILIP-CRM-data"
+echo "$DATA_DIR"
 echo ""
 echo "Kontrola:"
 echo "http://127.0.0.1:48730/status"
 echo ""
 echo "Hotovo. Tohle okno muzes zavrit."
+read -k 1 "?Stiskni libovolnou klavesu pro zavreni..."
