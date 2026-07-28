@@ -4,10 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Investment CRM v72 — Solár Filip</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Inter',sans-serif;background:#f1f5f9;color:#1e293b;font-size:14px}
+body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Segoe UI",sans-serif;background:#eef7fb;color:#10243d;font-size:14px}
 
 /* HEADER */
 .hdr{background:#fff;border-bottom:1px solid #e2e8f0;padding:0 24px;height:58px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;box-shadow:0 1px 4px rgba(0,0,0,.06)}
@@ -268,6 +267,103 @@ body{font-family:'Inter',sans-serif;background:#f1f5f9;color:#1e293b;font-size:1
 /* TOAST */
 .toast{position:fixed;bottom:20px;right:20px;padding:11px 16px;border-radius:8px;font-size:13px;font-weight:500;z-index:9999;opacity:0;transform:translateY(40px);transition:all .3s;pointer-events:none;max-width:280px}
 .toast.show{opacity:1;transform:translateY(0)}
+
+/* FILIP CRM glass skin */
+:root{
+  --crm-ink:#10243d;
+  --crm-muted:#67809b;
+  --crm-blue:#2463eb;
+  --crm-cyan:#37b8cf;
+  --crm-line:rgba(55,184,207,.26);
+  --crm-border:rgba(73,132,174,.22);
+  --crm-glass:rgba(255,255,255,.66);
+  --crm-glass-strong:rgba(255,255,255,.78);
+  --crm-soft:#eef8fc;
+  --crm-shadow:0 22px 70px rgba(16,36,61,.12);
+}
+body{
+  color:var(--crm-ink);
+  background:
+    radial-gradient(1300px 760px at 72% 8%, rgba(36,99,235,.10), transparent 58%),
+    linear-gradient(180deg, rgba(255,255,255,.96), rgba(238,248,252,.88)),
+    repeating-linear-gradient(174deg, transparent 0 22px, var(--crm-line) 22px 23px, transparent 23px 47px);
+  background-attachment:fixed;
+  letter-spacing:0;
+}
+body::before{
+  content:"";
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+  background:linear-gradient(90deg, rgba(255,255,255,.76), rgba(255,255,255,.34) 42%, rgba(255,255,255,.82));
+  z-index:-1;
+}
+.hdr,.sidebar,.import-panel,.sync-panel,.add-panel,.sc,.panel,.fcard,.fund-card,.report-box,.fki-card,.modal-box,.sync-card,.import-info,.sync-status,.drop-zone,.crow,.sb-stat{
+  background:var(--crm-glass);
+  border-color:var(--crm-border);
+  box-shadow:var(--crm-shadow);
+  -webkit-backdrop-filter:blur(22px) saturate(145%);
+  backdrop-filter:blur(22px) saturate(145%);
+}
+.hdr{
+  background:rgba(255,255,255,.72);
+  border-bottom-color:rgba(55,184,207,.18);
+}
+.sidebar{
+  background:rgba(239,249,252,.72);
+}
+.main{
+  background:linear-gradient(135deg, rgba(236,247,252,.78), rgba(225,236,251,.62));
+}
+.hdr-icon{
+  background:linear-gradient(135deg,#0f4161,#37b8cf);
+  border-radius:10px;
+  box-shadow:0 12px 28px rgba(55,184,207,.24);
+}
+.btn,.fb,.tag,.fki-tab,.fki-pill,.pending-badge{
+  border-radius:12px;
+}
+.btn-blue,.fb.on{
+  background:linear-gradient(135deg,var(--crm-blue),var(--crm-cyan));
+  border-color:rgba(36,99,235,.22);
+  color:#fff;
+  box-shadow:0 12px 28px rgba(36,99,235,.20);
+}
+.btn-gray,.btn-green,.btn-red,.fb{
+  background:rgba(255,255,255,.62);
+  border-color:var(--crm-border);
+}
+.crow{
+  background:rgba(255,255,255,.58);
+  border-color:rgba(91,148,185,.24);
+}
+.crow:hover,.crow.sel{
+  background:rgba(239,248,255,.78);
+  border-color:rgba(36,99,235,.60);
+}
+.sb-search input,.fg input,.fg select,.fki-field input,.fki-field select,.fki-buy-input,.fki-buy-select{
+  background:rgba(255,255,255,.64);
+  border-color:rgba(73,132,174,.26);
+  border-radius:12px;
+  color:var(--crm-ink);
+}
+.sc,.fki-kpi{
+  background:linear-gradient(145deg,rgba(255,255,255,.74),rgba(241,249,252,.56));
+}
+.fki-modal-box,.report-box,.modal-box{
+  background:rgba(244,251,253,.82);
+}
+.fki-buy-card,.fki-client-portfolio,.fki-empty,.fki-note,.fki-pending-banner{
+  background:rgba(255,255,255,.58);
+  border-color:rgba(73,132,174,.22);
+}
+.fki-card h3,.det-name,.hdr-title,.crow-name,.sc-v{
+  color:var(--crm-ink);
+  letter-spacing:0;
+}
+.hdr-sub,.det-sub,.sc-l,.sc-n,.fki-muted,.crow-inv,.sb-stat-l{
+  color:var(--crm-muted);
+}
 .toast.ok{background:#15803d;color:#fff}
 .toast.err{background:#dc2626;color:#fff}
 
@@ -875,7 +971,7 @@ function fkiCalc(){
     const frozen=(r.crashYear>0&&r.crashYear<=fkiHorizon&&r.crashPct>0);
     return s+inv*(frozen?0:r.rate);
   },0)/modeledBase:0;
-  const portfolioBase=current.current+newInv;
+  const portfolioBase=modeledBase>0?modeledBase:(current.current+newInv);
   const weightedRate=modeledBase>0?weightedModelRate:(portfolioBase>0?((current.current*Math.max(current.pa,0))+(newInv*newWeightedRate))/portfolioBase:0);
   const baseFuture=modeledBase>0?0:(current.current>0? current.current*Math.pow(1+(Math.max(current.pa,0)/100),fkiHorizon) : 0);
   const totalFuture=baseFuture+projectedNew;
@@ -1107,12 +1203,61 @@ let privacyMode = localStorage.getItem('crm_privacy') === '1';
 const LSK = 'crm3_locked_funds';
 let lockedFunds = {};
 try { lockedFunds = JSON.parse(localStorage.getItem(LSK)) || {}; } catch { lockedFunds = {}; }
+const TRAIL_SETTINGS_KEY='crm3_fki_trail_settings';
+let trailSettings={};
+try{ trailSettings=JSON.parse(localStorage.getItem(TRAIL_SETTINGS_KEY)||'{}')||{}; }catch{ trailSettings={}; }
+const MAIN_CRM_STORE='filip_crm_main_v1';
+let crmBridgeMode=false;
+
+function mainCrmState(){
+  try{
+    if(window.parent && window.parent!==window && typeof window.parent.getFilipCrmState==='function') return window.parent.getFilipCrmState();
+  }catch{}
+  try{ return JSON.parse(localStorage.getItem(MAIN_CRM_STORE)||'null'); }catch{ return null; }
+}
+function isFkiBridgeRecord(r){
+  if(!r) return false;
+  const product=normKey(productTypeOf(r));
+  if(product && /(retail|opf|dip|dps|etf)/.test(product)) return false;
+  return product==='fki' || r._source==='local-fki' || !!(r.Fond||r.fund||r['Čistá investice']!==undefined||r['Aktuální hodnota investice']!==undefined||r['Počet vydaných CP']!==undefined);
+}
+function loadMainCrmBridgeState(){
+  const s=mainCrmState();
+  if(!s || !Array.isArray(s.investmentRecords)) return false;
+  const bridged=s.investmentRecords.filter(isFkiBridgeRecord).map(r=>({...r,_source:r._source||'local-fki'}));
+  if(!bridged.length) return false;
+  recs=bridged;
+  fundValues=(s.fundValues&&typeof s.fundValues==='object')?{...s.fundValues}:fundValues;
+  lockedFunds=(s.lockedFunds&&typeof s.lockedFunds==='object')?{...s.lockedFunds}:lockedFunds;
+  trailSettings=(s.trailSettings&&typeof s.trailSettings==='object')?{...s.trailSettings}:trailSettings;
+  crmBridgeMode=true;
+  return true;
+}
+function pushMainCrmBridgeState(){
+  const payload={records:recs.map(r=>({...r,_source:'local-fki'})),fundValues,lockedFunds,trailSettings};
+  try{
+    if(window.parent && window.parent!==window && typeof window.parent.setFkiBridgeState==='function'){
+      window.parent.setFkiBridgeState(payload);
+      return true;
+    }
+  }catch{}
+  const s=mainCrmState();
+  if(!s || !Array.isArray(s.investmentRecords)) return false;
+  s.investmentRecords=s.investmentRecords.filter(r=>!isFkiBridgeRecord(r)).concat(payload.records);
+  s.fundValues=payload.fundValues;
+  s.lockedFunds=payload.lockedFunds;
+  s.trailSettings=payload.trailSettings;
+  localStorage.setItem(MAIN_CRM_STORE, JSON.stringify(s));
+  return true;
+}
 
 function save(){
   recs = dedupeInvestmentRecords(recs);
+  if(crmBridgeMode && pushMainCrmBridgeState()) return;
   localStorage.setItem(SK, JSON.stringify(recs));
   localStorage.setItem(FSK, JSON.stringify(fundValues));
   localStorage.setItem(LSK, JSON.stringify(lockedFunds));
+  localStorage.setItem(TRAIL_SETTINGS_KEY, JSON.stringify(trailSettings));
 }
 function lockKey(clientKey, fKey){ return String(clientKey||'') + '||' + String(fKey||''); }
 function globalLockKey(fKey){ return lockKey('__GLOBAL_FUND__', fKey); }
@@ -1625,12 +1770,15 @@ function daysToRedeem(e){ const d=pD(e); if(!d) return null; const r=new Date(d)
 function redeemDt(e){ const d=pD(e); if(!d) return null; const r=new Date(d); r.setMonth(r.getMonth()+36); return r; }
 
 (function init(){
-  try { recs = JSON.parse(localStorage.getItem(SK)) || []; } catch{ recs = []; }
-  try { fundValues = JSON.parse(localStorage.getItem(FSK)) || {}; } catch{ fundValues = {}; }
+  const bridgeLoaded=loadMainCrmBridgeState();
+  if(!bridgeLoaded){
+    try { recs = JSON.parse(localStorage.getItem(SK)) || []; } catch{ recs = []; }
+    try { fundValues = JSON.parse(localStorage.getItem(FSK)) || {}; } catch{ fundValues = {}; }
+  }
   normalizeFundValuesKeys();
   if(!recs.length) recs = [...SEED];
   migrateDatabaseInPlace({silent:true});
-  save();
+  if(!bridgeLoaded) save();
   renderStats();
   renderList();
   updatePrivacyBtn();
@@ -2078,9 +2226,6 @@ function applySelectedFundTemplate(){
 
 
 // ── FKI TRAIL COMMISSIONS ─────────────────────
-const TRAIL_SETTINGS_KEY='crm3_fki_trail_settings';
-let trailSettings={};
-try{ trailSettings=JSON.parse(localStorage.getItem(TRAIL_SETTINGS_KEY)||'{}')||{}; }catch{ trailSettings={}; }
 const DEFAULT_TRAIL_RATES=[
   ['csnf',1.0],['csef aqua',1.1],['čsef aqua',1.1],['aqua',1.1],['r2p',2.4],['nemomax',0.9],['vihorev',0.9],['aguila',0.9],['domus',0.7],['4gimel',0.75],['realia',1.0],['wero',1.1],['gartal',1.0],['domoplan',0.5],['brixx',0.5],['marianska',0.5],['spilberk',1.0],['avant loan',0.8],['real luxembourg',1.0],['semper',1.0],['ebm',1.0],['jrd eco',1.0],['jrd',1.0],['fckd',0.5],['fond ceskeho bydleni',0.6],['reverzni',1.05],['pffl',0.6],['julius',1.2],['meinl',1.2],['adax',1.0],['silverline',0.65],['artefin',0.85],['zdr',0.6],['vigo public',0.6],['vigo',0.6],['direct pro',0.8],['direct',0.8],['esg',0.6],['penta',0.8],['koor',0.9],['fidurock',0.9],['j&t arch',0.8],['jt arch',0.8],['nase cesko',0],['world private capital',0],['atris',0.8],['edward',1.39],['wood realitni',0]
 ];
@@ -2146,7 +2291,7 @@ function ruleSettingFor(rule){
   if(!trailSettings[key]._v66TrailRateApplied){ trailSettings[key].trailPct=rule?rule.trailPct:defaultTrailRatePct(name); trailSettings[key]._v66TrailRateApplied=true; }
   return trailSettings[key];
 }
-function saveTrailSettings(){ localStorage.setItem(TRAIL_SETTINGS_KEY, JSON.stringify(trailSettings)); }
+function saveTrailSettings(){ localStorage.setItem(TRAIL_SETTINGS_KEY, JSON.stringify(trailSettings)); if(crmBridgeMode) pushMainCrmBridgeState(); }
 function isFkiRecord(r){ return productGroupOf(r)==='FKI' && !isWithdrawal(r) && r['Stav scénáře']!=='čeká'; }
 function trailAumByFund(){
   const map={};
