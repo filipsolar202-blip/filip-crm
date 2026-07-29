@@ -26,6 +26,7 @@ LOG_DIR = Path.home() / "Library" / "Logs" / "FILIP-CRM"
 SYNC_LOCK = threading.Lock()
 SYNC_STATE = {"running": False, "lastSyncAt": "", "lastError": "", "indexed": 0}
 ALLOWED_ORIGINS = {
+    "https://filipsolar202-blip.github.io",
     "http://127.0.0.1:48730",
     "http://localhost:48730",
     "http://127.0.0.1:48726",
@@ -311,7 +312,7 @@ class Handler(BaseHTTPRequestHandler):
             con = db()
             total = con.execute("select count(*) from messages").fetchone()[0]
             con.close()
-            self.send_json(200, {"ok": True, "connected": True, "running": SYNC_STATE["running"], "indexed": total, **SYNC_STATE})
+            self.send_json(200, {"ok": True, "connected": True, "running": SYNC_STATE["running"], "indexed": total, "token": token(), **SYNC_STATE})
             return
         if not self.has_token():
             return self.send_json(401, {"ok": False, "error": "Lokální můstek není ověřený."})
