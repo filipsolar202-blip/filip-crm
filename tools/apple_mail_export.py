@@ -1,126 +1,43 @@
 #!/usr/bin/env python3
 import argparse
-import email
-import email.policy
 import json
-import os
-import re
 import subprocess
 import sys
-from datetime import datetime, timezone
-from email.utils import getaddresses, parsedate_to_datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import quote
 
 
-MAIL_ROOT = Path.home() / "Library" / "Mail"
-HEADER_LIMIT = 65536
+SUPPORT_DIR = Path.home() / "Library" / "Application Support" / "FILIP-CRM"
+DEFAULT_EXPORT = SUPPORT_DIR / "apple-mail-export.json"
 
 
-def read_headers(path):
-    try:
-        raw = path.read_bytes()[:HEADER_LIMIT]
-    except Exception:
-        return None
-    text = raw.decode("utf-8", "replace")
-    lines = text.splitlines()
-    if lines and lines[0].strip().isdigit():
-        text = "\n".join(lines[1:])
-    header_text = re.split(r"\r?\n\r?\n", text, maxsplit=1)[0]
-    if not header_text.strip():
-        return None
-    try:
-        return email.message_from_string(header_text, policy=email.policy.default)
-    except Exception:
-        return None
-
-
-def format_addresses(value):
-    pairs = getaddresses([value or ""])
-    out = []
-    for name, addr in pairs:
-        if not addr:
-            continue
-        out.append(f"{name} <{addr}>" if name else addr)
-    return ", ".join(out)
-
-
-def iso_date(value, fallback_ts):
-    try:
-        dt = parsedate_to_datetime(value)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.isoformat()
-    except Exception:
-        return datetime.fromtimestamp(fallback_ts, tz=timezone.utc).isoformat()
-
-
-def message_url(message_id):
-    mid = (message_id or "").strip()
-    if not mid:
+def message_id(value):
+    value = str(value or "").strip()
+    if not value:
         return ""
-    if not (mid.startswith("<") and mid.endswith(">")):
-        mid = "<" + mid.strip("<>") + ">"
-    return "message://" + quote(mid, safe="")
+    if not (value.startswith("<") and value.endswith(">")):
+        value = "<" + value.strip("<>") + ">"
+    return value
 
 
-def mailbox_from_path(path):
-    parts = path.parts
-    for marker in ("INBOX.mbox", "Sent Messages.mbox", "Sent.mbox", "Archive.mbox"):
-        if marker in parts:
-            return marker.replace(".mbox", "")
-    for part in reversed(parts):
-        if part.endswith(".mbox"):
-            return part.replace(".mbox", "")
-    return ""
+def parse_apple_date(value):
+    value = str(value or "").strip()
+    if not value:
+        return ""
+    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(value, fmt).replace(tzinfo=timezone.utc).isoformat()
+        except ValueError:
+            pass
+    return value
 
 
-def export_messages(limit):
-    if not MAIL_ROOT.exists():
-        return []
-    try:
-        paths = sorted(MAIL_ROOT.rglob("*.emlx"), key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True)
-    except Exception:
-        return []
-    rows = []
-    for path in paths:
-        if len(rows) >= limit:
-            break
-        msg = read_headers(path)
-        if not msg:
-            continue
-        message_id = str(msg.get("Message-ID") or msg.get("Message-Id") or "").strip()
-        subject = str(msg.get("Subject") or "Bez predmetu")
-        from_value = format_addresses(str(msg.get("From") or ""))
-        to_value = format_addresses(str(msg.get("To") or ""))
-        cc_value = format_addresses(str(msg.get("Cc") or ""))
-        if not (message_id or subject or from_value or to_value):
-            continue
-        rows.append({
-            "id": message_id or str(path),
-            "messageId": message_id,
-            "messageUrl": message_url(message_id),
-            "date": iso_date(str(msg.get("Date") or ""), path.stat().st_mtime),
-            "subject": subject,
-            "from": from_value,
-            "to": to_value,
-            "cc": cc_value,
-            "bcc": "",
-            "mailbox": mailbox_from_path(path),
-        })
-    return rows
-
-
-def as_lines(script, limit):
-    try:
-        out = subprocess.check_output(["/usr/bin/osascript", "-e", script, str(limit)], text=True, stderr=subprocess.STDOUT)
-    except subprocess.CalledProcessError as exc:
-        print(f"AppleScript export se nepovedl: {exc.output or exc}", file=sys.stderr)
-        return []
-    except Exception as exc:
-        print(f"AppleScript export se nepovedl: {exc}", file=sys.stderr)
-        return []
-    return [line for line in out.splitlines() if line.strip()]
+def since_value(since):
+    if since is None:
+        since = datetime.now() - timedelta(days=730)
+    if isinstance(since, datetime):
+        return since.strftime("%Y-%m-%dT%H:%M:%S")
+    return str(since)
 
 
 APPLESCRIPT = r'''
@@ -132,7 +49,7 @@ end pad2
 
 on isoDate(d)
   try
-    return (year of d as integer) & "-" & my pad2(month of d as integer) & "-" & my pad2(day of d as integer) & "T" & my pad2(hours of d as integer) & ":" & my pad2(minutes of d as integer) & ":00"
+    return (year of d as integer) & "-" & my pad2(month of d as integer) & "-" & my pad2(day of d as integer) & "T" & my pad2(hours of d as integer) & ":" & my pad2(minutes of d as integer) & ":" & my pad2(seconds of d as integer)
   on error
     return ""
   end try
@@ -144,9 +61,47 @@ on cleanText(t)
   set s to text items of s as text
   set AppleScript's text item delimiters to linefeed
   set s to text items of s as text
+  set AppleScript's text item delimiters to return
+  set s to text items of s as text
   set AppleScript's text item delimiters to ""
   return s
 end cleanText
+
+on lowerText(t)
+  set upperChars to "ABCDEFGHIJKLMNOPQRSTUVWXYZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ"
+  set lowerChars to "abcdefghijklmnopqrstuvwxyzáčďéěíňóřšťúůýž"
+  set out to ""
+  repeat with i from 1 to count of characters of (t as text)
+    set ch to character i of (t as text)
+    set p to offset of ch in upperChars
+    if p is greater than 0 then
+      set out to out & character p of lowerChars
+    else
+      set out to out & ch
+    end if
+  end repeat
+  return out
+end lowerText
+
+on mailboxWanted(boxName)
+  set n to my lowerText(boxName)
+  if n contains "inbox" then return true
+  if n contains "doru" then return true
+  if n contains "sent" then return true
+  if n contains "odes" then return true
+  if n contains "archive" then return true
+  if n contains "archiv" then return true
+  if n contains "all mail" then return true
+  if n contains "všechna pošta" then return true
+  return false
+end mailboxWanted
+
+on directionFor(boxName)
+  set n to my lowerText(boxName)
+  if n contains "sent" then return "sent"
+  if n contains "odes" then return "sent"
+  return "received"
+end directionFor
 
 using terms from application "Mail"
 on recipientList(rs)
@@ -174,16 +129,31 @@ on recipientList(rs)
   return out
 end recipientList
 
-on emitMessage(m, boxName)
+on emitMessage(m, accName, boxName, boxId, dirName, sinceDateText)
   try
-    set mid to (id of m) as text
+    set msgDate to date received of m
   on error
-    set mid to ""
+    try
+      set msgDate to date sent of m
+    on error
+      set msgDate to current date
+    end try
+  end try
+  if my isoDate(msgDate) is less than sinceDateText then return ""
+  try
+    set rfcId to (message id of m) as text
+  on error
+    set rfcId to ""
+  end try
+  try
+    set appleId to (id of m) as text
+  on error
+    set appleId to ""
   end try
   try
     set subj to (subject of m) as text
   on error
-    set subj to "Bez predmetu"
+    set subj to "Bez předmětu"
   end try
   try
     set senderText to (sender of m) as text
@@ -191,48 +161,57 @@ on emitMessage(m, boxName)
     set senderText to ""
   end try
   set toText to ""
+  try
+    set toText to my recipientList(to recipients of m)
+  end try
   set ccText to ""
   try
-    set d to my isoDate(date received of m)
-  on error
-    set d to ""
+    set ccText to my recipientList(cc recipients of m)
   end try
-  return my cleanText(mid) & tab & my cleanText(d) & tab & my cleanText(subj) & tab & my cleanText(senderText) & tab & my cleanText(toText) & tab & my cleanText(ccText) & tab & my cleanText(boxName)
+  if ccText is not "" then
+    if toText is not "" then
+      set toText to toText & ", " & ccText
+    else
+      set toText to ccText
+    end if
+  end if
+  return my cleanText(rfcId) & tab & my cleanText(appleId) & tab & my cleanText(my isoDate(msgDate)) & tab & my cleanText(subj) & tab & my cleanText(senderText) & tab & my cleanText(toText) & tab & my cleanText(dirName) & tab & my cleanText(accName) & tab & my cleanText(boxName) & tab & my cleanText(boxId)
 end emitMessage
 end using terms from
 
 on run argv
   set maxRows to item 1 of argv as integer
+  set sinceDateText to item 2 of argv as text
   set outputRows to ""
   set exportedCount to 0
   tell application "Mail"
-    set targetBoxes to {}
-    try
-      set pickedMessages to selection
-      repeat with picked in pickedMessages
-        if exportedCount >= maxRows then exit repeat
-        try
-          set outputRows to outputRows & my emitMessage(picked, "Vybrane zpravy") & linefeed
-          set exportedCount to exportedCount + 1
-        end try
-      end repeat
-    end try
-    try
-      set end of targetBoxes to inbox
-    end try
-    repeat with mb in targetBoxes
+    repeat with acc in accounts
       if exportedCount >= maxRows then exit repeat
       try
-        set boxName to name of mb as text
-        set msgCount to count of messages of mb
-        repeat with i from 1 to msgCount
-          if exportedCount >= maxRows then exit repeat
-          try
-            set outputRows to outputRows & my emitMessage(item i of messages of mb, boxName) & linefeed
-            set exportedCount to exportedCount + 1
-          end try
-        end repeat
+        set accName to name of acc as text
+      on error
+        set accName to ""
       end try
+      repeat with mb in mailboxes of acc
+        if exportedCount >= maxRows then exit repeat
+        try
+          set boxName to name of mb as text
+          if my mailboxWanted(boxName) then
+            set boxId to id of mb as text
+            set dirName to my directionFor(boxName)
+            repeat with m in messages of mb
+              if exportedCount >= maxRows then exit repeat
+              try
+                set rowText to my emitMessage(m, accName, boxName, boxId, dirName, sinceDateText)
+                if rowText is not "" then
+                  set outputRows to outputRows & rowText & linefeed
+                  set exportedCount to exportedCount + 1
+                end if
+              end try
+            end repeat
+          end if
+        end try
+      end repeat
     end repeat
   end tell
   return outputRows
@@ -240,47 +219,79 @@ end run
 '''
 
 
-def export_messages_from_mail_app(limit):
+def run_applescript(limit, since):
+    try:
+        out = subprocess.check_output(
+            ["/usr/bin/osascript", "-e", APPLESCRIPT, str(limit), since_value(since)],
+            text=True,
+            stderr=subprocess.STDOUT,
+            timeout=300,
+        )
+    except subprocess.CalledProcessError as exc:
+        text = exc.output or str(exc)
+        lowered = text.lower()
+        if "not authorized" in lowered or "not allowed" in lowered or "erraeeventnotpermitted" in lowered:
+            raise PermissionError("Přístup k Apple Mail nebyl povolen.") from exc
+        raise RuntimeError(text.strip() or "Apple Mail není spuštěný.") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("Apple Mail synchronizace trvala příliš dlouho. Zkuste ji spustit znovu.") from exc
+    return [line for line in out.splitlines() if line.strip()]
+
+
+def export_messages_from_mail_app(limit=50000, since=None):
     rows = []
-    for line in as_lines(APPLESCRIPT, limit):
+    seen = set()
+    for line in run_applescript(max(1, int(limit or 50000)), since):
         cols = line.split("\t")
-        if len(cols) < 7:
+        if len(cols) < 10:
             continue
-        message_id, date_value, subject, from_value, to_value, cc_value, mailbox = cols[:7]
-        rows.append({
-            "id": message_id or f"applemail-{len(rows)}-{date_value}-{subject}",
-            "messageId": message_id,
-            "messageUrl": message_url(message_id),
-            "date": date_value,
-            "subject": subject or "Bez predmetu",
-            "from": from_value,
-            "to": to_value,
-            "cc": cc_value,
-            "bcc": "",
-            "mailbox": mailbox,
-        })
+        rfc_id, apple_id, date_value, subject, sender, recipients, direction, account, mailbox, mailbox_id = cols[:10]
+        mid = message_id(rfc_id)
+        if not mid or mid in seen:
+            continue
+        seen.add(mid)
+        rows.append(
+            {
+                "id": mid,
+                "messageId": mid,
+                "appleId": apple_id,
+                "date": parse_apple_date(date_value),
+                "subject": subject or "Bez předmětu",
+                "from": sender,
+                "to": recipients,
+                "direction": "sent" if direction == "sent" else "received",
+                "account": account,
+                "mailbox": mailbox,
+                "mailboxId": mailbox_id,
+            }
+        )
     rows.sort(key=lambda x: x.get("date") or "", reverse=True)
-    return rows[:limit]
+    return rows[: max(1, int(limit or 50000))]
+
+
+def export_messages(limit=50000):
+    return export_messages_from_mail_app(limit=limit)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Exportuje jen hlavicky Apple Mail zprav pro FILIP CRM.")
-    parser.add_argument("--output", default="apple-mail-export.json")
-    parser.add_argument("--limit", type=int, default=12000)
+    parser = argparse.ArgumentParser(description="Exportuje technický index Apple Mail zpráv pro FILIP CRM.")
+    parser.add_argument("--output", default=str(DEFAULT_EXPORT))
+    parser.add_argument("--limit", type=int, default=50000)
+    parser.add_argument("--months", type=int, default=24)
     args = parser.parse_args()
-    rows = export_messages(max(1, args.limit))
-    if not rows:
-        rows = export_messages_from_mail_app(max(1, args.limit))
+    since = datetime.now() - timedelta(days=max(1, args.months) * 31)
+    rows = export_messages_from_mail_app(limit=args.limit, since=since)
     payload = {
-        "source": "Apple Mail local headers",
+        "source": "Apple Mail local technical index",
         "exportedAt": datetime.now(timezone.utc).isoformat(),
         "count": len(rows),
         "messages": rows,
     }
     out = Path(args.output).expanduser().resolve()
+    out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"Hotovo: {out}")
-    print(f"Exportovano hlavicek: {len(rows)}")
+    print(f"Exportováno technických záznamů: {len(rows)}")
 
 
 if __name__ == "__main__":

@@ -7,3 +7,7 @@ CRM-zaloha*
 *-backup*
 *-backups/
 node_modules/
+apple-mail-export.json
+apple-mail-index.sqlite*
+apple-mail-token
+apple-mail-sync/
