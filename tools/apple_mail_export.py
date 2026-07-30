@@ -49,7 +49,13 @@ end pad2
 
 on isoDate(d)
   try
-    return (year of d as integer) & "-" & my pad2(month of d as integer) & "-" & my pad2(day of d as integer) & "T" & my pad2(hours of d as integer) & ":" & my pad2(minutes of d as integer) & ":" & my pad2(seconds of d as integer)
+    set y to year of d as integer
+    set mo to month of d as integer
+    set da to day of d as integer
+    set h to hours of d as integer
+    set mi to minutes of d as integer
+    set se to seconds of d as integer
+    return (y as text) & "-" & my pad2(mo) & "-" & my pad2(da) & "T" & my pad2(h) & ":" & my pad2(mi) & ":" & my pad2(se)
   on error
     return ""
   end try
@@ -184,6 +190,8 @@ on run argv
   set sinceDateText to item 2 of argv as text
   set outputRows to ""
   set exportedCount to 0
+  set perMailboxLimit to maxRows
+  if maxRows > 500 then set perMailboxLimit to 120
   tell application "Mail"
     repeat with acc in accounts
       if exportedCount >= maxRows then exit repeat
@@ -197,15 +205,27 @@ on run argv
         try
           set boxName to name of mb as text
           if my mailboxWanted(boxName) then
-            set boxId to id of mb as text
+            try
+              set boxId to id of mb as text
+            on error
+              set boxId to ""
+            end try
             set dirName to my directionFor(boxName)
-            repeat with m in messages of mb
+            set exportedFromMailbox to 0
+            set messageCount to 0
+            try
+              set messageCount to count of messages of mb
+            end try
+            repeat with messageIndex from 1 to messageCount
               if exportedCount >= maxRows then exit repeat
+              if exportedFromMailbox >= perMailboxLimit then exit repeat
               try
+                set m to message messageIndex of mb
                 set rowText to my emitMessage(m, accName, boxName, boxId, dirName, sinceDateText)
                 if rowText is not "" then
                   set outputRows to outputRows & rowText & linefeed
                   set exportedCount to exportedCount + 1
+                  set exportedFromMailbox to exportedFromMailbox + 1
                 end if
               end try
             end repeat
