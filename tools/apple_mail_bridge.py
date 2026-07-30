@@ -555,12 +555,74 @@ on run argv
 end run
 '''
 
+DETAIL_BY_APPLE_ID_SCRIPT = r'''
+on cleanText(t)
+  set s to t as text
+  set AppleScript's text item delimiters to tab
+  set s to text items of s as text
+  set AppleScript's text item delimiters to linefeed
+  set s to text items of s as text
+  set AppleScript's text item delimiters to return
+  set s to text items of s as text
+  set AppleScript's text item delimiters to ""
+  return s
+end cleanText
+
+using terms from application "Mail"
+on emitBody(m)
+  try
+    return my cleanText(content of m as text)
+  on error
+    return ""
+  end try
+end emitBody
+end using terms from
+
+on run argv
+  set wantedAppleId to item 1 of argv as integer
+  set wantedMailboxId to item 2 of argv as text
+  tell application "Mail"
+    repeat with acc in accounts
+      repeat with mb in mailboxes of acc
+        try
+          if ((id of mb) as text) is wantedMailboxId then
+            set foundMessages to messages of mb whose id is wantedAppleId
+            if (count of foundMessages) > 0 then return my emitBody(item 1 of foundMessages)
+          end if
+        end try
+      end repeat
+    end repeat
+  end tell
+  return ""
+end run
+'''
+
 
 def mail_message_id(value):
     return str(value or "").strip().strip("<>")
 
 
+def fetch_body_by_apple_id(row):
+    apple_id = str(row["apple_id"] or "").strip()
+    mailbox_id = str(row["mailbox_id"] or "").strip()
+    if not (apple_id and mailbox_id):
+        return ""
+    try:
+        return subprocess.check_output(
+            ["/usr/bin/osascript", "-e", DETAIL_BY_APPLE_ID_SCRIPT, apple_id, mailbox_id],
+            text=True,
+            stderr=subprocess.STDOUT,
+            timeout=8,
+        ).strip()
+    except Exception as exc:
+        log("message body fast lookup skipped: " + str(exc))
+        return ""
+
+
 def fetch_body_by_message_id(row):
+    body = fetch_body_by_apple_id(row)
+    if body:
+        return body
     wanted = mail_message_id(row["message_id"])
     if not wanted:
         return ""
