@@ -1,7 +1,7 @@
 #!/bin/zsh
 cd "$(dirname "$0")"
 mkdir -p logs
-export FILIP_CRM_DATA_DIR="$HOME/Documents/Codex/FILIP-CRM-data"
+export FILIP_CRM_DATA_DIR="$(pwd)/FILIP-CRM-data"
 CODEX_PYTHON="$HOME/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3"
 if [ -x "$CODEX_PYTHON" ]; then
   PYTHON_BIN="$CODEX_PYTHON"

@@ -13,7 +13,8 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 
 PORT = int(os.environ.get("FILIP_CRM_STORAGE_PORT", "48730"))
-BASE_DIR = Path(os.environ.get("FILIP_CRM_DATA_DIR", "~/Documents/Codex/FILIP-CRM-data")).expanduser()
+DEFAULT_BASE_DIR = Path(__file__).resolve().parents[1] / "FILIP-CRM-data"
+BASE_DIR = Path(os.environ.get("FILIP_CRM_DATA_DIR", str(DEFAULT_BASE_DIR))).expanduser()
 STATE_FILE = BASE_DIR / "state" / "crm-state.json"
 BACKUP_DIR = BASE_DIR / "backups"
 ATTACHMENT_DIR = BASE_DIR / "attachments"
@@ -137,9 +138,12 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "FILIPCRMStorage/1.0"
 
     def log_message(self, fmt, *args):
-        LOG_DIR.mkdir(parents=True, exist_ok=True)
-        with (LOG_DIR / "local-storage.log").open("a", encoding="utf-8") as f:
-            f.write("[%s] %s\n" % (datetime.now().isoformat(timespec="seconds"), fmt % args))
+        try:
+            LOG_DIR.mkdir(parents=True, exist_ok=True)
+            with (LOG_DIR / "local-storage.log").open("a", encoding="utf-8") as f:
+                f.write("[%s] %s\n" % (datetime.now().isoformat(timespec="seconds"), fmt % args))
+        except OSError:
+            pass
 
     def do_OPTIONS(self):
         self.send_response(204)

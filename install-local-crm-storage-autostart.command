@@ -1,7 +1,7 @@
 #!/bin/zsh
 set -e
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
-DATA_DIR="$HOME/Documents/Codex/FILIP-CRM-data"
+DATA_DIR="$APP_DIR/FILIP-CRM-data"
 PLIST="$HOME/Library/LaunchAgents/cz.filipcrm.local-storage.plist"
 mkdir -p "$HOME/Library/LaunchAgents" "$APP_DIR/logs" "$DATA_DIR"
 
