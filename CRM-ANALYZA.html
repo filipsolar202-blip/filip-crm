@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CRM Analýza aktivit</title>
+<style>
+:root{color-scheme:light;--bg:#eef4f8;--glass:rgba(255,255,255,.68);--text:#172033;--muted:#64748b;--line:rgba(205,218,232,.74);--blue:#2563eb;--cyan:#0891b2;--green:#15803d;--orange:#b45309;--red:#b91c1c;--purple:#7c3aed;--shadow:0 24px 70px rgba(23,32,51,.12);--r:22px}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:linear-gradient(120deg,rgba(255,255,255,.96),rgba(255,255,255,.62) 44%,rgba(235,244,249,.84)),linear-gradient(180deg,#fff 0,var(--bg) 28rem),var(--bg);color:var(--text)}
+body:after{content:"";position:fixed;inset:0;z-index:-1;background:repeating-linear-gradient(135deg,rgba(15,118,110,.035) 0 1px,transparent 1px 18px);pointer-events:none}.app{max-width:1440px;margin:0 auto;padding:18px}
+.top{position:sticky;top:0;z-index:5;margin:-18px -18px 18px;padding:14px 18px;background:rgba(255,255,255,.72);border-bottom:1px solid rgba(255,255,255,.84);box-shadow:0 10px 34px rgba(23,32,51,.07);backdrop-filter:blur(24px) saturate(160%);-webkit-backdrop-filter:blur(24px) saturate(160%)}
+.topin{max-width:1440px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.brand{display:flex;align-items:center;gap:10px}.logo{width:38px;height:38px;border-radius:13px;background:linear-gradient(135deg,var(--blue),var(--cyan));display:grid;place-items:center;color:#fff;font-weight:950}.brand h1{font-size:22px;margin:0}.version{display:inline-flex;border:1px solid rgba(37,99,235,.22);background:rgba(219,234,254,.78);color:#1d4ed8;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:900}
+button,input,select,textarea{font:inherit}button{cursor:pointer}.btn{min-height:34px;border:1px solid rgba(255,255,255,.78);background:rgba(255,255,255,.7);border-radius:12px;color:var(--text);font-weight:850;padding:7px 10px;font-size:12px;box-shadow:inset 0 1px 0 rgba(255,255,255,.88),0 8px 22px rgba(23,32,51,.06)}.btn:hover{background:rgba(255,255,255,.9)}.btn.primary{background:linear-gradient(135deg,var(--blue),var(--cyan));color:#fff}.btn.red{color:#991b1b;background:rgba(254,226,226,.78)}.btn.slim{min-height:28px;padding:4px 8px;border-radius:10px;font-size:11px}
+.grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px}.span-3{grid-column:span 3}.span-4{grid-column:span 4}.span-5{grid-column:span 5}.span-6{grid-column:span 6}.span-7{grid-column:span 7}.span-8{grid-column:span 8}.span-12{grid-column:span 12}
+.card{background:var(--glass);border:1px solid rgba(255,255,255,.84);border-radius:var(--r);box-shadow:var(--shadow),inset 0 1px 0 rgba(255,255,255,.94);backdrop-filter:blur(24px) saturate(155%);-webkit-backdrop-filter:blur(24px) saturate(155%);padding:14px}.mini-card{border:1px solid rgba(255,255,255,.78);background:rgba(255,255,255,.58);border-radius:18px;padding:12px}.toolbar{display:flex;justify-content:space-between;gap:12px;align-items:end;flex-wrap:wrap;margin-bottom:12px}.filters{display:flex;gap:8px;flex-wrap:wrap}.eyebrow{font-size:11px;color:var(--muted);font-weight:900;text-transform:uppercase;letter-spacing:.07em}h2{font-size:22px;margin:0 0 8px}h3{font-size:15px;margin:0 0 8px}.note{font-size:12px;color:var(--muted);line-height:1.45}
+.field{display:flex;flex-direction:column;gap:5px}.field label{font-size:11px;color:var(--muted);font-weight:850}.field input,.field select,.field textarea,.search{border:1px solid rgba(205,218,232,.78);background:rgba(255,255,255,.78);border-radius:12px;color:var(--text);padding:8px 10px;outline:none}.field textarea{min-height:92px;resize:vertical}.search{min-width:260px}.form-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.form-grid .full{grid-column:1/-1}.split{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.metric-strip{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:12px}.metric{border:1px solid rgba(255,255,255,.78);background:rgba(255,255,255,.6);border-radius:16px;padding:10px}.metric span{display:block;color:var(--muted);font-size:11px;font-weight:900;text-transform:uppercase}.metric b{display:block;font-size:21px;margin-top:4px}.metric small{color:var(--muted);font-weight:750}.blue{color:var(--blue)}.green{color:var(--green)}.orange{color:var(--orange)}.red{color:var(--red)}.purple{color:var(--purple)}
+.table-wrap{overflow:auto;border:1px solid rgba(255,255,255,.78);border-radius:18px;background:rgba(255,255,255,.62)}table{width:100%;border-collapse:collapse;min-width:820px}th,td{border-bottom:1px solid var(--line);border-right:1px solid rgba(226,232,240,.72);padding:7px 8px;text-align:left;font-size:12px;vertical-align:top}th{background:rgba(248,251,255,.88);text-transform:uppercase;color:#475569;font-weight:900}.num,.money{text-align:right;white-space:nowrap}.progress{height:10px;background:#e5e7eb;border-radius:99px;overflow:hidden}.progress span{display:block;height:100%;background:linear-gradient(90deg,var(--blue),var(--cyan))}.badge{display:inline-flex;border-radius:999px;padding:4px 8px;font-size:11px;font-weight:900;background:rgba(219,234,254,.82);color:#1d4ed8}.badge.green{background:rgba(220,252,231,.82);color:#166534}.badge.orange{background:rgba(255,247,237,.92);color:#9a3412}.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:rgba(23,32,51,.92);color:#fff;border-radius:14px;padding:10px 14px;font-size:13px;font-weight:850;box-shadow:0 18px 50px rgba(23,32,51,.25);opacity:0;pointer-events:none;transition:.18s}.toast.show{opacity:1}
+@media(max-width:1100px){.span-3,.span-4,.span-5,.span-6,.span-7,.span-8{grid-column:span 12}.metric-strip,.split,.form-grid{grid-template-columns:1fr}.search{min-width:0;width:100%}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="topin">
+      <div class="brand"><div class="logo">A</div><div><h1>Analýza aktivit</h1><div class="note">Samostatný modul bez klientských dat</div></div><span class="version">v2026.08.06</span></div>
+      <div class="filters">
+        <button class="btn" onclick="exportJson()">Export dat</button>
+        <button class="btn" onclick="byId('importFile').click()">Import dat</button>
+        <button class="btn red" onclick="resetData()">Vymazat data</button>
+        <input id="importFile" type="file" accept="application/json,.json" style="display:none" onchange="importJson(event)">
+      </div>
+    </div>
+  </header>
+
+  <main class="grid">
+    <section class="card span-12">
+      <div class="toolbar">
+        <div><div class="eyebrow">Analýza</div><h2>Aktivity, plán a uzavřené obchody</h2></div>
+        <div class="filters">
+          <input id="analysisWeek" type="week" onchange="render()">
+          <input id="analysisMonth" type="month" onchange="render()">
+          <input class="search" id="search" placeholder="Hledat v aktivitách, klientech, poznámkách..." oninput="render()">
+        </div>
+      </div>
+      <div id="metrics" class="metric-strip"></div>
+    </section>
+
+    <section class="card span-6">
+      <div class="toolbar"><div><div class="eyebrow">Týdenní plán</div><h2>Plán a plnění</h2></div><button class="btn primary" onclick="savePlan()">Uložit plán</button></div>
+      <div class="form-grid">
+        <div class="field"><label>Volání</label><input id="planCalls" type="number" min="0" placeholder="počet"></div>
+        <div class="field"><label>Minuty volání</label><input id="planMinutes" type="number" min="0" placeholder="minut"></div>
+        <div class="field"><label>Schůzky nový klient</label><input id="planMeetingsNew" type="number" min="0"></div>
+        <div class="field"><label>Schůzky stávající klient</label><input id="planMeetingsExisting" type="number" min="0"></div>
+        <div class="field"><label>Doporučení</label><input id="planReferrals" type="number" min="0"></div>
+        <div class="field"><label>Podpisy</label><input id="planSignatures" type="number" min="0"></div>
+        <div class="field full"><label>Plán týdne</label><textarea id="planText" placeholder="Co chci tento týden udělat, komu volat, jaké podpisy dotáhnout..."></textarea></div>
+      </div>
+      <div class="table-wrap" style="margin-top:10px"><table id="planTable"></table></div>
+    </section>
+
+    <section class="card span-6">
+      <div class="toolbar"><div><div class="eyebrow">Denní záznam</div><h2>Aktivita do analýzy</h2></div><button class="btn primary" onclick="saveActivity()">+ Aktivita</button></div>
+      <div class="form-grid">
+        <div class="field"><label>Datum</label><input id="activityDate" type="date"></div>
+        <div class="field"><label>Typ</label><select id="activityType"><option>Volání</option><option>Doporučení</option><option>Schůzka nový klient</option><option>Schůzka stávající klient</option><option>Podpis</option><option>Poznámka</option></select></div>
+        <div class="field"><label>Klient / kontakt</label><input id="activityPerson" placeholder="volitelné jméno"></div>
+        <div class="field"><label>Počet</label><input id="activityCount" type="number" min="1" value="1"></div>
+        <div class="field"><label>Minuty</label><input id="activityMinutes" type="number" min="0" placeholder="hlavně u volání"></div>
+        <div class="field"><label>Poznámka</label><input id="activityNote" placeholder="stručně co se stalo"></div>
+      </div>
+      <div class="table-wrap" style="margin-top:10px"><table id="activityTable"></table></div>
+    </section>
+
+    <section class="card span-12">
+      <div class="toolbar"><div><div class="eyebrow">Uzavřené smlouvy</div><h2>Podpisy a návaznost na výkon</h2></div><button class="btn primary" onclick="saveDeal()">+ Uzavřený obchod</button></div>
+      <div class="form-grid">
+        <div class="field"><label>Datum podpisu</label><input id="dealDate" type="date"></div>
+        <div class="field"><label>Klient / kontakt</label><input id="dealPerson" placeholder="volitelné jméno"></div>
+        <div class="field"><label>Kategorie</label><select id="dealCategory"><option>Životní pojištění</option><option>Neživotní pojištění</option><option>Hypotéky</option><option>Úvěry</option><option>Investice</option><option>FKI</option><option>Penze</option><option>Ostatní</option></select></div>
+        <div class="field"><label>Produkt / společnost</label><input id="dealProduct" placeholder="např. auto, život, hypotéka..."></div>
+        <div class="field"><label>BJ</label><input id="dealBj" type="number" min="0"></div>
+        <div class="field"><label>Očekávaná provize Kč</label><input id="dealExpected" type="number" min="0"></div>
+        <div class="field"><label>Skutečně vyplaceno Kč</label><input id="dealPaid" type="number" min="0"></div>
+        <div class="field"><label>Poznámka</label><input id="dealNote" placeholder="volitelné"></div>
+      </div>
+      <div class="table-wrap" style="margin-top:10px"><table id="dealTable"></table></div>
+    </section>
+
+    <section class="card span-12">
+      <div class="toolbar"><div><div class="eyebrow">Souhrn</div><h2>Měsíční statistika</h2></div></div>
+      <div class="table-wrap"><table id="monthTable"></table></div>
+    </section>
+  </main>
+</div>
+<div id="toast" class="toast"></div>
+
+<script>
+const STORE='crm_analyza_standalone_v1';
+let state=load();
+function def(){return{nextId:1,activities:[],deals:[],plans:{},createdAt:new Date().toISOString()}}
+function load(){try{return normalize(JSON.parse(localStorage.getItem(STORE)||'null')||def())}catch(e){return def()}}
+function normalize(s){s={...def(),...s};s.activities=Array.isArray(s.activities)?s.activities:[];s.deals=Array.isArray(s.deals)?s.deals:[];s.plans=s.plans&&typeof s.plans==='object'?s.plans:{};let max=Math.max(0,...s.activities.map(x=>+x.id||0),...s.deals.map(x=>+x.id||0));if(!s.nextId||s.nextId<=max)s.nextId=max+1;return s}
+function persist(){state=normalize(state);localStorage.setItem(STORE,JSON.stringify(state))}
+function uid(){return state.nextId++}
+function byId(id){return document.getElementById(id)}
+function val(id){return byId(id)?.value||''}
+function setVal(id,v){const el=byId(id);if(el)el.value=v??''}
+function today(){return new Date().toISOString().slice(0,10)}
+function esc(v){return String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]))}
+function norm(v){return String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim()}
+function num(n){return new Intl.NumberFormat('cs-CZ',{maximumFractionDigits:0}).format(+n||0)}
+function money(n){return num(n)+' Kč'}
+function parseNumber(v){if(typeof v==='number')return v;if(!v)return 0;let m=String(v).replace(/\s/g,'').replace(/Kč|kc|,-/ig,'').replace(',','.').match(/-?\d+(\.\d+)?/);return m?+m[0]:0}
+function toast(msg){const el=byId('toast');el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),1800)}
+function localIsoDate(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
+function dateObj(s){if(!s)return new Date();const [y,m,d]=String(s).slice(0,10).split('-').map(Number);return new Date(y||new Date().getFullYear(),(m||1)-1,d||1)}
+function weekKey(d=today()){const date=dateObj(d);date.setHours(0,0,0,0);date.setDate(date.getDate()+3-((date.getDay()+6)%7));const week1=new Date(date.getFullYear(),0,4);const week=1+Math.round(((date-week1)/86400000-3+((week1.getDay()+6)%7))/7);return `${date.getFullYear()}-W${String(week).padStart(2,'0')}`}
+function weekRange(key){const [yPart,wPart]=String(key||weekKey()).split('-W'),y=+yPart||new Date().getFullYear(),w=+wPart||1,jan4=new Date(y,0,4),monday=new Date(jan4);monday.setDate(jan4.getDate()-((jan4.getDay()+6)%7)+(w-1)*7);const sunday=new Date(monday);sunday.setDate(monday.getDate()+6);return{start:localIsoDate(monday),end:localIsoDate(sunday)}}
+function dateInRange(d,start,end){const x=String(d||'').slice(0,10);return x&&x>=start&&x<=end}
+function selectedWeek(){return val('analysisWeek')||weekKey()}
+function selectedMonth(){return val('analysisMonth')||today().slice(0,7)}
+function rowsForWeek(){const w=weekRange(selectedWeek()),q=norm(val('search'));return state.activities.filter(a=>dateInRange(a.date,w.start,w.end)).filter(a=>!q||norm([a.type,a.person,a.note].join(' ')).includes(q)).sort((a,b)=>String(b.date).localeCompare(String(a.date))||b.id-a.id)}
+function dealsForRange(start,end){const q=norm(val('search'));return state.deals.filter(d=>dateInRange(d.date,start,end)).filter(d=>!q||norm([d.person,d.category,d.product,d.note].join(' ')).includes(q))}
+function actuals(start,end){const rows=state.activities.filter(a=>dateInRange(a.date,start,end)),deals=dealsForRange(start,end),sum=t=>rows.filter(r=>r.type===t).reduce((s,r)=>s+(+r.count||1),0);return{calls:sum('Volání'),minutes:rows.filter(r=>r.type==='Volání').reduce((s,r)=>s+(+r.minutes||0),0),meetingsNew:sum('Schůzka nový klient'),meetingsExisting:sum('Schůzka stávající klient'),referrals:sum('Doporučení'),signatures:sum('Podpis')+deals.length,activities:rows.reduce((s,r)=>s+(+r.count||1),0),deals:deals.length,bj:deals.reduce((s,d)=>s+(+d.bj||0),0),expected:deals.reduce((s,d)=>s+(+d.expected||0),0),paid:deals.reduce((s,d)=>s+(+d.paid||0),0)}}
+function loadPlanInputs(){const p=state.plans[selectedWeek()]||{};setVal('planCalls',p.calls||'');setVal('planMinutes',p.minutes||'');setVal('planMeetingsNew',p.meetingsNew||'');setVal('planMeetingsExisting',p.meetingsExisting||'');setVal('planReferrals',p.referrals||'');setVal('planSignatures',p.signatures||'');setVal('planText',p.text||'')}
+function savePlan(){state.plans[selectedWeek()]={calls:parseNumber(val('planCalls')),minutes:parseNumber(val('planMinutes')),meetingsNew:parseNumber(val('planMeetingsNew')),meetingsExisting:parseNumber(val('planMeetingsExisting')),referrals:parseNumber(val('planReferrals')),signatures:parseNumber(val('planSignatures')),text:val('planText').trim(),updatedAt:new Date().toISOString()};persist();render();toast('Týdenní plán uložen')}
+function saveActivity(){state.activities.push({id:uid(),date:val('activityDate')||today(),type:val('activityType')||'Volání',person:val('activityPerson').trim(),count:Math.max(1,parseNumber(val('activityCount'))||1),minutes:parseNumber(val('activityMinutes')),note:val('activityNote').trim(),createdAt:new Date().toISOString()});setVal('activityCount',1);setVal('activityMinutes','');setVal('activityPerson','');setVal('activityNote','');persist();render();toast('Aktivita uložena')}
+function deleteActivity(id){if(!confirm('Smazat aktivitu?'))return;state.activities=state.activities.filter(a=>String(a.id)!==String(id));persist();render();toast('Aktivita smazána')}
+function saveDeal(){state.deals.push({id:uid(),date:val('dealDate')||today(),person:val('dealPerson').trim(),category:val('dealCategory'),product:val('dealProduct').trim(),bj:parseNumber(val('dealBj')),expected:parseNumber(val('dealExpected')),paid:parseNumber(val('dealPaid')),note:val('dealNote').trim(),createdAt:new Date().toISOString()});['dealPerson','dealProduct','dealBj','dealExpected','dealPaid','dealNote'].forEach(id=>setVal(id,''));persist();render();toast('Uzavřený obchod uložen')}
+function deleteDeal(id){if(!confirm('Smazat uzavřený obchod?'))return;state.deals=state.deals.filter(d=>String(d.id)!==String(id));persist();render();toast('Obchod smazán')}
+function render(){const weekEl=byId('analysisWeek'),monthEl=byId('analysisMonth');if(!weekEl.value)weekEl.value=weekKey();if(!monthEl.value)monthEl.value=today().slice(0,7);['activityDate','dealDate'].forEach(id=>{if(!val(id))setVal(id,today())});const w=weekRange(selectedWeek()),month=selectedMonth(),monthStart=month+'-01',monthEnd=month+'-31',a=actuals(w.start,w.end),m=actuals(monthStart,monthEnd);byId('metrics').innerHTML=`<div class="metric"><span>Volání týden</span><b class="blue">${num(a.calls)}</b><small>${num(a.minutes)} min</small></div><div class="metric"><span>Schůzky týden</span><b>${num(a.meetingsNew+a.meetingsExisting)}</b><small>noví ${num(a.meetingsNew)} · stávající ${num(a.meetingsExisting)}</small></div><div class="metric"><span>Doporučení</span><b class="green">${num(a.referrals)}</b></div><div class="metric"><span>Podpisy</span><b class="purple">${num(a.signatures)}</b><small>${num(a.bj)} BJ</small></div><div class="metric"><span>Provize měsíc</span><b class="orange">${money(m.paid)}</b><small>čeká ${money(Math.max(0,m.expected-m.paid))}</small></div>`;loadPlanInputs();renderPlan(a);renderActivities();renderDeals(w.start,w.end);renderMonth(m)}
+function renderPlan(a){const p=state.plans[selectedWeek()]||{},items=[['Volání','calls',a.calls],['Minuty volání','minutes',a.minutes],['Schůzky nový klient','meetingsNew',a.meetingsNew],['Schůzky stávající klient','meetingsExisting',a.meetingsExisting],['Doporučení','referrals',a.referrals],['Podpisy','signatures',a.signatures]];byId('planTable').innerHTML=`<thead><tr><th>Cíl týdne</th><th>Plán</th><th>Hotovo</th><th>Plnění</th><th>Zbývá</th></tr></thead><tbody>${items.map(([label,key,actual])=>{const target=+p[key]||0,pct=target?Math.min(999,Math.round(actual/target*100)):0;return`<tr><td><b>${label}</b></td><td class="num">${num(target)}</td><td class="num">${num(actual)}</td><td><div class="progress"><span style="width:${Math.min(100,pct)}%"></span></div><span class="note">${target?num(pct)+' %':'bez plánu'}</span></td><td class="num">${target?num(Math.max(0,target-actual)):'-'}</td></tr>`}).join('')}</tbody>`}
+function renderActivities(){const rows=rowsForWeek();byId('activityTable').innerHTML=`<thead><tr><th>Datum</th><th>Typ</th><th>Klient / kontakt</th><th>Počet</th><th>Minuty</th><th>Poznámka</th><th></th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.date)}</td><td><span class="badge">${esc(r.type)}</span></td><td>${esc(r.person||'-')}</td><td class="num">${num(r.count)}</td><td class="num">${num(r.minutes)}</td><td>${esc(r.note||'')}</td><td><button class="btn slim red" onclick="deleteActivity(${r.id})">Smazat</button></td></tr>`).join('')||'<tr><td colspan="7" class="note">Tento týden zatím není zapsaná žádná aktivita.</td></tr>'}</tbody>`}
+function renderDeals(start,end){const rows=dealsForRange(start,end).sort((a,b)=>String(b.date).localeCompare(String(a.date))||b.id-a.id);byId('dealTable').innerHTML=`<thead><tr><th>Datum</th><th>Klient / kontakt</th><th>Kategorie</th><th>Produkt</th><th>BJ</th><th>Oček. provize</th><th>Vyplaceno</th><th>Poznámka</th><th></th></tr></thead><tbody>${rows.map(d=>`<tr><td>${esc(d.date)}</td><td>${esc(d.person||'-')}</td><td>${esc(d.category)}</td><td><b>${esc(d.product||'')}</b></td><td class="num">${num(d.bj)}</td><td class="money">${money(d.expected)}</td><td class="money">${money(d.paid)}</td><td>${esc(d.note||'')}</td><td><button class="btn slim red" onclick="deleteDeal(${d.id})">Smazat</button></td></tr>`).join('')||'<tr><td colspan="9" class="note">V tomto týdnu zatím není uzavřený obchod.</td></tr>'}</tbody>`}
+function renderMonth(m){const rows=[['Volání',m.calls,num(m.minutes)+' min'],['Schůzky nový klient',m.meetingsNew,''],['Schůzky stávající klient',m.meetingsExisting,''],['Doporučení',m.referrals,''],['Podpisy / obchody',m.signatures,`${num(m.bj)} BJ`],['Očekávaná provize',m.expected,''],['Vyplacená provize',m.paid,''],['Aktivity celkem',m.activities,'']];byId('monthTable').innerHTML=`<thead><tr><th>Typ</th><th>Počet / částka</th><th>Detail</th></tr></thead><tbody>${rows.map(([label,count,detail])=>`<tr><td><b>${label}</b></td><td class="num">${String(label).includes('provize')?money(count):num(count)}</td><td>${esc(detail)}</td></tr>`).join('')}</tbody>`}
+function exportJson(){const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='analyza-aktivit-zaloha.json';a.click();URL.revokeObjectURL(a.href);toast('Export připraven')}
+function importJson(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{state=normalize(JSON.parse(r.result));persist();render();toast('Import hotový')}catch(err){alert('Soubor se nepovedlo načíst.')}};r.readAsText(f);e.target.value=''}
+function resetData(){if(!confirm('Opravdu vymazat všechna data v této samostatné Analýze?'))return;state=def();persist();render();toast('Data vymazána')}
+render();
+</script>
+</body>
+</html>
