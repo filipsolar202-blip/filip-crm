@@ -251,6 +251,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text"
 .aum-row.head{background:#f8fafc;color:#64748b;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}
 .aum-row strong{font-size:13px}.aum-row.loss{opacity:.72;background:#fff7f7}.aum-row.locked,.fund-row.locked,.trail-follow-row.locked{background:#fff1f2;opacity:.82}
 .aum-row.locked strong,.trail-follow-row.locked strong{color:#b91c1c}
+.redemption-row{display:grid;grid-template-columns:minmax(190px,1.3fr) minmax(210px,1.4fr) 115px 115px 115px 115px 110px;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid #edf2f7;font-size:12px}
+.redemption-row.head{background:#f8fafc;color:#64748b;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.4px}
+.redemption-row.pending{background:#fffaf0}.redemption-row.ready{background:#eff6ff}.redemption-row.paid{background:#f0fdf4}.redemption-row.missing{background:#fff1f2}
+.redemption-row strong{font-size:13px}.redemption-sub{font-size:11px;color:#64748b;margin-top:2px}.redemption-status{display:inline-flex;align-items:center;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:900;background:#edf2f7;color:#475569}.redemption-status.paid{background:#dcfce7;color:#15803d}.redemption-status.ready{background:#dbeafe;color:#2563eb}.redemption-status.pending{background:#fef3c7;color:#b45309}.redemption-status.missing{background:#fee2e2;color:#b91c1c}
 @media(max-width:900px){.aum-layout{grid-template-columns:1fr}.aum-row{grid-template-columns:1fr;gap:4px}}
 
 .fund-row{display:grid;grid-template-columns:minmax(260px,2fr) 95px 105px 70px 75px 212px;gap:8px;align-items:center;padding:7px 10px;border-bottom:1px solid #f1f5f9;font-size:12px}
@@ -511,7 +515,7 @@ body{background:radial-gradient(circle at 16% 0%,rgba(77,177,200,.18),transparen
     <div class="hdr-icon">FS</div>
     <div>
       <div class="hdr-title">Investment CRM</div>
-      <div class="hdr-sub">Solár Filip · FairLife · v72</div>
+      <div class="hdr-sub">Solár Filip · FairLife · v73</div>
     </div>
   </div>
   <div class="hdr-btns">
@@ -521,6 +525,7 @@ body{background:radial-gradient(circle at 16% 0%,rgba(77,177,200,.18),transparen
     <button class="btn btn-gray" onclick="togglePanel('imp')">⬆ Import CSV</button>
     <button class="btn btn-gray" onclick="togglePanel('funds')">📈 Fondy / NAV</button>
     <button class="btn btn-gray" onclick="togglePanel('aum')">📊 AUM + následky</button>
+    <button class="btn btn-gray" onclick="togglePanel('redemptions')">📅 Odkupy</button>
     <button class="btn btn-gray" onclick="mergeClientsPrompt()">👥 Sloučit klienty</button>
     <button class="btn btn-gray" onclick="dlBackupJSON()">💾 Záloha JSON</button>
     <button class="btn btn-gray" onclick="document.getElementById('backupFile').click()">↥ Obnovit JSON</button>
@@ -639,6 +644,20 @@ body{background:radial-gradient(circle at 16% 0%,rgba(77,177,200,.18),transparen
   </div>
 </div>
 
+<!-- REDEMPTION PANEL -->
+<div class="aum-panel" id="redemptions">
+  <h3>Odkupy a výplaty klientům <button class="btn btn-gray btn-sm" onclick="togglePanel('redemptions')">✕ Zavřít</button></h3>
+  <div class="import-info" style="margin-bottom:12px">
+    Přehled žádostí o odkup napříč všemi klienty a fondy. Slouží k tomu, aby bylo vidět, kdy se má podat žádost, kdy má klientovi přijít výplata a co už je vyplacené.
+  </div>
+  <div class="fund-tools" style="grid-template-columns:2fr 1fr auto">
+    <div class="fg"><label>Filtr</label><input id="redemptionSearch" placeholder="Hledat klienta / fond / společnost" oninput="renderRedemptionPanel()"></div>
+    <div class="fg"><label>Stav</label><select id="redemptionStatusFilter" onchange="renderRedemptionPanel()"><option value="all">Vše</option><option value="ready">K žádosti / řešit</option><option value="pending">Čeká na výplatu</option><option value="paid">Vyplaceno</option><option value="missing">Chybí termín</option></select></div>
+    <button class="btn btn-gray" onclick="exportRedemptionsCSV()">⬇ Export odkupů CSV</button>
+  </div>
+  <div id="redemptionContent"></div>
+</div>
+
 <!-- ADD/EDIT PANEL -->
 <div class="add-panel" id="add">
   <h3 id="addTitle">Nový záznam <button class="btn btn-gray btn-sm" onclick="closeAdd()">✕ Zavřít</button></h3>
@@ -653,6 +672,9 @@ body{background:radial-gradient(circle at 16% 0%,rgba(77,177,200,.18),transparen
     <div class="fg"><label>Typ transakce</label>
       <select id="fi_tx"><option>Platba</option><option>Konverze</option><option>Převod</option><option>Odkup</option></select>
     </div>
+    <div class="fg"><label>Žádost o odkup</label><input id="fi_redeem_req" type="date"></div>
+    <div class="fg"><label>Výplata peněz</label><input id="fi_redeem_pay" type="date"></div>
+    <div class="fg"><label>Stav odkupu</label><select id="fi_redeem_status"><option>Bez odkupu</option><option>Žádost připravit</option><option>Žádost odeslána</option><option>Čeká na výplatu</option><option>Vyplaceno</option></select></div>
     <div class="fg"><label>Čistá investice (CZK) *</label><input id="fi_inv_c" type="number" placeholder="200000"></div>
     <div class="fg"><label>Aktuální hodnota (CZK)</label><input id="fi_cur" type="number" placeholder="záloha, když není počet CP"></div>
     <div class="fg"><label>Počet CP</label><input id="fi_qty" type="number" step="0.0001" placeholder="automaticky z investice / upisovací hodnoty"></div>
@@ -741,9 +763,9 @@ body{background:radial-gradient(circle at 16% 0%,rgba(77,177,200,.18),transparen
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION='v72';
-const APP_BUILD='2026-07-06';
-const APP_SCHEMA_VERSION=55;
+const APP_VERSION='v73';
+const APP_BUILD='2026-08-06';
+const APP_SCHEMA_VERSION=56;
 let fkiMode='new';
 let fkiContextClient='';
 let fkiRows=[];
@@ -1650,6 +1672,25 @@ function annualizedReturn(deposits, withdrawn, currentValue, firstDate){
 function pD(v){ if(!v) return null; const d=new Date(v); if(isNaN(d)) return null; d.setHours(0,0,0,0); return d; }
 function isFutureWithdrawal(r){ const d=pD(r?.['Datum připsání platby']); return isWithdrawal(r) && d && d > todayDate(); }
 function withdrawalVal(r){ return isWithdrawal(r) ? Math.abs(n(r?.['Aktuální hodnota investice']) || n(r?.['Čistá investice'])) : 0; }
+function redemptionRequestDate(r){ return fDate(r?.['Datum žádosti o odkup'] || r?.['Datum zadání odkupu'] || r?.['Datum žádosti'] || ''); }
+function redemptionPayoutDate(r){ return fDate(r?.['Datum výplaty odkupu'] || r?.['Datum výplaty'] || r?.['Datum připsání platby'] || ''); }
+function redemptionStatusRaw(r){ return String(r?.['Stav odkupu'] || '').trim(); }
+function redemptionState(r){
+  const status=normKey(redemptionStatusRaw(r));
+  const req=redemptionRequestDate(r);
+  const pay=redemptionPayoutDate(r);
+  const payD=pD(pay);
+  if(status.includes('vyplac')) return 'paid';
+  if(status.includes('ceka') || status.includes('odeslana')) return 'pending';
+  if(isWithdrawal(r) && payD && payD <= todayDate()) return 'paid';
+  if(payD && payD > todayDate()) return 'pending';
+  if(req || status.includes('priprav')) return 'ready';
+  return 'missing';
+}
+function redemptionStateLabel(state){
+  return state==='paid'?'Vyplaceno':state==='pending'?'Čeká na výplatu':state==='ready'?'K žádosti / řešit':'Chybí termín';
+}
+function hasRedemptionTracking(r){ return isWithdrawal(r) || redemptionRequestDate(r) || redemptionPayoutDate(r) || normKey(redemptionStatusRaw(r))!=='bez odkupu'; }
 function effectiveQty(r){ const q=n(r?.['Počet vydaných CP']); if(q) return q; const inv=n(r?.['Čistá investice']); const up=n(r?.['Upisovací hodnota']); if(inv && up && !isWithdrawal(r)) return inv/up; return 0; }
 function curVal(r){
   if(isWithdrawal(r)) return isFutureWithdrawal(r) ? 0 : -withdrawalVal(r);
@@ -2395,17 +2436,20 @@ function togglePanel(id){
   document.getElementById('add').classList.remove('open');
   document.getElementById('funds').classList.remove('open');
   const aumEl=document.getElementById('aum'); if(aumEl) aumEl.classList.remove('open');
+  const redEl=document.getElementById('redemptions'); if(redEl) redEl.classList.remove('open');
 
   if(!isOpen) el.classList.add('open');
   if(id==='add' && !isOpen) updateFundPickerOptions();
   if(id==='funds' && !isOpen) renderFundPanel();
   if(id==='aum' && !isOpen){ renderAumPanel(); initTrailPanelDefaults(); renderTrailPanel(); setTimeout(()=>{renderAumPanel();renderTrailPanel();},0); }
+  if(id==='redemptions' && !isOpen) renderRedemptionPanel();
 }
 
 function openAdd(prefill){
   document.getElementById('addTitle').innerHTML=prefill?`Přidat fond — ${esc(prefill)} <button class="btn btn-gray btn-sm" onclick="closeAdd()">✕ Zavřít</button>`:`Nový záznam <button class="btn btn-gray btn-sm" onclick="closeAdd()">✕ Zavřít</button>`;
-  ['fi_inv','fi_dob','fi_rc','fi_fund_select','fi_fond','fi_company','fi_inv_c','fi_cur','fi_qty','fi_upis','fi_regular_amount','fi_regular_day','fi_dp','fi_de','fi_nav','fi_navdo','fi_isin','fi_typ','fi_idx'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  ['fi_inv','fi_dob','fi_rc','fi_fund_select','fi_fond','fi_company','fi_inv_c','fi_cur','fi_qty','fi_upis','fi_regular_amount','fi_regular_day','fi_dp','fi_de','fi_nav','fi_navdo','fi_isin','fi_typ','fi_idx','fi_redeem_req','fi_redeem_pay'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   document.getElementById('fi_tx').value='Platba';
+  document.getElementById('fi_redeem_status').value='Bez odkupu';
   document.getElementById('fi_product').value='FKI';
   document.getElementById('fi_freq').value='Jednorázově';
   if(prefill) document.getElementById('fi_inv').value=prefill;
@@ -2431,6 +2475,9 @@ function editRec(gi){
   document.getElementById('fi_fond').value=r['Fond']||'';
   document.getElementById('fi_company').value=companyOf(r)||'';
   document.getElementById('fi_tx').value=r['Typ transakce']||'Platba';
+  document.getElementById('fi_redeem_req').value=redemptionRequestDate(r)||'';
+  document.getElementById('fi_redeem_pay').value=redemptionPayoutDate(r)||'';
+  document.getElementById('fi_redeem_status').value=r['Stav odkupu']||'Bez odkupu';
   document.getElementById('fi_product').value=productTypeOf(r)||'FKI';
   document.getElementById('fi_freq').value=r['Frekvence investice']||'Jednorázově';
   document.getElementById('fi_inv_c').value=r['Čistá investice']||'';
@@ -2491,6 +2538,9 @@ function saveRec(){
       'Poslední schválená hodnota do':navDate,
       'rp.ISIN':isinVal||null,
       'Typ CP':(document.getElementById('fi_typ')?.value)||null,
+      'Datum žádosti o odkup':parseDobValue(document.getElementById('fi_redeem_req')?.value||'')||null,
+      'Datum výplaty odkupu':parseDobValue(document.getElementById('fi_redeem_pay')?.value||'')||null,
+      'Stav odkupu':(document.getElementById('fi_redeem_status')?.value)||'Bez odkupu',
       'Poradce':'Solár Filip','Měna':'CZK','Vstupní poplatek':0,
       '_txid':'TX_'+Date.now()+'_'+Math.random().toString(36).slice(2,8)
     };
@@ -2536,6 +2586,7 @@ function saveRec(){
     renderStats();
     renderList();
     renderFundPanel();
+    renderRedemptionPanel();
     updateFundPickerOptions();
     closeAdd();
     toast(action==='updated'?'Záznam aktualizován ✓':'Záznam přidán ✓','ok');
@@ -2710,7 +2761,10 @@ function delRec(gi, name){
 
 function quickSell(gi, name){
   const r=recs[gi];
-  const date=prompt('Datum odprodeje (YYYY-MM-DD):',new Date().toISOString().split('T')[0]);
+  const today=new Date().toISOString().split('T')[0];
+  const requestDate=prompt('Datum žádosti o odkup (YYYY-MM-DD):',today);
+  if(!requestDate) return;
+  const date=prompt('Datum očekávané výplaty peněz (YYYY-MM-DD):',requestDate);
   if(!date) return;
   const amtStr=prompt('Částka odkupu / výběru (CZK):','');
   let amt=parseFloat(String(amtStr||'').replace(/\s/g,'').replace(',','.'));
@@ -2731,6 +2785,9 @@ function quickSell(gi, name){
     'Čistá investice':0,
     'Aktuální hodnota investice':amt,
     'Datum připsání platby':date,
+    'Datum žádosti o odkup':requestDate,
+    'Datum výplaty odkupu':date,
+    'Stav odkupu':pD(date)>todayDate()?'Čeká na výplatu':'Vyplaceno',
     'Datum emise':null,
     'Poradce':r['Poradce']||'Solár Filip',
     'Kód poradce':r['Kód poradce']||null,
@@ -2745,6 +2802,7 @@ function quickSell(gi, name){
   recs.push(w);
   repairWithdrawalClientIds();
   save(); renderStats(); renderList();
+  renderRedemptionPanel();
   toast(isFutureWithdrawal(w)?'Odkup naplánován ✓':'Odprodej zaznamenán ✓','ok');
   const targetRef = r['ClientID'] || clientIdentityKey(r) || name;
   showClient(targetRef);
@@ -3373,6 +3431,72 @@ function setAumCompany(v){
 function setAumFilter(v){
   activeAumCompany=v||'';
   renderAumPanel();
+}
+function redemptionRows(){
+  return recs.map((r,gi)=>({r,gi})).filter(({r})=>hasRedemptionTracking(r)).map(({r,gi})=>{
+    const state=redemptionState(r);
+    const req=redemptionRequestDate(r);
+    const pay=redemptionPayoutDate(r);
+    const payD=pD(pay);
+    const days=payD?Math.ceil((payD-todayDate())/86400000):null;
+    return {
+      gi,
+      client:clientDisplayName(r),
+      clientKey:clientIdentityKey(r),
+      company:companyOf(r)||'Nezařazeno',
+      fund:cleanFundName(r['Fond']||'Nezařazeno', companyOf(r)),
+      product:productTypeOf(r)||'FKI',
+      isin:r['rp.ISIN']||r['ISIN']||'',
+      amount:withdrawalVal(r)||Math.abs(n(r['Aktuální hodnota investice'])||n(r['Čistá investice'])),
+      requestDate:req,
+      payoutDate:pay,
+      days,
+      state
+    };
+  }).sort((a,b)=>{
+    const order={missing:0,ready:1,pending:2,paid:3};
+    return (order[a.state]-order[b.state]) || String(a.payoutDate||'9999-12-31').localeCompare(String(b.payoutDate||'9999-12-31')) || a.client.localeCompare(b.client,'cs');
+  });
+}
+function renderRedemptionPanel(){
+  const box=document.getElementById('redemptionContent');
+  if(!box) return;
+  const q=normKey(document.getElementById('redemptionSearch')?.value||'');
+  const filter=document.getElementById('redemptionStatusFilter')?.value||'all';
+  let rows=redemptionRows();
+  if(filter!=='all') rows=rows.filter(r=>r.state===filter);
+  if(q) rows=rows.filter(r=>normKey([r.client,r.company,r.fund,r.product,r.isin].join(' ')).includes(q));
+  const total=rows.reduce((s,r)=>s+r.amount,0);
+  const waiting=rows.filter(r=>r.state==='pending'||r.state==='ready'||r.state==='missing').reduce((s,r)=>s+r.amount,0);
+  box.innerHTML=`
+    <div class="aum-grid">
+      <div class="aum-card"><div class="aum-card-l">Odkupů v přehledu</div><div class="aum-card-v">${rows.length}</div></div>
+      <div class="aum-card"><div class="aum-card-l">Objem odkupů</div><div class="aum-card-v">${czk(total)}</div></div>
+      <div class="aum-card"><div class="aum-card-l">Čeká / řešit</div><div class="aum-card-v orange">${czk(waiting)}</div></div>
+      <div class="aum-card"><div class="aum-card-l">Bez termínu</div><div class="aum-card-v dn">${rows.filter(r=>r.state==='missing').length}</div></div>
+    </div>
+    <div class="aum-table" style="margin-top:12px">
+      <div class="redemption-row head"><div>Klient</div><div>Fond</div><div>Žádost</div><div>Výplata</div><div>Částka</div><div>Stav</div><div>Akce</div></div>
+      ${rows.map(r=>`<div class="redemption-row ${r.state}">
+        <div><strong>${esc(r.client)}</strong><div class="redemption-sub">${esc(r.clientKey)}</div></div>
+        <div><strong>${esc(r.company)} - ${esc(r.fund)}</strong><div class="redemption-sub">${esc(r.product)} · ${r.isin?esc(r.isin):'ISIN chybí'}</div></div>
+        <div>${dt(r.requestDate)}</div>
+        <div>${dt(r.payoutDate)}${r.days!==null?`<div class="redemption-sub">${r.days<0?'před '+Math.abs(r.days)+' dny':r.days===0?'dnes':'za '+r.days+' dní'}</div>`:''}</div>
+        <div><strong>${czk(r.amount)}</strong></div>
+        <div><span class="redemption-status ${r.state}">${esc(redemptionStateLabel(r.state))}</span></div>
+        <div><button class="btn btn-gray btn-sm" onclick="editRec(${r.gi})">Upravit</button></div>
+      </div>`).join('') || '<div class="empty">Zatím tu není žádný odkup. Přidej transakci typu Odkup nebo doplň termíny u fondu.</div>'}
+    </div>`;
+}
+function exportRedemptionsCSV(){
+  const rows=redemptionRows();
+  const header=['Klient','Investiční společnost','Fond','Typ produktu','ISIN','Datum žádosti','Datum výplaty','Částka','Stav'];
+  const lines=[header.join(';')].concat(rows.map(r=>[r.client,r.company,r.fund,r.product,r.isin,r.requestDate,r.payoutDate,Math.round(r.amount),redemptionStateLabel(r.state)].map(x=>'"'+String(x??'').replace(/"/g,'""')+'"').join(';')));
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(['\uFEFF'+lines.join('\n')],{type:'text/csv;charset=utf-8'}));
+  a.download='fki-odkupy.csv';
+  a.click();
+  toast('Odkupy CSV staženo ✓','ok');
 }
 function renderAumPanel(){
   const box=document.getElementById('aumContent');
