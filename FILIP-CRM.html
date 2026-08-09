@@ -38,6 +38,85 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
 .card{padding:13px}.mini-card{padding:10px}.kpi{min-height:88px}.kpi .value{font-size:22px}.detail-title h2{font-size:28px}.field input,.field select,.field textarea,.search{padding:6px 8px;font-size:12px}.field textarea{min-height:68px}.toolbar{margin-bottom:10px}table{min-width:840px}th,td{padding:5px 7px;font-size:11px}.timeline{display:grid;gap:8px;max-height:430px;overflow:auto;padding-right:4px}.history-year{border:1px solid rgba(255,255,255,.76);border-radius:16px;background:rgba(255,255,255,.48);overflow:hidden}.history-year summary{padding:8px 10px;font-size:12px;font-weight:900;cursor:pointer;color:var(--text);list-style:none}.history-year summary::-webkit-details-marker{display:none}.history-year summary:after{content:"Rozbalit";float:right;color:var(--muted);font-size:11px}.history-year[open] summary:after{content:"Sbalit"}.history-items{display:grid;gap:7px;padding:0 8px 8px}.event{grid-template-columns:82px 1fr;padding:7px}.sync-status{font-size:12px}
 @media(max-width:1100px){.span-3,.span-4,.span-5,.span-6,.span-7,.span-8,.investment-card,.investment-main{grid-column:span 12}.client-layout,.client-hero,.investment-shell{grid-template-columns:1fr}.client-list{max-height:none}.investment-side{position:static;max-height:none}.investment-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.quick-form{grid-template-columns:1fr 1fr}.topin{justify-items:start}.tabs{justify-content:flex-start}.tools-row{grid-template-columns:repeat(4,minmax(0,1fr))}.portfolio-grid{grid-template-columns:1fr}}
 @media(max-width:720px){.app{padding:12px}.top{margin:-12px -12px 12px;padding:10px 12px}.grid,.split,.form-grid,.quick-form,.referral-form,.metric-strip{grid-template-columns:1fr}.quick-form .wide{grid-column:auto}.detail-head{display:grid}.search{min-width:0;width:100%}.monthbar,.tools-row{grid-template-columns:repeat(3,minmax(0,1fr))}.xsell-row{grid-template-columns:1fr}}
+/* Unified Apple Crystal workspace: v2026.08.09-3 */
+#investments,#fki,#opportunities,#deals{position:relative}
+#investments .investment-shell,#fki .investment-shell{display:grid;grid-template-columns:360px minmax(0,1fr);gap:18px;align-items:start;padding:18px;border:1px solid rgba(255,255,255,.82);border-radius:28px;background:linear-gradient(135deg,rgba(232,247,255,.88),rgba(239,244,255,.76) 52%,rgba(255,255,255,.7));box-shadow:0 26px 70px rgba(42,72,112,.12),inset 0 1px 0 rgba(255,255,255,.95)}
+#investments .investment-side,#fki .investment-side{position:sticky;top:104px;max-height:calc(100vh - 126px);overflow:hidden;display:flex;flex-direction:column;padding:16px;background:rgba(250,253,255,.78);border-color:rgba(184,208,235,.72);box-shadow:0 18px 44px rgba(38,67,105,.1),inset 0 1px 0 #fff}
+#investments .investment-main,#fki .investment-main{min-height:690px;padding:20px;background:rgba(255,255,255,.72);border-color:rgba(184,208,235,.62);box-shadow:0 20px 54px rgba(38,67,105,.1),inset 0 1px 0 rgba(255,255,255,.96)}
+#investments .investment-side h2,#fki .investment-side h2{font-size:24px;line-height:1.05}
+#investments .investment-side .search,#fki .investment-side .search{height:44px;border-radius:12px;background:rgba(255,255,255,.86);box-shadow:inset 0 1px 2px rgba(32,62,98,.04)}
+#investments .investment-side .metric-strip,#fki .investment-side .metric-strip{gap:8px!important;margin:12px 0!important}
+#investments .investment-side .metric,#fki .investment-side .metric{min-height:82px;padding:13px;border:1px solid rgba(191,211,233,.7);border-radius:14px;background:linear-gradient(145deg,rgba(255,255,255,.92),rgba(244,249,255,.72));box-shadow:0 9px 22px rgba(42,72,112,.06)}
+#investments .investment-side .metric b,#fki .investment-side .metric b{display:block;margin-top:4px;font-size:20px;line-height:1.05}
+#investments .fk-tabs,#fki .fk-tabs{display:grid!important;grid-template-columns:repeat(3,1fr);gap:7px;padding:5px;border:1px solid rgba(189,210,234,.66);border-radius:14px;background:rgba(239,246,255,.72)}
+#investments .fk-tabs button,#fki .fk-tabs button{min-height:36px;border:0;border-radius:10px;background:transparent;color:#61738c;font-weight:850}
+#investments .fk-tabs button.active,#fki .fk-tabs button.active{background:linear-gradient(135deg,#2673ec,#18a4c8);color:#fff;box-shadow:0 8px 18px rgba(38,115,236,.24)}
+#investments .investment-list,#fki .investment-list{overflow:auto;padding:3px 3px 14px;margin:3px -3px 0;scrollbar-width:thin}
+#investments .investment-client,#fki .investment-client{position:relative;margin-bottom:8px;padding:13px 14px;border-radius:15px;background:linear-gradient(145deg,rgba(255,255,255,.94),rgba(246,250,255,.78));border:1px solid rgba(190,210,233,.78);box-shadow:0 8px 20px rgba(36,65,102,.055);transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}
+#investments .investment-client:hover,#fki .investment-client:hover{transform:translateY(-1px);border-color:rgba(69,129,236,.5);box-shadow:0 14px 28px rgba(36,74,128,.1)}
+#investments .investment-client.active,#fki .investment-client.active{border-color:#4f8df6;background:linear-gradient(135deg,rgba(234,244,255,.98),rgba(239,250,255,.9));box-shadow:0 12px 28px rgba(48,109,222,.15),inset 4px 0 0 #2673ec}
+#investments .investment-client b,#fki .investment-client b{font-size:15px;color:#15223a}
+#investments .investment-client .money,#fki .investment-client .money{font-size:17px;color:#111c31}
+#investments .investment-client .green,#fki .investment-client .green{color:#159447}
+#investments .investment-detail-head,#fki .investment-detail-head{grid-template-columns:76px minmax(0,1fr) auto;gap:16px;padding:2px 2px 16px;margin-bottom:16px}
+#investments .investment-detail-head .avatar,#fki .investment-detail-head .avatar{width:70px;height:70px;border-radius:20px;background:linear-gradient(145deg,#2c6feb,#11a3c2);box-shadow:0 13px 28px rgba(33,105,202,.22)}
+#investments .investment-detail-head h2,#fki .investment-detail-head h2{font-size:25px;margin:1px 0 6px}
+#investments .investment-detail-head .actions,#fki .investment-detail-head .actions{align-self:start}
+#investments .investment-summary,#fki .investment-summary{grid-template-columns:repeat(4,minmax(145px,1fr));gap:10px;margin:0 0 16px}
+#investments .investment-summary .metric,#fki .investment-summary .metric{min-height:108px;padding:17px;border:1px solid rgba(255,255,255,.94);border-radius:18px;background:linear-gradient(145deg,rgba(255,255,255,.94),rgba(242,248,255,.68));box-shadow:0 13px 32px rgba(40,71,110,.075),inset 0 1px 0 #fff}
+#investments .investment-summary .metric b,#fki .investment-summary .metric b{display:block;margin-top:8px;font-size:25px;line-height:1.05;letter-spacing:0}
+#investments .investment-allocation,#fki .investment-allocation{grid-template-columns:245px minmax(0,1fr);gap:22px;padding:20px;border-radius:22px;background:linear-gradient(145deg,rgba(255,255,255,.82),rgba(237,247,255,.66));border:1px solid rgba(190,214,239,.7);box-shadow:0 18px 40px rgba(38,67,105,.075),inset 0 1px 0 #fff}
+#investments .allocation-donut,#fki .allocation-donut{width:194px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.92),0 22px 48px rgba(26,78,124,.15)}
+#investments .allocation-donut:after,#fki .allocation-donut:after{box-shadow:0 8px 26px rgba(32,73,110,.08)}
+#investments .investment-allocation .mini-card,#fki .investment-allocation .mini-card{margin-bottom:7px;border:1px solid rgba(189,211,235,.7);border-radius:13px;background:rgba(255,255,255,.8);box-shadow:0 7px 17px rgba(40,70,105,.04)}
+#investments .table-wrap,#fki .table-wrap{border:1px solid rgba(188,210,234,.7);border-radius:17px;background:rgba(255,255,255,.76);box-shadow:0 12px 28px rgba(38,67,105,.055);overflow:auto}
+#investments .compact-table,#fki .compact-table{border-collapse:separate;border-spacing:0;width:100%}
+#investments .compact-table th,#fki .compact-table th{padding:9px 10px;font-size:10px;color:#6b7e98;background:rgba(239,246,255,.82);text-transform:uppercase}
+#investments .compact-table td,#fki .compact-table td{padding:10px;font-size:11px;line-height:1.25;border-top:1px solid rgba(194,213,234,.62);background:rgba(255,255,255,.55)}
+#investments .compact-table tbody tr:nth-child(even) td,#fki .compact-table tbody tr:nth-child(even) td{background:rgba(239,247,255,.52)}
+#investments .compact-table tbody tr:hover td,#fki .compact-table tbody tr:hover td{background:rgba(226,240,255,.82)}
+#investments .compact-table td:first-child,#fki .compact-table td:first-child{font-weight:850;color:#17243a}
+#investments .compact-table .green,#fki .compact-table .green{color:#139341;font-weight:850}
+#investments .compact-table .red,#fki .compact-table .red{color:#d12635;font-weight:850}
+#investments .compact-table button:last-child,#fki .compact-table button:last-child{border-radius:999px;min-width:34px;box-shadow:0 7px 16px rgba(28,151,81,.1)}
+#investments .mini-card,#fki .mini-card{border-radius:14px}
+
+#investmentScenarioModal{align-items:stretch;padding:0;background:rgba(35,50,74,.32);backdrop-filter:blur(20px)}
+#investmentScenarioModal .modal-box{width:100%;max-width:none;min-height:100vh;margin:0;border-radius:0;padding:22px 28px 38px;background:linear-gradient(135deg,rgba(232,248,255,.96),rgba(239,244,255,.95) 56%,rgba(255,255,255,.94));box-shadow:none;overflow:auto}
+#investmentScenarioModal .modal-head{position:sticky;top:-22px;z-index:8;margin:-22px -28px 18px;padding:18px 28px;border-bottom:1px solid rgba(188,210,233,.76);background:rgba(250,253,255,.84);backdrop-filter:blur(24px)}
+#investmentScenarioModal h2{font-size:24px}
+#investmentScenarioModal .grid{gap:12px}
+#investmentScenarioModal label{color:#667994;font-size:11px;font-weight:900;text-transform:uppercase}
+#investmentScenarioModal input,#investmentScenarioModal select{min-height:47px;border-radius:13px;background:rgba(255,255,255,.85);box-shadow:inset 0 1px 2px rgba(37,65,99,.04)}
+#investmentScenarioModal .mini-card{padding:18px;border:1px solid rgba(255,255,255,.92);border-radius:20px;background:linear-gradient(145deg,rgba(255,255,255,.9),rgba(240,247,255,.7));box-shadow:0 16px 38px rgba(37,70,112,.09),inset 0 1px 0 #fff}
+#investmentScenarioModal .table-wrap{border-radius:16px;border:1px solid rgba(187,211,236,.72);background:rgba(255,255,255,.72);box-shadow:0 12px 28px rgba(38,67,105,.055)}
+#investmentScenarioModal .compact-table th{padding:10px;color:#687c96;background:rgba(237,245,255,.8)}
+#investmentScenarioModal .compact-table td{padding:11px 10px;border-top:1px solid rgba(192,212,233,.65);background:rgba(255,255,255,.6)}
+#investmentScenarioModal .compact-table tbody tr:nth-child(even) td{background:rgba(236,246,255,.5)}
+#investmentScenarioModal .metric{min-height:96px;padding:16px;border-radius:17px;background:rgba(255,255,255,.78);box-shadow:0 12px 30px rgba(38,67,105,.07)}
+#investmentScenarioModal .metric b{display:block;margin-top:7px;font-size:23px}
+
+#opportunities>.card,#deals>.card{padding:20px;border:1px solid rgba(255,255,255,.88);border-radius:26px;background:linear-gradient(145deg,rgba(255,255,255,.84),rgba(240,247,255,.68));box-shadow:0 24px 62px rgba(38,67,105,.11),inset 0 1px 0 rgba(255,255,255,.96)}
+#opportunities .toolbar,#deals .toolbar{padding:2px 2px 14px;border-bottom:1px solid rgba(190,210,232,.7)}
+#opportunities .toolbar h2,#deals .toolbar h2{font-size:24px}
+#opportunities .filters,#deals .filters{padding:5px;border:1px solid rgba(195,214,234,.65);border-radius:15px;background:rgba(245,250,255,.72)}
+#opportunities .metric-strip,#deals .metric-strip{gap:10px;margin:14px 0}
+#opportunities .metric-strip .metric,#deals .metric-strip .metric{min-height:92px;padding:15px;border-radius:17px;background:linear-gradient(145deg,rgba(255,255,255,.94),rgba(242,248,255,.72));box-shadow:0 12px 28px rgba(38,67,105,.07)}
+#opportunities .table-wrap,#deals .table-wrap{border:0;background:transparent;box-shadow:none;overflow:auto}
+#opportunityTable,#dealsTable{width:100%;border-collapse:separate;border-spacing:0 7px}
+#opportunityTable thead th,#dealsTable thead th{padding:8px 10px;border:0;color:#637790;background:transparent;font-size:10px;text-transform:uppercase}
+#opportunityTable tbody td,#dealsTable tbody td{padding:10px;border-top:1px solid rgba(192,211,232,.72);border-bottom:1px solid rgba(192,211,232,.72);background:rgba(255,255,255,.76);font-size:11px;box-shadow:0 8px 18px rgba(38,67,105,.045)}
+#opportunityTable tbody td:first-child,#dealsTable tbody td:first-child{border-left:4px solid #61a1ef;border-radius:13px 0 0 13px;font-weight:850}
+#opportunityTable tbody td:last-child,#dealsTable tbody td:last-child{border-right:1px solid rgba(192,211,232,.72);border-radius:0 13px 13px 0}
+#opportunityTable tbody tr:hover td,#dealsTable tbody tr:hover td{background:rgba(232,244,255,.9);box-shadow:0 12px 24px rgba(38,80,130,.075)}
+#opportunityTable tbody tr.opp-hot td{background:rgba(255,244,237,.86)}
+#opportunityTable tbody tr.opp-hot td:first-child{border-left-color:#f47d44}
+#dealsTable tbody tr.paid td{background:rgba(236,251,242,.82)}
+#dealsTable tbody tr.paid td:first-child{border-left-color:#32ad65}
+#opportunityTable .chip,#dealsTable .chip{box-shadow:inset 0 0 0 1px rgba(255,255,255,.65)}
+
+@media(max-width:1100px){#investments .investment-shell,#fki .investment-shell{grid-template-columns:310px minmax(0,1fr)}#investments .investment-summary,#fki .investment-summary{grid-template-columns:repeat(2,minmax(145px,1fr))}#investments .investment-allocation,#fki .investment-allocation{grid-template-columns:200px minmax(0,1fr)}#investments .allocation-donut,#fki .allocation-donut{width:160px}}
+@media(max-width:820px){#investments .investment-shell,#fki .investment-shell{display:block;padding:10px;border-radius:20px}#investments .investment-side,#fki .investment-side{position:relative;top:auto;max-height:none;margin-bottom:10px}#investments .investment-list,#fki .investment-list{max-height:310px}#investments .investment-main,#fki .investment-main{min-height:0;padding:13px}#investments .investment-detail-head,#fki .investment-detail-head{grid-template-columns:58px minmax(0,1fr)}#investments .investment-detail-head .avatar,#fki .investment-detail-head .avatar{width:54px;height:54px;border-radius:16px}#investments .investment-detail-head .actions,#fki .investment-detail-head .actions{grid-column:1/-1}#investments .investment-summary,#fki .investment-summary{grid-template-columns:repeat(2,minmax(0,1fr))}#investments .investment-summary .metric,#fki .investment-summary .metric{min-height:88px;padding:12px}#investments .investment-summary .metric b,#fki .investment-summary .metric b{font-size:19px}#investments .investment-allocation,#fki .investment-allocation{display:block;padding:13px}#investmentScenarioModal .modal-box{padding:16px 12px 30px}#investmentScenarioModal .modal-head{top:-16px;margin:-16px -12px 14px;padding:14px 12px}#opportunities>.card,#deals>.card{padding:12px;border-radius:18px}}
 </style>
 </head>
 <body>
@@ -537,8 +616,8 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
 <iframe id="gsyncFrame" name="gsyncFrame" style="display:none"></iframe>
 
 <script>
-const VERSION='2026.08.09-2';
-const VERSION_NOTE='Součet investic klienta, náhled reportu a společný návrh Investice + FKI';
+const VERSION='2026.08.09-3';
+const VERSION_NOTE='Sjednocený Apple Crystal vzhled Investic, FKI, příležitostí a obchodů';
 const STORE='filip_crm_main_v1';
 const DISK_STORAGE_URL='http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP='filip_crm';
