@@ -117,6 +117,8 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
 
 @media(max-width:1100px){#investments .investment-shell,#fki .investment-shell{grid-template-columns:310px minmax(0,1fr)}#investments .investment-summary,#fki .investment-summary{grid-template-columns:repeat(2,minmax(145px,1fr))}#investments .investment-allocation,#fki .investment-allocation{grid-template-columns:200px minmax(0,1fr)}#investments .allocation-donut,#fki .allocation-donut{width:160px}}
 @media(max-width:820px){#investments .investment-shell,#fki .investment-shell{display:block;padding:10px;border-radius:20px}#investments .investment-side,#fki .investment-side{position:relative;top:auto;max-height:none;margin-bottom:10px}#investments .investment-list,#fki .investment-list{max-height:310px}#investments .investment-main,#fki .investment-main{min-height:0;padding:13px}#investments .investment-detail-head,#fki .investment-detail-head{grid-template-columns:58px minmax(0,1fr)}#investments .investment-detail-head .avatar,#fki .investment-detail-head .avatar{width:54px;height:54px;border-radius:16px}#investments .investment-detail-head .actions,#fki .investment-detail-head .actions{grid-column:1/-1}#investments .investment-summary,#fki .investment-summary{grid-template-columns:repeat(2,minmax(0,1fr))}#investments .investment-summary .metric,#fki .investment-summary .metric{min-height:88px;padding:12px}#investments .investment-summary .metric b,#fki .investment-summary .metric b{font-size:19px}#investments .investment-allocation,#fki .investment-allocation{display:block;padding:13px}#investmentScenarioModal .modal-box{padding:16px 12px 30px}#investmentScenarioModal .modal-head{top:-16px;margin:-16px -12px 14px;padding:14px 12px}#opportunities>.card,#deals>.card{padding:12px;border-radius:18px}}
+/* Rocni porovnani v Analyze. */
+.analysis-year-toggles{display:flex;flex-wrap:wrap;gap:7px;margin:9px 0 10px}.analysis-year-toggle{display:inline-flex;align-items:center;gap:6px;min-height:28px;padding:4px 9px;border:1px solid rgba(165,190,220,.72);border-radius:999px;background:rgba(255,255,255,.66);box-shadow:inset 0 1px 0 rgba(255,255,255,.9);font-size:11px;font-weight:850;color:#52637d;cursor:pointer}.analysis-year-toggle input{width:13px;height:13px;margin:0;accent-color:#2563eb}.analysis-year-toggle.active{color:#12203a;border-color:rgba(37,99,235,.45);background:linear-gradient(135deg,rgba(239,246,255,.92),rgba(255,255,255,.78))}.analysis-chart-empty{height:100%;display:grid;place-items:center;color:#65748b;font-weight:800}
 </style>
 </head>
 <body>
@@ -336,7 +338,16 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
             <div><div class="eyebrow">Vývoj</div><h3>Vývoj aktivit</h3></div>
             <select id="analysisChartMetric" onchange="renderAnalysisActivityChart()"><option value="calls">Volání</option><option value="minutes">Minuty volání</option><option value="meetings">Schůzky</option><option value="referrals">Doporučení</option><option value="analyses">Analýzy</option><option value="presentations">Prezentace</option><option value="signatures">Podpisy</option><option value="coop">Spolupráce</option><option value="signedBj">BJ z podpisů</option></select>
           </div>
+          <div class="analysis-year-toggles" id="analysisYearToggles"></div>
           <div class="chart-wrap" style="height:260px"><canvas id="analysisActivityChart"></canvas></div>
+        </div>
+        <div class="mini-card" style="margin-top:14px">
+          <div class="toolbar">
+            <div><div class="eyebrow">Výkon</div><h3>Vývoj investic, BJ a hypoték</h3></div>
+            <select id="analysisBusinessMetric" onchange="renderAnalysisBusinessChart()"><option value="investment">Investice + FKI</option><option value="bj">BJ</option><option value="mortgage">Hypotéky</option></select>
+          </div>
+          <div class="analysis-year-toggles" id="analysisBusinessYearToggles"></div>
+          <div class="chart-wrap" style="height:260px"><canvas id="analysisBusinessChart"></canvas></div>
         </div>
         <div class="mini-card" style="margin-top:14px"><h3>Historie týdnů</h3><div class="table-wrap"><table id="analysisWeekHistoryTable"></table></div></div>
         <div class="mini-card" style="margin-top:14px"><div class="toolbar"><h3>Tabulka typařů</h3><button class="btn primary" onclick="openReferrerPayoutModal()">+ Provize mimo obchod</button></div><div id="referrerMetrics" class="metric-strip"></div><div class="table-wrap"><table id="referrerHubTable"></table></div><div class="table-wrap" style="margin-top:10px"><table id="referrerPayoutTable"></table></div></div>
@@ -600,8 +611,8 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
 <iframe id="gsyncFrame" name="gsyncFrame" style="display:none"></iframe>
 
 <script>
-const VERSION='2026.08.26-6';
-const VERSION_NOTE='FKI fondy se při změně ISIN slučují do jednoho fondu a staré klíče už nedělají duplicitní řádky.';
+const VERSION='2026.08.26-7';
+const VERSION_NOTE='Analýza umí porovnávat roky od 2022 a nově ukazuje vývoj investic, BJ a hypoték podle zapnutých roků.';
 const STORE='filip_crm_main_v1';
 const DISK_STORAGE_URL='http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP='filip_crm';
@@ -1468,6 +1479,116 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
   const previousFkFundItems=window.fkFundItems||fkFundItems;
   window.fkFundItems=fkFundItems=function(){return previousFkFundItems().filter(f=>!state.fundValues?.[f.key]?._aliasTo)}
   window.saveFkFund=function(){const oldKey=val('fkFundSelect'),company=val('fkFundCompany').trim()||'Nezařazeno',fond=cleanInvFundName(val('fkFundName').trim()||'FKI',company),isin=val('fkFundIsin').trim(),typ=val('fkFundType').trim(),product=val('fkFundProduct').trim()||'FKI',nav=parseMoney(val('fkFundNav')),date=val('fkFundDate')||today(),trailPct=parseMoney(val('fkFundTrail')),newKey=fkCanonicalKey(isin,fond,company,typ),data={area:'fki',company,fond,isin,typ,product,nav,date,trailPct},keys=fkMergeKeys(oldKey,newKey,data);collapseFkFundValues(keys,newKey,data);const changed=applyFkMergedFund(keys,newKey,data);const lock=fkiGlobalLockKey(newKey);if(val('fkFundLocked')==='yes')state.lockedFunds[lock]=true;else delete state.lockedFunds[lock];dedupeInvestmentRecordsInState(state);persist();closeModal('fkFundModal');renderAll();saveToast(`FK fond uložen a sloučen · propsáno ${num(changed)} pozic`)}
+})();
+</script>
+<script>
+(function(){
+  const ANALYSIS_YEAR_START=2022;
+  const ANALYSIS_MONTH_LABELS=['Led','Úno','Bře','Dub','Kvě','Čer','Čvc','Srp','Zář','Říj','Lis','Pro'];
+  const ANALYSIS_YEAR_COLORS=['#2563eb','#16a34a','#f59e0b','#7c3aed','#dc2626','#0891b2','#db2777','#475569'];
+  let analysisBusinessChart=null;
+
+  function yearFromDate(v){const y=yearOf(v);return Number.isFinite(y)?y:0}
+  function analysisYearList(){
+    const now=new Date().getFullYear(),years=new Set([now]);
+    (state.deals||[]).forEach(d=>{const y=yearFromDate(d.date);if(y>=ANALYSIS_YEAR_START)years.add(y)});
+    (state.analysisEntries||[]).forEach(r=>{const y=yearFromDate(r.date);if(y>=ANALYSIS_YEAR_START)years.add(y)});
+    (state.activities||[]).forEach(r=>{const y=yearFromDate(r.date);if(y>=ANALYSIS_YEAR_START)years.add(y)});
+    (state.referrals||[]).forEach(r=>{const y=yearFromDate(r.date);if(y>=ANALYSIS_YEAR_START)years.add(y)});
+    const max=Math.max(now,...years);
+    const out=[];
+    for(let y=ANALYSIS_YEAR_START;y<=max;y++)out.push(y);
+    return out;
+  }
+  function analysisYearSelection(){
+    state.settings=state.settings||{};
+    const saved=state.settings.analysisCompareYears||{};
+    return analysisYearList().filter(y=>saved[String(y)]!==false);
+  }
+  function renderAnalysisYearToggles(){
+    const years=analysisYearList(),saved=state.settings?.analysisCompareYears||{};
+    ['analysisYearToggles','analysisBusinessYearToggles'].forEach(id=>{
+      const el=byId(id);
+      if(!el)return;
+      el.innerHTML=years.map((y,i)=>{
+        const on=saved[String(y)]!==false,color=ANALYSIS_YEAR_COLORS[i%ANALYSIS_YEAR_COLORS.length];
+        return`<label class="analysis-year-toggle ${on?'active':''}" style="--year-color:${color}"><input type="checkbox" ${on?'checked':''} onchange="setAnalysisCompareYear(${y},this.checked)"> ${y}</label>`;
+      }).join('');
+    });
+  }
+  window.setAnalysisCompareYear=function(year,on){
+    state.settings=state.settings||{};
+    state.settings.analysisCompareYears=state.settings.analysisCompareYears||{};
+    state.settings.analysisCompareYears[String(year)]=!!on;
+    persist();
+    renderAnalysisYearToggles();
+    renderAnalysisActivityChart();
+    renderAnalysisBusinessChart();
+  };
+  function monthBounds(year,month){
+    const start=`${year}-${String(month+1).padStart(2,'0')}-01`;
+    const last=new Date(year,month+1,0).getDate();
+    const end=`${year}-${String(month+1).padStart(2,'0')}-${String(last).padStart(2,'0')}`;
+    return{start,end};
+  }
+  function activityMetricValue(year,month,metric){
+    const r=monthBounds(year,month),a=analysisActuals(r.start,r.end);
+    if(metric==='meetings')return (+a.meetingsNew||0)+(+a.meetingsExisting||0);
+    return +a[metric]||0;
+  }
+  function businessMetricValue(year,month,metric){
+    return visibleDeals().reduce((sum,d)=>{
+      if(yearOf(d.date)!==year||monthOf(d.date)!==month)return sum;
+      const area=areaForDeal(d);
+      if(metric==='investment')return sum+((area==='investice'||area==='fki')?dealVolume(d):0);
+      if(metric==='bj')return sum+dealBJ(d);
+      if(metric==='mortgage')return sum+(d.category==='Hypotéky'?dealVolume(d):0);
+      return sum;
+    },0);
+  }
+  function chartDatasets(valueFn,metric){
+    const years=analysisYearSelection();
+    return years.map((year,i)=>{
+      const color=ANALYSIS_YEAR_COLORS[i%ANALYSIS_YEAR_COLORS.length];
+      return{label:String(year),data:ANALYSIS_MONTH_LABELS.map((_,m)=>valueFn(year,m,metric)),borderColor:color,backgroundColor:color+'22',pointBackgroundColor:color,pointRadius:3,borderWidth:2,tension:.32,fill:false};
+    });
+  }
+  function emptyChart(canvas,msg){
+    const wrap=canvas?.parentElement;
+    if(wrap)wrap.innerHTML=`<div class="analysis-chart-empty">${esc(msg)}</div>`;
+  }
+  function ensureCanvas(id){
+    const el=byId(id);
+    if(el)return el;
+    const wrap=document.querySelector(id==='analysisBusinessChart'?'#analysisBusinessYearToggles + .chart-wrap':'#analysisYearToggles + .chart-wrap');
+    if(!wrap)return null;
+    wrap.innerHTML=`<canvas id="${id}"></canvas>`;
+    return byId(id);
+  }
+  window.renderAnalysisActivityChart=function(){
+    renderAnalysisYearToggles();
+    const canvas=ensureCanvas('analysisActivityChart');
+    if(!canvas||typeof Chart==='undefined')return;
+    const metric=val('analysisChartMetric')||'calls',select=byId('analysisChartMetric'),label=select?.selectedOptions?.[0]?.textContent||'Aktivita';
+    const datasets=chartDatasets(activityMetricValue,metric);
+    if(!datasets.length){if(analysisActivityChart)analysisActivityChart.destroy();emptyChart(canvas,'Zapni alespoň jeden rok.');return}
+    if(analysisActivityChart)analysisActivityChart.destroy();
+    analysisActivityChart=new Chart(canvas,{type:'line',data:{labels:ANALYSIS_MONTH_LABELS,datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{usePointStyle:true,boxWidth:8}},tooltip:{callbacks:{title:x=>`${label} · ${x[0].label}`,label:x=>`${x.dataset.label}: ${metric==='signedBj'?num(x.parsed.y)+' BJ':num(x.parsed.y)}`}}},scales:{y:{beginAtZero:true,grid:{color:'rgba(100,120,150,.14)'}},x:{grid:{display:false}}}}});
+  };
+  window.renderAnalysisBusinessChart=function(){
+    renderAnalysisYearToggles();
+    const canvas=ensureCanvas('analysisBusinessChart');
+    if(!canvas||typeof Chart==='undefined')return;
+    const metric=val('analysisBusinessMetric')||'investment',select=byId('analysisBusinessMetric'),label=select?.selectedOptions?.[0]?.textContent||'Výkon',moneyMetric=metric!=='bj';
+    const datasets=chartDatasets(businessMetricValue,metric);
+    if(!datasets.length){if(analysisBusinessChart)analysisBusinessChart.destroy();emptyChart(canvas,'Zapni alespoň jeden rok.');return}
+    if(analysisBusinessChart)analysisBusinessChart.destroy();
+    analysisBusinessChart=new Chart(canvas,{type:'line',data:{labels:ANALYSIS_MONTH_LABELS,datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{usePointStyle:true,boxWidth:8}},tooltip:{callbacks:{title:x=>`${label} · ${x[0].label}`,label:x=>`${x.dataset.label}: ${moneyMetric?money(x.parsed.y):num(x.parsed.y)+' BJ'}`}}},scales:{y:{beginAtZero:true,ticks:{callback:v=>moneyMetric?money(v):num(v)},grid:{color:'rgba(100,120,150,.14)'}},x:{grid:{display:false}}}}});
+  };
+  try{renderAnalysisActivityChart=window.renderAnalysisActivityChart;renderAnalysisBusinessChart=window.renderAnalysisBusinessChart}catch(e){}
+  const baseRenderAnalysis=window.renderAnalysis||renderAnalysis;
+  window.renderAnalysis=renderAnalysis=function(){const out=baseRenderAnalysis.apply(this,arguments);renderAnalysisBusinessChart();return out};
+  setTimeout(()=>{renderAnalysisYearToggles();renderAnalysisActivityChart();renderAnalysisBusinessChart()},0);
 })();
 </script></body>
 </html>
