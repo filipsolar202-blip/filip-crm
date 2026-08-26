@@ -600,8 +600,8 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
 <iframe id="gsyncFrame" name="gsyncFrame" style="display:none"></iframe>
 
 <script>
-const VERSION='2026.08.26-5';
-const VERSION_NOTE='FKI mazání už umí odstranit i pozice zrcadlené z realizovaných obchodů a znovu je automaticky nevrací.';
+const VERSION='2026.08.26-6';
+const VERSION_NOTE='FKI fondy se při změně ISIN slučují do jednoho fondu a staré klíče už nedělají duplicitní řádky.';
 const STORE='filip_crm_main_v1';
 const DISK_STORAGE_URL='http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP='filip_crm';
@@ -1454,6 +1454,20 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
   window.renderAll=renderAll=function(){syncCrmFkiDealsToRecords();return baseRenderAll.apply(this,arguments)}
   ;['saveDeal','saveContract','moveDealToOpportunity','deleteDeal','deleteContract'].forEach(name=>{const fn=window[name];if(typeof fn!=='function')return;window[name]=this[name]=function(){const result=fn.apply(this,arguments),changed=syncCrmFkiDealsToRecords()+removeOrphanCrmFkiRecords();if(changed){persist();baseRenderAll()}return result}});
   setTimeout(()=>{const changed=syncCrmFkiDealsToRecords();if(changed){persist();baseRenderAll();saveToast(`FKI doplněno z obchodů/smluv · ${num(changed)} pozic`) }},0);
+})();
+</script>
+<script>
+(function(){
+  function n(v){return norm(v)}
+  function fkCanonicalKey(isin,fond,company,typ){return n(isin)?['isin',n(isin)].join('|'):['fond',n(cleanInvFundName(fond,company)),n(typ)].join('|')}
+  function fkStoredVisible(){return Object.entries(state.fundValues||{}).filter(([,v])=>v?.area!=='investice'&&!v?._aliasTo)}
+  function sameFkStored(v,data){const vi=n(v?.isin),di=n(data.isin);if(vi&&di)return vi===di;return n(v?.company)===n(data.company)&&n(cleanInvFundName(v?.fond||v?.product,v?.company))===n(cleanInvFundName(data.fond||data.product,data.company))&&n(v?.typ)===n(data.typ)}
+  function fkMergeKeys(oldKey,newKey,data){const keys=new Set([oldKey,newKey].filter(Boolean));fkStoredVisible().forEach(([k,v])=>{if(sameFkStored(v,data))keys.add(k)});(state.investmentRecords||[]).forEach(r=>{const k=invPositionKey(r);if(k===oldKey||k===newKey)keys.add(k);else if(data.isin&&n(invIsin(r))===n(data.isin))keys.add(k);else if(!data.isin&&n(invCompany(r))===n(data.company)&&n(cleanInvFundName(invFund(r),invCompany(r)))===n(cleanInvFundName(data.fond,data.company)))keys.add(k)});return keys}
+  function applyFkMergedFund(keys,newKey,data){let changed=0;(state.investmentRecords||[]).forEach(r=>{const old=invPositionKey(r),sameKey=keys.has(old),sameIsin=data.isin&&n(invIsin(r))===n(data.isin);if(!sameKey&&!sameIsin)return;r['Investiční společnost']=data.company;r.Fond=data.fond;r['Typ produktu']=data.product||'FKI';if(data.isin)r['rp.ISIN']=data.isin;if(data.typ)r['Typ CP']=data.typ;if(data.nav){r['Poslední schválená hodnota CP']=data.nav;r['Poslední schválená hodnota do']=data.date||today();if(invEffectiveQty(r))r['Aktuální hodnota investice']=invCurrentValue(r)}changed++});return changed}
+  function collapseFkFundValues(keys,newKey,data){state.fundValues=state.fundValues||{};state.trailSettings=state.trailSettings||{};state.lockedFunds=state.lockedFunds||{};const merged={...(state.fundValues[newKey]||{}),...data,area:'fki'};keys.forEach(k=>{const v=state.fundValues[k]||{};if(v.nav&&!merged.nav)merged.nav=v.nav;if(v.date&&!merged.date)merged.date=v.date;if(v.trailPct!==undefined&&merged.trailPct===undefined)merged.trailPct=v.trailPct;const oldTrail=state.trailSettings[k]?.trailPct;if(oldTrail!==undefined&&merged.trailPct===undefined)merged.trailPct=oldTrail;if(k!==newKey)state.fundValues[k]={...v,area:'fki',_aliasTo:newKey,company:data.company,fond:data.fond,isin:data.isin,typ:data.typ,product:data.product}});state.fundValues[newKey]=merged;state.trailSettings[newKey]={...(state.trailSettings[newKey]||{}),trailPct:merged.trailPct};keys.forEach(k=>{if(k===newKey)return;if(state.trailSettings[k])state.trailSettings[k]={...state.trailSettings[k],_aliasTo:newKey};const oldLock=fkiGlobalLockKey(k),newLock=fkiGlobalLockKey(newKey);if(state.lockedFunds[oldLock]){state.lockedFunds[newLock]=true;delete state.lockedFunds[oldLock]}})}
+  const previousFkFundItems=window.fkFundItems||fkFundItems;
+  window.fkFundItems=fkFundItems=function(){return previousFkFundItems().filter(f=>!state.fundValues?.[f.key]?._aliasTo)}
+  window.saveFkFund=function(){const oldKey=val('fkFundSelect'),company=val('fkFundCompany').trim()||'Nezařazeno',fond=cleanInvFundName(val('fkFundName').trim()||'FKI',company),isin=val('fkFundIsin').trim(),typ=val('fkFundType').trim(),product=val('fkFundProduct').trim()||'FKI',nav=parseMoney(val('fkFundNav')),date=val('fkFundDate')||today(),trailPct=parseMoney(val('fkFundTrail')),newKey=fkCanonicalKey(isin,fond,company,typ),data={area:'fki',company,fond,isin,typ,product,nav,date,trailPct},keys=fkMergeKeys(oldKey,newKey,data);collapseFkFundValues(keys,newKey,data);const changed=applyFkMergedFund(keys,newKey,data);const lock=fkiGlobalLockKey(newKey);if(val('fkFundLocked')==='yes')state.lockedFunds[lock]=true;else delete state.lockedFunds[lock];dedupeInvestmentRecordsInState(state);persist();closeModal('fkFundModal');renderAll();saveToast(`FK fond uložen a sloučen · propsáno ${num(changed)} pozic`)}
 })();
 </script></body>
 </html>
