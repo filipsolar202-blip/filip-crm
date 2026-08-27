@@ -583,6 +583,7 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
   <div class="field"><label>Počet CP</label><input id="fkRecQty" type="number" step="0.0001"></div><div class="field"><label>Upisovací hodnota CP</label><input id="fkRecSubscribe" type="number" step="0.0001"></div><div class="field"><label>Typ CP</label><input id="fkRecType"></div>
   <div class="field"><label>Pravidelná investice</label><select id="fkRecRegular"><option>Jednorázové</option><option>Měsíčně</option><option>Čtvrtletně</option><option>Ročně</option></select></div><div class="field"><label>Pravidelná částka</label><input id="fkRecRegularAmount" type="number"></div><div class="field"><label>Den v měsíci</label><input id="fkRecRegularDay" type="number" min="1" max="31"></div>
   <div class="field"><label>Datum připsání</label><input id="fkRecPaymentDate" type="date"></div><div class="field"><label>Datum emise *</label><input id="fkRecEmissionDate" type="date"></div><div class="field"><label>ISIN</label><input id="fkRecIsin"></div>
+  <div class="field"><label>Odkup zadán</label><input id="fkRecRedemptionRequested" type="date"></div><div class="field"><label>Odkup realizován</label><input id="fkRecRedemptionRealized" type="date"></div><div class="field"><label>Peníze na účtu do</label><input id="fkRecRedemptionPayout" type="date"></div>
   <div class="field"><label>Poslední hodnota CP</label><input id="fkRecNav" type="number" step="0.0001"></div><div class="field"><label>Hodnota platná do</label><input id="fkRecNavDate" type="date"></div><div class="field"><label>Zdroj / poznámka</label><input id="fkRecNote"></div>
 </div><div class="actions" style="justify-content:space-between;margin-top:12px"><button class="btn red" id="deleteFkRecordBtn" onclick="deleteFkRecord()">Smazat záznam</button><div class="actions"><button class="btn" onclick="closeModal('fkRecordModal')">Zrušit</button><button class="btn primary" onclick="saveFkRecord()">Uložit záznam</button></div></div></div></div>
 
@@ -614,8 +615,8 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
 <iframe id="gsyncFrame" name="gsyncFrame" style="display:none"></iframe>
 
 <script>
-const VERSION='2026.08.27-12';
-const VERSION_NOTE='FKI a investice barevně ukazují, které pozice už lze odkupovat a které čekají na nejbližší termín; klienti mají rychlou grafiku splněných časových testů.';
+const VERSION='2026.08.27-13';
+const VERSION_NOTE='FKI fondy mají samostatné zadání odkupu: datum zadání, realizace a nejpozdější peníze na účtu; u fondu je nové tlačítko + Odkup.';
 const STORE='filip_crm_main_v1';
 const DISK_STORAGE_URL='http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP='filip_crm';
@@ -1917,7 +1918,7 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
   function fkiRecordRows(clientId,key){return investmentRecordsForClient(clientId).filter(r=>invPositionKey(r)===key&&isFkiReportRecord(r)).sort((a,b)=>String(invEmissionDate(a)||invPaymentDate(a)).localeCompare(String(invEmissionDate(b)||invPaymentDate(b))))}
   function fkiPositionRows(clientId,item){
     const rows=fkiRecordRows(clientId,item.key);
-    return`<div class="table-wrap" style="margin-top:12px"><table class="compact-table"><thead><tr><th>Pozice / emise</th><th>Investováno</th><th>Aktuální</th><th>Výnos</th><th>Odkup / peníze</th><th>Akce</th></tr></thead><tbody>${rows.map((r,i)=>{const isOut=invIsWithdrawal(r),inv=isOut?0:invDeposit(r),cur=isOut?invWithdrawalValue(r):(invCurrentValue(r)||invDeposit(r)||0),gain=isOut?invWithdrawalValue(r):cur-inv,issue=invEmissionDate(r),info=liquidityInfo('fki',item.key,invIsin(r)||item.isin,issue),rk=enc(invRecordKey(r));return`<tr><td><b>${esc(r['Typ transakce']||'Platba')} #${i+1}</b><br><span class="note">Připsání ${fmtDate(invPaymentDate(r))} · emise ${fmtDate(issue)}</span></td><td class="money">${money(inv)}</td><td class="money">${money(cur)}</td><td class="money ${gain>=0?'green':'red'}">${isOut?'realizováno '+money(gain):money(gain)}</td><td>${liquidityBadge(info)}<br><span class="note">test ${info?fmtDate(info.taxReady):'-'} · peníze ${info?fmtDate(info.payout):'-'}</span></td><td><button class="btn slim" onclick="openFkRecordModal(${clientId},'${esc(enc(item.key))}','${esc(rk)}')">Upravit</button></td></tr>`}).join('')||'<tr><td colspan="6" class="note">Pod fondem není žádná konkrétní pozice.</td></tr>'}</tbody></table></div>`;
+    return`<div class="table-wrap" style="margin-top:12px"><table class="compact-table"><thead><tr><th>Pozice / emise</th><th>Investováno</th><th>Aktuální</th><th>Výnos</th><th>Odkup / peníze</th><th>Akce</th></tr></thead><tbody>${rows.map((r,i)=>{const isOut=invIsWithdrawal(r),inv=isOut?0:invDeposit(r),cur=isOut?invWithdrawalValue(r):(invCurrentValue(r)||invDeposit(r)||0),gain=isOut?invWithdrawalValue(r):cur-inv,issue=invEmissionDate(r),info=liquidityInfo('fki',item.key,invIsin(r)||item.isin,issue),rd=redemptionDatesForRecord('fki',item.key,invIsin(r)||item.isin,r),rk=enc(invRecordKey(r));return`<tr><td><b>${esc(r['Typ transakce']||'Platba')} #${i+1}</b><br><span class="note">Připsání ${fmtDate(invPaymentDate(r))} · emise ${fmtDate(issue)}</span></td><td class="money">${money(inv)}</td><td class="money">${money(cur)}</td><td class="money ${gain>=0?'green':'red'}">${isOut?'realizováno '+money(gain):money(gain)}</td><td>${isOut?`<span class="badge green">odkup zadán</span><br><span class="note">zadán ${fmtDate(rd.requested)} · realizace ${fmtDate(rd.realized)} · peníze ${fmtDate(rd.payout)}</span>`:`${liquidityBadge(info)}<br><span class="note">test ${info?fmtDate(info.taxReady):'-'} · peníze ${info?fmtDate(info.payout):'-'}</span>`}</td><td><button class="btn slim" onclick="openFkRecordModal(${clientId},'${esc(enc(item.key))}','${esc(rk)}')">Upravit</button></td></tr>`}).join('')||'<tr><td colspan="6" class="note">Pod fondem není žádná konkrétní pozice.</td></tr>'}</tbody></table></div>`;
   }
   function fkiCard(item,clientId){
     const records=fkiRecordRows(clientId,item.key),main=records.find(r=>!invIsWithdrawal(r))||records[0]||item.source||{},inv=records.reduce((s,r)=>s+(invIsWithdrawal(r)?0:invDeposit(r)),0)||(+item.invested||0),realized=records.reduce((s,r)=>s+(invIsWithdrawal(r)?invWithdrawalValue(r):0),0)||investmentRealizedAmount(item),cur=Math.max(0,records.reduce((s,r)=>s+(invIsWithdrawal(r)?-invWithdrawalValue(r):(invCurrentValue(r)||invDeposit(r)||0)),0))||(+item.rawAmount||0),gain=investmentPerformanceGain(cur,inv,realized),pct=investmentPerformancePct(cur,inv,realized),issue=invEmissionDate(main),info=liquidityInfo('fki',item.key,item.isin||invIsin(main),issue),key=enc(item.key),rk=enc(invRecordKey(main));
@@ -1936,6 +1937,83 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
   };
   const oldReportSettings=window.renderReportFundSettings;
   window.renderReportFundSettings=function(){const out=typeof oldReportSettings==='function'?oldReportSettings.apply(this,arguments):undefined;const table=q('reportFundSettingsTable');if(table&&!table.querySelector('thead th:last-child')?.textContent.includes('Odkupy')){[...table.querySelectorAll('thead tr')].forEach(tr=>tr.insertAdjacentHTML('beforeend','<th>Odkupy</th>'));[...table.querySelectorAll('tbody tr')].forEach(tr=>tr.insertAdjacentHTML('beforeend','<td><span class="note">nastavíš přes Upravit fond</span></td>'))}return out};
+  function redemptionDatesForRecord(area,key,isin,r){
+    const req=isoDate(r?.redemptionRequestedDate||r?.['Odkup zadán']||invPaymentDate(r)||r?.date);
+    const issue=isoDate(r?.redemptionSourceEmissionDate||r?.['Odkup z emise']||invEmissionDate(r));
+    const base=liquidityInfo(area,key,isin,issue||req);
+    const realized=isoDate(r?.redemptionRealizedDate||r?.['Odkup realizován'])||(req&&base?toIso(nextRedemptionDate(localDate(req),base.rules.redemptionFrequency)):(base?.redemption||''));
+    const rules=base?.rules||fundRulesFromValue(findFundValue(area,key,isin));
+    let payout=isoDate(r?.redemptionPayoutDate||r?.['Peníze na účtu do']);
+    if(!payout&&realized){let d=localDate(realized);if(rules.settlementMonths>0)d=addDays(endOfMonth(addMonths(d,rules.settlementMonths)),1);payout=toIso(d)}
+    return{requested:req,realized,payout,sourceIssue:issue,rules};
+  }
+  function fillRedemptionFields(r,key=''){
+    const dates=redemptionDatesForRecord('fki',key,invIsin(r),r);
+    set('fkRecRedemptionRequested',dates.requested);
+    set('fkRecRedemptionRealized',dates.realized);
+    set('fkRecRedemptionPayout',dates.payout);
+  }
+  let fkModalClientId=null,fkModalRecordKey='',fkModalIsNewRedemption=false;
+  const prevOpenFkRecordModal2=window.openFkRecordModal;
+  window.openFkRecordModal=function(clientId,encodedKey='',encodedRecordKey=''){
+    if(typeof prevOpenFkRecordModal2==='function')prevOpenFkRecordModal2.apply(this,arguments);
+    const key=encodedKey?dec(encodedKey):'',rk=encodedRecordKey?dec(encodedRecordKey):'';
+    fkModalClientId=clientId;fkModalRecordKey=rk;fkModalIsNewRedemption=false;
+    const r=key&&rk?fkiRecordRows(clientId,key).find(x=>invRecordKey(x)===rk):null;
+    if(r&&invIsWithdrawal(r))fillRedemptionFields(r,key);
+    else ['fkRecRedemptionRequested','fkRecRedemptionRealized','fkRecRedemptionPayout'].forEach(id=>set(id,''));
+  };
+  window.openFkRedemptionModal=function(clientId,encodedKey='',encodedRecordKey=''){
+    window.openFkRecordModal(clientId,encodedKey,encodedRecordKey);
+    const key=encodedKey?dec(encodedKey):'',rk=encodedRecordKey?dec(encodedRecordKey):'';
+    const source=key&&rk?fkiRecordRows(clientId,key).find(x=>invRecordKey(x)===rk):fkiRecordRows(clientId,key).find(x=>!invIsWithdrawal(x));
+    const info=source?liquidityInfo('fki',key,invIsin(source),invEmissionDate(source)):null;
+    set('fkRecTx','Odkup');
+    set('fkRecPaymentDate',today());
+    set('fkRecEmissionDate',source?invEmissionDate(source):today());
+    set('fkRecRedemptionRequested',today());
+    set('fkRecRedemptionRealized',info?info.redemption:'');
+    set('fkRecRedemptionPayout',info?info.payout:'');
+    set('fkRecDeposit','');
+    set('fkRecCurrent','');
+    setText('fkRecordTitle','Nový odkup klienta');
+    fkModalClientId=clientId;fkModalRecordKey='';fkModalIsNewRedemption=true;
+  };
+  function saveRedemptionRecord(){
+    const client=findClient(fkModalClientId||selectedFkClientId||selectedClientId);
+    if(!client)return alert('Vyber klienta.');
+    const fund=valx('fkRecFund').trim(),company=valx('fkRecCompany').trim()||'Nezařazeno',isin=valx('fkRecIsin').trim(),typ=valx('fkRecType').trim(),amount=n(valx('fkRecCurrent'))||n(valx('fkRecDeposit'));
+    if(!fund)return alert('Vyplň fond.');
+    if(!amount)return alert('Vyplň částku odkupu do pole Aktuální hodnota nebo Čistá investice.');
+    const req=valx('fkRecRedemptionRequested')||valx('fkRecPaymentDate')||today(),real=valx('fkRecRedemptionRealized'),pay=valx('fkRecRedemptionPayout'),issue=valx('fkRecEmissionDate')||req;
+    const rec={'Investor':clientName(client),'RČ':client.birthId||'','Datum narození':valx('fkRecBirthDate')||'','ClientID':client.birthId?'RC_'+normalizeStrongId(client.birthId):String(client.id),'Fond':fund,'Investiční společnost':company,'Typ produktu':valx('fkRecProduct').trim()||'FKI','Typ transakce':'Odkup','Čistá investice':amount,'Aktuální hodnota investice':amount,'Počet vydaných CP':n(valx('fkRecQty')),'Upisovací hodnota':n(valx('fkRecSubscribe')),'Datum připsání platby':req,'Datum emise':issue,'Poslední schválená hodnota CP':n(valx('fkRecNav'))||null,'Poslední schválená hodnota do':valx('fkRecNavDate')||today(),'rp.ISIN':isin,'Typ CP':typ,'Pravidelná investice':valx('fkRecRegular')||'Jednorázové','Pravidelná částka':n(valx('fkRecRegularAmount')),'Den v měsíci':n(valx('fkRecRegularDay')),'Poznámka':valx('fkRecNote').trim(),redemptionRequestedDate:req,redemptionRealizedDate:real,redemptionPayoutDate:pay,redemptionSourceEmissionDate:issue,'Odkup zadán':req,'Odkup realizován':real,'Peníze na účtu do':pay,'Odkup z emise':issue,_source:'local-fki',_updatedAt:today()};
+    const idx=fkModalRecordKey?(state.investmentRecords||[]).findIndex(r=>invRecordKey(r)===fkModalRecordKey):-1;
+    if(idx>=0)state.investmentRecords[idx]={...state.investmentRecords[idx],...rec};else state.investmentRecords.push(rec);
+    dedupeInvestmentRecordsInState(state);selectedFkClientId=client.id;selectedClientId=client.id;addActivity(client.id,'FKI','Zadán odkup: '+fund+' · '+money(amount),true);closeModal('fkRecordModal');persist();renderAll();saveToast('Odkup uložen jako samostatný záznam');
+  }
+  const prevSaveFkRecord2=window.saveFkRecord;
+  window.saveFkRecord=function(){
+    const wasWithdrawal=String(valx('fkRecTx')||'').toLowerCase().includes('odkup');
+    const req=valx('fkRecRedemptionRequested'),real=valx('fkRecRedemptionRealized'),pay=valx('fkRecRedemptionPayout'),sourceIssue=valx('fkRecEmissionDate');
+    if(wasWithdrawal&&(fkModalIsNewRedemption||!fkModalRecordKey||!fkiRecordRows(fkModalClientId, valx('fkRecFundSelect')).some(r=>invRecordKey(r)===fkModalRecordKey&&invIsWithdrawal(r)))){saveRedemptionRecord();return}
+    if(typeof prevSaveFkRecord2==='function')prevSaveFkRecord2.apply(this,arguments);
+    if(!wasWithdrawal)return;
+    const clientId=selectedFkClientId||selectedClientId;
+    const rows=investmentRecordsForClient(clientId).filter(r=>String(invTx(r)).toLowerCase().includes('odkup'));
+    const rec=rows.find(r=>fkModalRecordKey&&invRecordKey(r)===fkModalRecordKey)||rows.sort((a,b)=>String(b._updatedAt||'').localeCompare(String(a._updatedAt||'')))[0];
+    if(rec){rec.redemptionRequestedDate=req||rec['Datum připsání platby']||today();rec.redemptionRealizedDate=real||'';rec.redemptionPayoutDate=pay||'';rec.redemptionSourceEmissionDate=sourceIssue||rec['Datum emise']||'';rec['Odkup zadán']=rec.redemptionRequestedDate;rec['Odkup realizován']=rec.redemptionRealizedDate;rec['Peníze na účtu do']=rec.redemptionPayoutDate;rec['Odkup z emise']=rec.redemptionSourceEmissionDate;persist();renderAll();saveToast('Odkup uložen včetně termínů')}
+  };
+  const prevFkiCard=window.renderFkClientDetail;
+  const originalFkiCard=fkiCard;
+  fkiCard=function(item,clientId){
+    let html=originalFkiCard(item,clientId);
+    const first=fkiRecordRows(clientId,item.key).find(r=>!invIsWithdrawal(r));
+    const button=`<button class="btn slim red" onclick="event.preventDefault();openFkRedemptionModal(${clientId},'${esc(enc(item.key))}','${first?esc(enc(invRecordKey(first))):''}')">+ Odkup</button>`;
+    html=html.replace('<button class="btn slim" onclick="event.preventDefault();openFkRecordModal',button+'<button class="btn slim" onclick="event.preventDefault();openFkRecordModal');
+    html=html.replaceAll(/(<b>Odkup #[^<]*<\/b><br><span class="note">)([^<]*)(<\/span>)/g,(m,a,b,c)=>a+b+' · termíny odkupu vpravo'+c);
+    return html;
+  };
+  window.renderFkClientDetail=function(row){return prevFkiCard.apply(this,arguments)};
 })();
 </script></body>
 </html>
