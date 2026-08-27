@@ -564,6 +564,7 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
   <div class="field"><label>Investiční společnost</label><input id="invFundCompany"></div><div class="field"><label>Název fondu</label><input id="invFundName"></div><div class="field"><label>Typ produktu</label><input id="invFundProduct" placeholder="OPF / DIP / portfolio..."></div>
   <div class="field"><label>ISIN</label><input id="invFundIsin"></div><div class="field"><label>Slučovací klíč</label><input id="invFundMergeKey" placeholder="např. Atris OPF"></div><div class="field"><label>Typ CP / třída</label><input id="invFundType"></div><div class="field"><label>Hodnota CP</label><input id="invFundNav" type="number" step="0.0001"></div>
   <div class="field"><label>Platnost hodnoty</label><input id="invFundDate" type="date"></div><div class="field"><label>Následná provize % p.a.</label><input id="invFundTrail" type="number" step="0.01"></div><div class="field"><label>Zamknout v reportech</label><select id="invFundLocked"><option value="no">Ne</option><option value="yes">Ano</option></select></div>
+  <div class="field"><label>Daňový test měsíců</label><input id="invFundTaxMonths" type="number" min="0" placeholder="36"></div><div class="field"><label>Frekvence odkupu</label><select id="invFundRedemptionFrequency"><option value="monthly">Měsíčně</option><option value="quarterly">Kvartálně</option><option value="semiannual">Pololetně</option><option value="yearly">Ročně</option><option value="anytime">Kdykoliv</option></select></div><div class="field"><label>Vypořádání odkupu měsíců</label><input id="invFundSettlementMonths" type="number" min="0" placeholder="0"></div>
 </div><div class="actions" style="justify-content:flex-end;margin-top:12px"><button class="btn primary" onclick="saveInvestmentFund()">Uložit fond</button></div></div></div>
 
 <div class="modal" id="fkFundModal"><div class="modal-box"><div class="toolbar"><div><div class="eyebrow">FK fond</div><h2>Centrální hodnota fondu</h2></div><button class="btn" onclick="closeModal('fkFundModal')">Zavřít</button></div><div class="form-grid">
@@ -571,6 +572,7 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
   <div class="field"><label>Společnost</label><input id="fkFundCompany"></div><div class="field"><label>Fond</label><input id="fkFundName"></div><div class="field"><label>Typ produktu</label><input id="fkFundProduct" placeholder="FKI / OPF / DIP..."></div>
   <div class="field"><label>ISIN</label><input id="fkFundIsin"></div><div class="field"><label>Typ CP / akcie</label><input id="fkFundType"></div><div class="field"><label>Hodnota CP</label><input id="fkFundNav" type="number" step="0.0001"></div>
   <div class="field"><label>Platnost hodnoty</label><input id="fkFundDate" type="date"></div><div class="field"><label>Následná provize % p.a.</label><input id="fkFundTrail" type="number" step="0.01"></div><div class="field"><label>Zamknout v AUM</label><select id="fkFundLocked"><option value="no">Ne</option><option value="yes">Ano</option></select></div>
+  <div class="field"><label>Daňový test měsíců</label><input id="fkFundTaxMonths" type="number" min="0" placeholder="36"></div><div class="field"><label>Frekvence odkupu</label><select id="fkFundRedemptionFrequency"><option value="monthly">Měsíčně</option><option value="quarterly">Kvartálně</option><option value="semiannual">Pololetně</option><option value="yearly">Ročně</option><option value="anytime">Kdykoliv</option></select></div><div class="field"><label>Vypořádání odkupu měsíců</label><input id="fkFundSettlementMonths" type="number" min="0" placeholder="0"></div>
 </div><div class="actions" style="justify-content:flex-end;margin-top:12px"><button class="btn primary" onclick="saveFkFund()">Uložit fond</button></div></div></div>
 
 <div class="modal" id="fkRecordModal"><div class="modal-box wide"><div class="toolbar"><div><div class="eyebrow">FKI záznam klienta</div><h2 id="fkRecordTitle">Upravit záznam</h2><div class="note">Klientská pole se uloží jen k tomuto investorovi. Hodnota CP / platnost se při uložení propíše do všech pozic stejného fondu.</div></div><button class="btn" onclick="closeModal('fkRecordModal')">Zavřít</button></div><div class="form-grid">
@@ -612,8 +614,8 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
 <iframe id="gsyncFrame" name="gsyncFrame" style="display:none"></iframe>
 
 <script>
-const VERSION='2026.08.27-10';
-const VERSION_NOTE='Denní úkoly mají funkční akce Hotovo/Klient/Správa, řadí aktivity od nejnovějších a příležitost umí rovnou založit aktivitu na vybraný den.';
+const VERSION='2026.08.27-11';
+const VERSION_NOTE='Fondy v Investicích i FKI mají pravidla odkupu: daňový test, frekvenci odkupu a vypořádání; report klientovi ukazuje termín daňového testu i nejpozdější peníze na účtu.';
 const STORE='filip_crm_main_v1';
 const DISK_STORAGE_URL='http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP='filip_crm';
@@ -1824,6 +1826,107 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
     renderAll();
     saveToast('Aktivita naplánovaná k příležitosti');
   };
+})();
+</script>
+<script>
+(function(){
+  const TAX_DEFAULT=36;
+  function q(id){return document.getElementById(id)}
+  function set(id,v){const el=q(id);if(el)el.value=v??''}
+  function valx(id){return q(id)?.value||''}
+  function n(v){return typeof parseMoney==='function'?parseMoney(v)||0:+v||0}
+  function enc(v){return encodeURIComponent(String(v||''))}
+  function dec(v){return decodeURIComponent(String(v||''))}
+  function isoDate(v){if(!v)return'';const s=String(v).trim();let m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/);if(m)return s;m=s.match(/^(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})$/);if(m)return`${m[3]}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}`;const d=new Date(s);return isNaN(d)?'':`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
+  function localDate(v){const s=isoDate(v);if(!s)return null;const [y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d)}
+  function toIso(d){return d&&!isNaN(d)?`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`:''}
+  function addDays(d,days){const x=new Date(d);x.setDate(x.getDate()+days);return x}
+  function addMonths(d,months){const x=new Date(d),day=x.getDate();x.setDate(1);x.setMonth(x.getMonth()+(+months||0));const last=new Date(x.getFullYear(),x.getMonth()+1,0).getDate();x.setDate(Math.min(day,last));return x}
+  function endOfMonth(d){return new Date(d.getFullYear(),d.getMonth()+1,0)}
+  function endOfQuarter(d){return new Date(d.getFullYear(),Math.floor(d.getMonth()/3)*3+3,0)}
+  function nextRedemptionDate(from,frequency){
+    const f=String(frequency||'quarterly');
+    if(f==='anytime')return new Date(from);
+    if(f==='monthly')return endOfMonth(from);
+    if(f==='semiannual')return new Date(from.getFullYear(),from.getMonth()<6?5:11,from.getMonth()<6?30:31);
+    if(f==='yearly')return new Date(from.getFullYear(),11,31);
+    return endOfQuarter(from);
+  }
+  function freqLabel(f){return{monthly:'měsíčně',quarterly:'kvartálně',semiannual:'pololetně',yearly:'ročně',anytime:'kdykoliv'}[f||'quarterly']||'kvartálně'}
+  function fmtDate(v){if(!v)return'-';const d=localDate(v);return d?d.toLocaleDateString('cs-CZ'):String(v)}
+  function fundRulesFromValue(fv={}){
+    return{taxMonths:Math.max(0,n(fv.taxMonths||fv.taxTestMonths||TAX_DEFAULT)||TAX_DEFAULT),redemptionFrequency:fv.redemptionFrequency||'quarterly',settlementMonths:Math.max(0,n(fv.settlementMonths||0)||0)}
+  }
+  function findFundValue(area,key,isin){
+    const direct=state.fundValues?.[key];if(direct)return direct;
+    const wanted=norm(isin||'');if(!wanted)return{};
+    return Object.values(state.fundValues||{}).find(v=>v?.area===area&&norm(v.isin||'')===wanted)||{};
+  }
+  function liquidityInfo(area,key,isin,startDate){
+    const start=localDate(startDate);if(!start)return null;
+    const fv=findFundValue(area,key,isin),rules=fundRulesFromValue(fv);
+    const taxReady=addDays(addMonths(start,rules.taxMonths),1);
+    const redemption=nextRedemptionDate(taxReady,rules.redemptionFrequency);
+    let payout=new Date(redemption);
+    if(rules.settlementMonths>0)payout=addDays(endOfMonth(addMonths(redemption,rules.settlementMonths)),1);
+    return{taxReady:toIso(taxReady),redemption:toIso(redemption),payout:toIso(payout),rules};
+  }
+  function liquidityNote(area,key,isin,startDate){
+    const info=liquidityInfo(area,key,isin,startDate);
+    if(!info)return'';
+    return`Daňový test od ${fmtDate(info.taxReady)} · odkup ${freqLabel(info.rules.redemptionFrequency)} k ${fmtDate(info.redemption)} · peníze nejpozději ${fmtDate(info.payout)}`;
+  }
+  function readRules(prefix){return{taxMonths:n(valx(prefix+'TaxMonths'))||TAX_DEFAULT,redemptionFrequency:valx(prefix+'RedemptionFrequency')||'quarterly',settlementMonths:n(valx(prefix+'SettlementMonths'))||0}}
+  function writeRules(prefix,fv){const r=fundRulesFromValue(fv);set(prefix+'TaxMonths',r.taxMonths);set(prefix+'RedemptionFrequency',r.redemptionFrequency);set(prefix+'SettlementMonths',r.settlementMonths)}
+  function selectedInvestmentKey(){const old=valx('invFundSelect');return investmentFundKeyFromForm?.()||old}
+  function selectedFkKey(){const old=valx('fkFundSelect');return fkFundKeyFromForm?.()||old}
+  function storeRules(area,key,isin,rules){
+    if(!key)return;
+    state.fundValues=state.fundValues||{};
+    const keys=new Set([key]);
+    if(isin)Object.entries(state.fundValues).forEach(([k,v])=>{if(v?.area===area&&norm(v.isin||'')===norm(isin))keys.add(k)});
+    keys.forEach(k=>state.fundValues[k]={...(state.fundValues[k]||{}),area,...rules});
+  }
+  const oldLoadInv=window.loadInvestmentFundToForm;
+  window.loadInvestmentFundToForm=function(){if(typeof oldLoadInv==='function')oldLoadInv.apply(this,arguments);const key=valx('invFundSelect'),fv=findFundValue('investice',key,valx('invFundIsin'));writeRules('invFund',fv)};
+  const oldLoadFk=window.loadFkFundToForm;
+  window.loadFkFundToForm=function(){if(typeof oldLoadFk==='function')oldLoadFk.apply(this,arguments);const key=valx('fkFundSelect'),fv=findFundValue('fki',key,valx('fkFundIsin'));writeRules('fkFund',fv)};
+  const oldSaveInv=window.saveInvestmentFund;
+  window.saveInvestmentFund=function(){const rules=readRules('invFund'),isin=valx('invFundIsin').trim(),key=selectedInvestmentKey();if(typeof oldSaveInv==='function')oldSaveInv.apply(this,arguments);storeRules('investice',key,isin,rules);persist();renderAll();saveToast('Investiční fond uložen včetně pravidel odkupu')};
+  const oldSaveFk=window.saveFkFund;
+  window.saveFkFund=function(){const rules=readRules('fkFund'),isin=valx('fkFundIsin').trim(),key=selectedFkKey();if(typeof oldSaveFk==='function')oldSaveFk.apply(this,arguments);storeRules('fki',key,isin,rules);persist();renderAll();saveToast('FKI fond uložen včetně pravidel odkupu')};
+  function investmentLiquidityRows(items){
+    const rows=(items||[]).map(x=>{
+      const key=investmentFundKey(x),isin=x.isin||x.source?.isin||'',date=x.snapshot?.date||x.date||x.source?.date||'';
+      const note=liquidityNote('investice',key,isin,date);
+      return note?`<tr><td><b>${esc(x.product||'Investice')}</b><br><span class="note">${esc(x.company||'')}</span></td><td>${fmtDate(date)}</td><td>${esc(note)}</td></tr>`:'';
+    }).filter(Boolean);
+    if(!rows.length)return'';
+    return`<div class="mini-card" style="margin-top:12px"><div class="eyebrow">Likvidita odkupu</div><h3>Daňový test a peníze na účtu</h3><div class="table-wrap"><table class="compact-table"><thead><tr><th>Fond</th><th>Datum nákupu</th><th>Informace pro klienta</th></tr></thead><tbody>${rows.join('')}</tbody></table></div></div>`;
+  }
+  const oldRenderInvestmentDetail=window.renderInvestmentDetail;
+  window.renderInvestmentDetail=function(row){const html=typeof oldRenderInvestmentDetail==='function'?oldRenderInvestmentDetail.apply(this,arguments):'';return html+investmentLiquidityRows(row?.items||[])};
+  function fkiRecordRows(clientId,key){return investmentRecordsForClient(clientId).filter(r=>invPositionKey(r)===key&&isFkiReportRecord(r)).sort((a,b)=>String(invEmissionDate(a)||invPaymentDate(a)).localeCompare(String(invEmissionDate(b)||invPaymentDate(b))))}
+  function fkiPositionRows(clientId,item){
+    const rows=fkiRecordRows(clientId,item.key);
+    return`<div class="table-wrap" style="margin-top:12px"><table class="compact-table"><thead><tr><th>Pozice / emise</th><th>Investováno</th><th>Aktuální</th><th>Výnos</th><th>Odkup / peníze</th><th>Akce</th></tr></thead><tbody>${rows.map((r,i)=>{const isOut=invIsWithdrawal(r),inv=isOut?0:invDeposit(r),cur=isOut?invWithdrawalValue(r):(invCurrentValue(r)||invDeposit(r)||0),gain=isOut?invWithdrawalValue(r):cur-inv,issue=invEmissionDate(r),info=liquidityInfo('fki',item.key,invIsin(r)||item.isin,issue),rk=enc(invRecordKey(r));return`<tr><td><b>${esc(r['Typ transakce']||'Platba')} #${i+1}</b><br><span class="note">Připsání ${fmtDate(invPaymentDate(r))} · emise ${fmtDate(issue)}</span></td><td class="money">${money(inv)}</td><td class="money">${money(cur)}</td><td class="money ${gain>=0?'green':'red'}">${isOut?'realizováno '+money(gain):money(gain)}</td><td>${info?`<b>${fmtDate(info.taxReady)}</b><br><span class="note">peníze nejpozději ${fmtDate(info.payout)}</span>`:'<span class="note">emise chybí</span>'}</td><td><button class="btn slim" onclick="openFkRecordModal(${clientId},'${esc(enc(item.key))}','${esc(rk)}')">Upravit</button></td></tr>`}).join('')||'<tr><td colspan="6" class="note">Pod fondem není žádná konkrétní pozice.</td></tr>'}</tbody></table></div>`;
+  }
+  function fkiCard(item,clientId){
+    const records=fkiRecordRows(clientId,item.key),main=records.find(r=>!invIsWithdrawal(r))||records[0]||item.source||{},inv=records.reduce((s,r)=>s+(invIsWithdrawal(r)?0:invDeposit(r)),0)||(+item.invested||0),realized=records.reduce((s,r)=>s+(invIsWithdrawal(r)?invWithdrawalValue(r):0),0)||investmentRealizedAmount(item),cur=Math.max(0,records.reduce((s,r)=>s+(invIsWithdrawal(r)?-invWithdrawalValue(r):(invCurrentValue(r)||invDeposit(r)||0)),0))||(+item.rawAmount||0),gain=investmentPerformanceGain(cur,inv,realized),pct=investmentPerformancePct(cur,inv,realized),issue=invEmissionDate(main),info=liquidityInfo('fki',item.key,item.isin||invIsin(main),issue),key=enc(item.key),rk=enc(invRecordKey(main));
+    return`<details class="fki-work-card ${gain<0?'loss':''} ${item.locked?'locked':''}"><summary class="fki-work-head"><div class="fki-work-name"><b>${esc(cleanInvFundName(item.product||invFund(main),item.company))}</b><div class="chips"><span class="chip">${esc(item.company||invCompany(main)||'')}</span><span class="badge purple">FKI</span><span class="chip">${num(records.length)} pozic</span>${info?`<span class="badge green">test ${fmtDate(info.taxReady)}</span>`:'<span class="chip">emise chybí</span>'}</div></div><div class="fki-work-metric"><small>Vloženo</small><strong>${money(inv)}</strong></div><div class="fki-work-metric"><small>Aktuální</small><strong class="${gain>=0?'green':'red'}">${money(cur)}</strong></div><div class="fki-work-metric"><small>Výnos</small><strong class="${gain>=0?'green':'red'}">${pct.toFixed(1)} %</strong></div><div class="actions"><button class="btn slim primary" onclick="event.preventDefault();openInvestmentScenarioModal(${clientId},'FKI')">+ Dokup</button><button class="btn slim" onclick="event.preventDefault();openFkRecordModal(${clientId},'${esc(key)}','${esc(rk)}')">Upravit</button><button class="icon-btn ${item.locked?'primary':''}" onclick="event.preventDefault();toggleFkFundLock('${esc(key)}')" title="Zámek AUM">${item.locked?'🔒':'🔓'}</button></div></summary><div class="fki-work-detail"><div class="fki-detail-grid"><div><small>Investováno</small><b>${money(inv)}</b></div><div><small>Výnos</small><b class="${gain>=0?'green':'red'}">${money(gain)}</b></div><div><small>Datum emise</small><b>${fmtDate(issue)}</b></div><div><small>Daňový test od</small><b>${info?fmtDate(info.taxReady):'-'}</b></div><div><small>Odkup fondu</small><b>${info?fmtDate(info.redemption):'-'}</b></div><div><small>Peníze nejpozději</small><b>${info?fmtDate(info.payout):'-'}</b></div><div><small>Frekvence</small><b>${info?freqLabel(info.rules.redemptionFrequency):'-'}</b></div><div><small>Vypořádání</small><b>${info?num(info.rules.settlementMonths)+' měs.':'-'}</b></div></div>${info?`<div class="fki-timebar" style="--p:100%"><span>Emise</span><span></span><span>${fmtDate(info.payout)}</span></div><div class="note">${esc(liquidityNote('fki',item.key,item.isin||invIsin(main),issue))}</div>`:''}${fkiPositionRows(clientId,item)}</div></details>`;
+  }
+  window.renderFkClientDetail=function(row){const c=row?.client,items=row?.items||[],aum=row?.aum||0,invested=row?.invested||0,realized=row?.realized||0,gain=investmentPerformanceGain(aum,invested,realized),gainPct=investmentPerformancePct(aum,invested,realized),locked=items.filter(x=>x.locked);if(!c)return'<div class="investment-empty"><h2>Vyber FK klienta</h2><p>Vlevo klikni na klienta s FK portfoliem.</p></div>';return`<div class="investment-detail-head"><div class="avatar">${esc(initials(c.name))}</div><div><div class="eyebrow">FK karta klienta</div><h2>${esc(clientName(c))}</h2><div class="chips"><span class="badge purple">${num(items.length)} fondů</span><span class="chip">${esc(row.providers.join(' · ')||'bez společnosti')}</span>${locked.length?`<span class="badge orange">${num(locked.length)} zamčeno mimo AUM</span>`:'<span class="badge green">AUM aktivní</span>'}</div></div><div class="actions"><button class="btn slim" onclick="selectedClientId=${c.id};showView('clients');clientSection='portfolio';renderClients()">Klient</button><button class="btn slim" onclick="setFkMode('funds')">Fondy</button><button class="btn slim" onclick="openFkRecordModal(${c.id})">+ FKI záznam</button><button class="btn slim primary" onclick="openInvestmentScenarioModal(${c.id},'FKI')">+ Nová investice</button></div></div><div class="investment-summary"><div class="metric"><span class="note">Aktuálně vloženo netto</span><b>${money(invested)}</b></div><div class="metric"><span class="note">Aktuální hodnota</span><b>${money(aum)}</b></div><div class="metric"><span class="note">Aktuální výnos</span><b class="${gain>=0?'green':'red'}">${money(gain)}</b><small>${gainPct.toFixed(1)} %</small></div><div class="metric"><span class="note">Fondů / pozic</span><b>${num(items.length)}</b><small>${num(items.reduce((s,x)=>s+(x.tx||1),0))} pozic</small></div></div>${renderInvestmentAllocation(items,aum)}<div class="mini-card"><div class="toolbar"><div><div class="eyebrow">Detail investičních fondů</div><h3>Fondy klienta, daňový test a odkup</h3></div><button class="btn" onclick="openFkClientReportModal(${c.id})">Report FKI + investice</button></div><div class="fki-work-list">${items.sort((a,b)=>b.rawAmount-a.rawAmount).map(x=>fkiCard(x,c.id)).join('')||'<p class="note">Klient zatím nemá FKI fondy.</p>'}</div></div>`};
+  const oldReportHtml=window.fkClientReportHtml;
+  window.fkClientReportHtml=function(c,row,opts={}){
+    const html=typeof oldReportHtml==='function'?oldReportHtml.apply(this,arguments):'';
+    const fki=(row?.items||[]).map(x=>{const r=fkiRecordRows(c.id,x.key).find(a=>!invIsWithdrawal(a))||x.source||{},note=liquidityNote('fki',x.key,x.isin||invIsin(r),invEmissionDate(r));return note?`<tr><td><b>${esc(x.product||'FKI')}</b><br><span class="muted">${esc(x.company||'')}</span></td><td>${fmtDate(invEmissionDate(r))}</td><td>${esc(note)}</td></tr>`:''}).filter(Boolean).join('');
+    const classic=opts.includeClassic?clientClassicInvestmentReportItems(c.id):[];
+    const inv=classic.map(x=>{const key=investmentFundKey(x),date=x.snapshot?.date||x.date||'',note=liquidityNote('investice',key,x.isin,date);return note?`<tr><td><b>${esc(x.product||'Investice')}</b><br><span class="muted">${esc(x.company||'')}</span></td><td>${fmtDate(date)}</td><td>${esc(note)}</td></tr>`:''}).filter(Boolean).join('');
+    const section=`<section class="glass"><h2>Daňový test a dostupnost prostředků</h2><table><thead><tr><th>Fond</th><th>Datum nákupu / emise</th><th>Informace pro klienta</th></tr></thead><tbody>${fki}${inv}</tbody></table></section>`;
+    return html.replace('<section class="glass"><h2>Upozornění</h2>',section+'<section class="glass"><h2>Upozornění</h2>');
+  };
+  const oldReportSettings=window.renderReportFundSettings;
+  window.renderReportFundSettings=function(){const out=typeof oldReportSettings==='function'?oldReportSettings.apply(this,arguments):undefined;const table=q('reportFundSettingsTable');if(table&&!table.querySelector('thead th:last-child')?.textContent.includes('Odkupy')){[...table.querySelectorAll('thead tr')].forEach(tr=>tr.insertAdjacentHTML('beforeend','<th>Odkupy</th>'));[...table.querySelectorAll('tbody tr')].forEach(tr=>tr.insertAdjacentHTML('beforeend','<td><span class="note">nastavíš přes Upravit fond</span></td>'))}return out};
 })();
 </script></body>
 </html>
