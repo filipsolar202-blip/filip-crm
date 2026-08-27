@@ -256,7 +256,7 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
             <div class="metric"><span class="note">Klientů</span><b id="fkClientCount">0</b></div>
             <div class="metric"><span class="note">Fondů</span><b id="fkFundCount">0</b></div>
             <div class="metric"><span class="note">AUM celkem</span><b id="fkTotalAum">0 Kč</b></div>
-            <div class="metric"><span class="note">Následky ročně</span><b id="fkTrailTotal">0 Kč</b></div>
+            <div class="metric"><span class="note">Následky měsíčně</span><b id="fkTrailTotal">0 Kč</b></div>
           </div>
           <div class="fk-tabs" style="margin:10px 0">
             <button class="fk-tab active" id="fkTabClient" onclick="setFkMode('client')">Klienti</button>
@@ -391,7 +391,7 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
         <div class="card kpi span-3"><div class="label">Celkové AUM</div><div class="value blue" id="reportTotalAum">0 Kč</div><div class="note">Investice + FKI napříč klienty</div></div>
         <div class="card kpi span-3"><div class="label">AUM Investice</div><div class="value green" id="reportInvestmentAum">0 Kč</div><div class="note">běžné investice mimo FKI</div></div>
         <div class="card kpi span-3"><div class="label">AUM FKI</div><div class="value purple" id="reportFkiAum">0 Kč</div><div class="note">čerpáno z FKI evidence</div></div>
-        <div class="card kpi span-3"><div class="label">Roční následky FKI</div><div class="value orange" id="reportTrailEstimate">0 Kč</div><div class="note">orientačně podle nastavení ve FKI</div></div>
+        <div class="card kpi span-3"><div class="label">FKI měsíčně 90 %</div><div class="value orange" id="reportTrailEstimate">0 Kč</div><div class="note">10 % zůstává na roční doplatek</div></div>
         <div class="card span-4 chart-card">
           <div class="eyebrow">Rozložení</div>
           <h2>AUM podle společností</h2>
@@ -611,8 +611,8 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
 <iframe id="gsyncFrame" name="gsyncFrame" style="display:none"></iframe>
 
 <script>
-const VERSION='2026.08.27-8';
-const VERSION_NOTE='Denní úkoly na Dashboardu znovu správně používají řazení smluv a zůstávají chráněné, aby neshodily zbytek CRM.';
+const VERSION='2026.08.27-9';
+const VERSION_NOTE='Fondy Investice/FKI se při shodném ISIN slučují přes výběr správné informace a FKI následná provize se zobrazuje jako měsíční výplata 90 %.';
 const STORE='filip_crm_main_v1';
 const DISK_STORAGE_URL='http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP='filip_crm';
@@ -1610,6 +1610,124 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
   const baseRenderAnalysis=window.renderAnalysis||renderAnalysis;
   window.renderAnalysis=renderAnalysis=function(){const out=baseRenderAnalysis.apply(this,arguments);renderAnalysisBusinessChart();return out};
   setTimeout(()=>{renderAnalysisYearToggles();renderAnalysisActivityChart();renderAnalysisBusinessChart()},0);
+})();
+</script>
+<script>
+(function(){
+  function cNorm(v){return norm(String(v||''))}
+  function cNum(v){return typeof parseMoney==='function'?parseMoney(v)||0:+v||0}
+  function cLabel(f){return [f.company,f.fond||f.product,f.isin,f.typ].filter(Boolean).join(' · ')||'Fond bez názvu'}
+  function cPickMaster(area,current,candidates){
+    if(!candidates.length)return current;
+    const options=[current,...candidates.map(f=>({area,company:f.company||'',fond:f.fond||f.product||f.label||'',product:f.product||f.kind||area,isin:f.isin||'',typ:f.typ||'',mergeKey:f.mergeKey||'',nav:f.nav||'',date:f.date||'',trailPct:f.trailPct}))];
+    const text=options.map((o,i)=>`${i+1}. ${cLabel(o)}`).join('\n');
+    const choice=prompt(`Našel jsem stejný ISIN u více fondů.\n\nVyber číslo záznamu, jehož název/společnost/typ je správně. Tato informace se propíše ke všem klientům s tímto ISIN:\n\n${text}`,'1');
+    if(choice===null)return null;
+    const idx=Math.max(0,Math.min(options.length-1,(parseInt(choice,10)||1)-1));
+    return{...current,...options[idx],isin:current.isin||options[idx].isin,nav:current.nav||options[idx].nav,date:current.date||options[idx].date||today(),trailPct:current.trailPct||options[idx].trailPct};
+  }
+  function cTrailAnnualGross(){
+    const coef=+state.settings.bjCoef||150;
+    return fkiReportItems().reduce((sum,x)=>{
+      const pct=+(state.trailSettings?.[x.key]?.trailPct||state.fundValues?.[x.key]?.trailPct||0);
+      return sum+(+x.amount||0)*(pct/100)/250*coef;
+    },0);
+  }
+  window.fkiTrailAnnualGross=cTrailAnnualGross;
+  window.fkiTrailYearEndBonus=function(){return cTrailAnnualGross()*0.1};
+  window.fkiTrailMonthlyPayout=function(){return cTrailAnnualGross()*0.9/12};
+  window.fkiTrailEstimate=fkiTrailEstimate=function(){return window.fkiTrailMonthlyPayout()};
+  window.fkTrailForItem=fkTrailForItem=function(x){
+    const key=fkItemKey(x),pct=+(state.trailSettings?.[key]?.trailPct||state.fundValues?.[key]?.trailPct||0),coef=+state.settings.bjCoef||150;
+    return(+x.amount||0)*(pct/100)/250*coef*0.9/12;
+  };
+  function investmentCandidatesByIsin(oldKey,isin){
+    const i=cNorm(isin);
+    if(!i)return[];
+    const rows=investmentFundItems().filter(f=>cNorm(f.isin)===i&&String(f.key)!==String(oldKey));
+    Object.entries(state.fundValues||{}).forEach(([key,v])=>{
+      if(v?.area!=='investice'||String(key)===String(oldKey)||cNorm(v.isin)!==i)return;
+      if(!rows.some(f=>String(f.key)===String(key)))rows.push({key,company:v.company,fond:v.fond,product:v.product,isin:v.isin,typ:v.typ,mergeKey:v.mergeKey,nav:v.nav,date:v.date,trailPct:v.trailPct,rawKeys:new Set([key])});
+    });
+    return rows;
+  }
+  function investmentMergeKeys(oldKey,key,candidates,chosen){
+    const keys=new Set([oldKey,key].filter(Boolean));
+    const f=investmentFundItems().find(x=>String(x.key)===String(oldKey)||String(x.key)===String(key));
+    if(f?.rawKeys)[...f.rawKeys].forEach(k=>keys.add(k));
+    candidates.forEach(x=>{keys.add(x.key);if(x.rawKeys)[...x.rawKeys].forEach(k=>keys.add(k))});
+    if(chosen?.isin)(state.investmentSnapshots||[]).forEach(s=>{if(cNorm(s.isin)===cNorm(chosen.isin))keys.add(investmentSnapshotKeyForSnapshot(s))});
+    return keys;
+  }
+  function applyInvestmentFundMerge(keys,data){
+    let changed=0;
+    (state.investmentSnapshots||[]).forEach(s=>{
+      const sameKey=keys.has(investmentSnapshotKeyForSnapshot(s)),sameIsin=data.isin&&cNorm(s.isin)===cNorm(data.isin);
+      if(!sameKey&&!sameIsin)return;
+      s.company=data.company;s.product=data.fond||data.product;s.isin=data.isin;s.mergeKey=data.mergeKey||s.mergeKey||'';s.fundType=data.typ||data.product||s.fundType||'';s.typ=data.typ||s.typ||'';s.updatedAt=today();changed++;
+    });
+    ['deals','contracts','opportunities'].forEach(arr=>(state[arr]||[]).forEach(x=>{
+      const area=arr==='deals'?areaForDeal(x):(arr==='contracts'?areaForContract(x):opportunityArea(x));
+      if(area!=='investice')return;
+      const sameIsin=data.isin&&cNorm(x.isin||x.fundIsin)===cNorm(data.isin);
+      if(!sameIsin)return;
+      x.company=data.company;x.product=data.fond||data.product;x.isin=data.isin;x.fundIsin=data.isin;x.fundType=data.typ||x.fundType||'';x.updatedAt=today();changed++;
+    }));
+    return changed;
+  }
+  window.saveInvestmentFund=function(){
+    const oldKey=val('invFundSelect'),chosen=investmentFundItems().find(x=>x.key===oldKey),fallbackKey=chosen?.rawKeys?.values?chosen.rawKeys.values().next().value:'',key=investmentFundKeyFromForm()||oldKey||fallbackKey,storeKey=fallbackKey||oldKey||key,company=val('invFundCompany').trim()||'Nezařazeno',fond=val('invFundName').trim()||'Investice',isin=val('invFundIsin').trim(),mergeKey=val('invFundMergeKey').trim(),typ=val('invFundType').trim(),product=val('invFundProduct').trim()||'Investice',nav=cNum(val('invFundNav')),date=val('invFundDate')||today(),trailPct=cNum(val('invFundTrail'));
+    let master={area:'investice',company,fond,product,typ,isin,mergeKey,nav,date,trailPct};
+    const candidates=investmentCandidatesByIsin(oldKey,isin);
+    if(candidates.length){master=cPickMaster('Investice',master,candidates);if(!master)return;['invFundCompany','invFundName','invFundProduct','invFundType'].forEach((id,i)=>setVal(id,[master.company,master.fond||master.product,master.product,master.typ][i]||''));}
+    const fundValue={area:'investice',company:master.company||company,fond:master.fond||master.product||fond,isin:master.isin||isin,mergeKey:master.mergeKey||mergeKey,typ:master.typ||typ,product:master.product||product,nav:master.nav||nav,date:master.date||date,trailPct:master.trailPct??trailPct};
+    const keys=investmentMergeKeys(oldKey,key,candidates,fundValue);keys.add(storeKey);
+    [...keys].filter(Boolean).forEach(k=>state.fundValues[k]={...(state.fundValues[k]||{}),...fundValue});
+    state.trailSettings=state.trailSettings||{};state.trailSettings[key]={...(state.trailSettings[key]||{}),trailPct:fundValue.trailPct};
+    state.lockedFunds=state.lockedFunds||{};const lockKey=investmentFundLockKey(key);if(val('invFundLocked')==='yes')state.lockedFunds[lockKey]=true;else delete state.lockedFunds[lockKey];
+    const changed=applyInvestmentFundMerge(keys,fundValue);selectedInvestmentFundKey=key;persist();closeModal('investmentFundModal');investmentMode='funds';renderAll();saveToast(`Investiční fond uložen · sloučeno ${num(keys.size)} klíčů · propsáno ${num(changed)} záznamů`);
+  };
+  function fkCandidatesByIsin(oldKey,isin){
+    const i=cNorm(isin);
+    if(!i)return[];
+    const rows=fkFundItems().filter(f=>cNorm(f.isin)===i&&String(f.key)!==String(oldKey));
+    Object.entries(state.fundValues||{}).forEach(([key,v])=>{
+      if(v?.area==='investice'||String(key)===String(oldKey)||cNorm(v.isin)!==i)return;
+      if(!rows.some(f=>String(f.key)===String(key)))rows.push({key,company:v.company,fond:v.fond,product:v.product,isin:v.isin,typ:v.typ,nav:v.nav,date:v.date,trailPct:v.trailPct});
+    });
+    return rows;
+  }
+  function fkKey(isin,fond,company,typ){return cNorm(isin)?['isin',cNorm(isin)].join('|'):['fond',cNorm(cleanInvFundName(fond,company)),cNorm(typ)].join('|')}
+  function applyFkFundMerge(keys,newKey,data){
+    let changed=0;
+    (state.investmentRecords||[]).forEach(r=>{
+      const sameKey=keys.has(invPositionKey(r)),sameIsin=data.isin&&cNorm(invIsin(r))===cNorm(data.isin);
+      if(!sameKey&&!sameIsin)return;
+      r['Investiční společnost']=data.company;r.Fond=data.fond;r['Typ produktu']=data.product||'FKI';r['rp.ISIN']=data.isin;if(data.typ)r['Typ CP']=data.typ;
+      if(data.nav){r['Poslední schválená hodnota CP']=data.nav;r['Poslední schválená hodnota do']=data.date||today();if(invEffectiveQty(r))r['Aktuální hodnota investice']=invCurrentValue(r)}
+      r._updatedAt=today();changed++;
+    });
+    state.fundValues=state.fundValues||{};state.trailSettings=state.trailSettings||{};state.lockedFunds=state.lockedFunds||{};
+    [...keys].filter(Boolean).forEach(k=>{if(k!==newKey)state.fundValues[k]={...(state.fundValues[k]||{}),...data,area:'fki',_aliasTo:newKey}});
+    state.fundValues[newKey]={...(state.fundValues[newKey]||{}),...data,area:'fki'};
+    state.trailSettings[newKey]={...(state.trailSettings[newKey]||{}),trailPct:data.trailPct};
+    [...keys].forEach(k=>{if(k===newKey)return;if(state.trailSettings[k])state.trailSettings[k]={...state.trailSettings[k],_aliasTo:newKey};const oldLock=fkiGlobalLockKey(k),newLock=fkiGlobalLockKey(newKey);if(state.lockedFunds[oldLock]){state.lockedFunds[newLock]=true;delete state.lockedFunds[oldLock]}});
+    return changed;
+  }
+  window.saveFkFund=function(){
+    const oldKey=val('fkFundSelect'),company=val('fkFundCompany').trim()||'Nezařazeno',fond=cleanInvFundName(val('fkFundName').trim()||'FKI',company),isin=val('fkFundIsin').trim(),typ=val('fkFundType').trim(),product=val('fkFundProduct').trim()||'FKI',nav=cNum(val('fkFundNav')),date=val('fkFundDate')||today(),trailPct=cNum(val('fkFundTrail'));
+    let master={area:'fki',company,fond,product,typ,isin,nav,date,trailPct};
+    const candidates=fkCandidatesByIsin(oldKey,isin);
+    if(candidates.length){master=cPickMaster('FKI',master,candidates);if(!master)return;['fkFundCompany','fkFundName','fkFundProduct','fkFundType'].forEach((id,i)=>setVal(id,[master.company,master.fond||master.product,master.product,master.typ][i]||''));}
+    const data={area:'fki',company:master.company||company,fond:master.fond||master.product||fond,isin:master.isin||isin,typ:master.typ||typ,product:master.product||product,nav:master.nav||nav,date:master.date||date,trailPct:master.trailPct??trailPct},newKey=fkKey(data.isin,data.fond,data.company,data.typ),keys=new Set([oldKey,newKey].filter(Boolean));
+    fkCandidatesByIsin(oldKey,data.isin).forEach(f=>keys.add(f.key));
+    (state.investmentRecords||[]).forEach(r=>{if(data.isin&&cNorm(invIsin(r))===cNorm(data.isin))keys.add(invPositionKey(r));else if(oldKey&&invPositionKey(r)===oldKey)keys.add(oldKey)});
+    const changed=applyFkFundMerge(keys,newKey,data),lock=fkiGlobalLockKey(newKey);
+    if(val('fkFundLocked')==='yes')state.lockedFunds[lock]=true;else delete state.lockedFunds[lock];
+    dedupeInvestmentRecordsInState(state);persist();closeModal('fkFundModal');renderAll();saveToast(`FKI fond uložen · sloučeno ${num(keys.size)} klíčů · propsáno ${num(changed)} pozic`);
+  };
+  const baseReportFundSettings=window.renderReportFundSettings||renderReportFundSettings;
+  window.renderReportFundSettings=renderReportFundSettings=function(){const out=baseReportFundSettings.apply(this,arguments);const el=byId('reportFundSettingsTable');if(el){const note=document.createElement('caption');note.style.captionSide='bottom';note.className='note';note.textContent=`FKI provize: měsíčně se zobrazuje 90 % roční následné provize (${money(window.fkiTrailMonthlyPayout())}), 10 % roční doplatek je ${money(window.fkiTrailYearEndBonus())}.`;if(!el.querySelector('caption'))el.appendChild(note)}return out};
 })();
 </script></body>
 </html>
