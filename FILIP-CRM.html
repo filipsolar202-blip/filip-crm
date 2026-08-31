@@ -624,7 +624,7 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
 <iframe id="gsyncFrame" name="gsyncFrame" style="display:none"></iframe>
 
 <script>
-const VERSION='2026.08.31-3';
+const VERSION='2026.08.31-4';
 const VERSION_NOTE='Klientský HTML report má nový světlý glass vzhled, volitelné sekce a jasné rozdělení pojištění, úvěrů, investic a FKI.';
 const STORE='filip_crm_main_v1';
 const DISK_STORAGE_URL='http://127.0.0.1:48730';
@@ -2090,13 +2090,34 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
     return REPORT_SECTIONS.filter(([id])=>reportHas(id,data)).map(([id,label,desc])=>`<label class="mini-card" style="display:flex;gap:10px;align-items:flex-start;margin:0"><input type="checkbox" class="report-section-check" value="${esc(id)}" checked><span><b>${esc(label)}</b><br><span class="note">${esc(desc)}</span></span></label>`).join('')||'<p class="note">U klienta zatím není co reportovat.</p>';
   }
   function textArea(x){return norm([x.type,x.category,x.product,x.company,x.note].filter(Boolean).join(' '))}
+  function reportIso(v){if(!v)return'';const s=String(v).trim();let m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/);if(m)return s;m=s.match(/^(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})$/);if(m)return`${m[3]}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}`;const d=new Date(s);return isNaN(d)?'':`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
+  function reportDate(v){const s=reportIso(v);if(!s)return String(v||'');const [y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d).toLocaleDateString('cs-CZ')}
+  function reportAddMonths(d,months){const x=new Date(d),day=x.getDate();x.setDate(1);x.setMonth(x.getMonth()+(+months||0));x.setDate(Math.min(day,new Date(x.getFullYear(),x.getMonth()+1,0).getDate()));return x}
+  function reportEndMonth(d){return new Date(d.getFullYear(),d.getMonth()+1,0)}
+  function reportEndQuarter(d){return new Date(d.getFullYear(),Math.floor(d.getMonth()/3)*3+3,0)}
+  function reportFundValue(area,key,isin){
+    const direct=state.fundValues?.[key];if(direct)return direct;
+    const wanted=norm(isin||'');if(!wanted)return{};
+    return Object.values(state.fundValues||{}).find(v=>v?.area===area&&norm(v.isin||'')===wanted)||{};
+  }
+  function reportRules(area,key,isin){const fv=reportFundValue(area,key,isin);return{taxMonths:Math.max(0,parseMoney?.(fv.taxMonths||fv.taxTestMonths||36)||36),redemptionFrequency:fv.redemptionFrequency||'quarterly',settlementMonths:Math.max(0,parseMoney?.(fv.settlementMonths||0)||0)}}
+  function reportRedemptionDate(d,frequency){const f=String(frequency||'quarterly');if(f==='anytime')return new Date(d);if(f==='monthly')return reportEndMonth(d);if(f==='semiannual')return new Date(d.getFullYear(),d.getMonth()<6?5:11,d.getMonth()<6?30:31);if(f==='yearly')return new Date(d.getFullYear(),11,31);return reportEndQuarter(d)}
+  function reportLiquidityNote(area,key,isin,startDate){
+    const iso=reportIso(startDate);if(!iso)return'';
+    const [y,m,d]=iso.split('-').map(Number),start=new Date(y,m-1,d),rules=reportRules(area,key,isin);
+    const tax=reportAddMonths(start,rules.taxMonths);tax.setDate(tax.getDate()+1);
+    const red=reportRedemptionDate(tax,rules.redemptionFrequency);
+    let payout=new Date(red);if(rules.settlementMonths>0)payout=reportEndMonth(reportAddMonths(red,rules.settlementMonths));
+    const fl={monthly:'měsíčně',quarterly:'kvartálně',semiannual:'pololetně',yearly:'ročně',anytime:'kdykoliv'}[rules.redemptionFrequency]||'kvartálně';
+    return`Daňový test od ${reportDate(tax)} · odkup ${fl} k ${reportDate(red)} · peníze nejpozději ${reportDate(payout)}`;
+  }
   function isLoanReportItem(x){return ['uvery','hypoteky'].includes(areaForContract?.(x)||'')||/hypot|uver|úvěr|leasing|pujck|půjčk/.test(textArea(x))}
   function isInvestmentReportItem(x){const a=areaForContract?.(x)||areaForDeal?.(x)||'';return ['investice','fki'].includes(a)||/invest|fki|fond|sicav/.test(textArea(x))}
   function isInsuranceReportItem(x){return !isLoanReportItem(x)&&!isInvestmentReportItem(x)&&(/pojist|pojišt|zivot|život|auto|majetek|odpoved|odpověd|uraz|úraz/.test(textArea(x))||!!x.type)}
   function reportClientData(c){
     const contracts=(typeof clientContracts==='function'?clientContracts(c.id):[]).slice();
     const deals=(typeof clientDeals==='function'?clientDeals(c.id):[]).slice();
-    const opps=(typeof clientOpenOpportunities==='function'?clientOpenOpportunities(c.id):[]).filter(o=>!isOpenOpportunity||isOpenOpportunity(o));
+    const opps=(typeof clientOpenOpportunities==='function'?clientOpenOpportunities(c.id):[]).filter(o=>typeof isOpenOpportunity!=='function'||isOpenOpportunity(o));
     const row=(typeof fkClientRows==='function'?fkClientRows():[]).find(r=>String(r.client?.id)===String(c.id));
     const fki=(row?.items||[]).filter(x=>!x.locked);
     const classic=typeof clientClassicInvestmentReportItems==='function'?clientClassicInvestmentReportItems(c.id):[];
@@ -2110,13 +2131,13 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
     fki.forEach(x=>{
       const r=(typeof investmentRecordsForClient==='function'?investmentRecordsForClient(c.id):[]).find(a=>isFkiReportRecord?.(a)&&invPositionKey?.(a)===x.key&&!invIsWithdrawal?.(a))||x.source||{};
       const date=invEmissionDate?.(r)||x.date||'';
-      const note=liquidityNote?.('fki',x.key,x.isin||invIsin?.(r),date)||'';
+      const note=reportLiquidityNote('fki',x.key,x.isin||invIsin?.(r),date)||'';
       if(note)liquidity.push({section:'FKI',product:x.product||invFund?.(r)||'FKI',company:x.company||invCompany?.(r)||'',date,note});
     });
     classic.forEach(x=>{
       const key=investmentFundKey?.(x)||[x.company,x.product,x.isin].filter(Boolean).join('|');
       const date=x.snapshot?.date||x.date||'';
-      const note=liquidityNote?.('investice',key,x.isin,date)||'';
+      const note=reportLiquidityNote('investice',key,x.isin,date)||'';
       if(note)liquidity.push({section:'Investice',product:x.product||'Investice',company:x.company||'',date,note});
     });
     return{contracts,deals,opps,open,insurance,loans,fki,classic,liquidity};
@@ -2140,10 +2161,10 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
     if(section==='FKI'){
       const r=(typeof investmentRecordsForClient==='function'?investmentRecordsForClient(c.id):[]).find(a=>isFkiReportRecord?.(a)&&invPositionKey?.(a)===x.key&&!invIsWithdrawal?.(a))||x.source||{};
       date=invEmissionDate?.(r)||date;
-      note=liquidityNote?.('fki',x.key,x.isin||invIsin?.(r),date)||'';
+      note=reportLiquidityNote('fki',x.key,x.isin||invIsin?.(r),date)||'';
     }else{
       const key=investmentFundKey?.(x)||[x.company,x.product,x.isin].filter(Boolean).join('|');
-      note=liquidityNote?.('investice',key,x.isin,date)||'';
+      note=reportLiquidityNote('investice',key,x.isin,date)||'';
     }
     return `<article class="fund-card"><div class="fund-top"><div><div class="fund-icon">${section==='FKI'?'FK':'IN'}</div><h3>${esc(x.product||section)}</h3><p>${esc([x.company,x.isin,x.typ].filter(Boolean).join(' · '))}</p></div><div class="fund-metrics"><div><span>Vloženo</span><b>${money(invested)}</b></div><div><span>Hodnota</span><b>${money(amount)}</b></div><div><span>Výnos</span><b class="${p.gain>=0?'green':'red'}">${p.pct.toFixed(1)} %</b></div></div></div>${note?`<div class="notice small"><b>Výstup z investice:</b> ${esc(note)}</div>`:''}</article>`;
   }
@@ -2188,7 +2209,12 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
   const oldOpenFkClientReportModal=openFkClientReportModal;
   openFkClientReportModal=function(clientId){openClientReportModal(clientId)};
   fkClientReportHtml=function(c,row,opts={}){return clientOverviewReportHtml(c,{summary:true,open:true,insurance:false,loans:false,investments:true,liquidity:true,notice:true},'')};
-  downloadFkClientReport=function(clientId){reportClientId=clientId;downloadClientReport()};
+  downloadFkClientReport=function(clientId){
+    const c=findClient(clientId);if(!c)return alert('Vyber klienta.');
+    const html=clientOverviewReportHtml(c,{summary:true,open:true,insurance:false,loans:false,investments:true,liquidity:true,notice:true},''),blob=new Blob([html],{type:'text/html;charset=utf-8'}),a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);a.download='klientsky-report-'+normId(clientName(c)||'klient')+'.html';document.body.appendChild(a);a.click();
+    setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500);toast('Klientský report stažen');
+  };
 })();
 </script></body>
 </html>
