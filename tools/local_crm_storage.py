@@ -60,6 +60,41 @@ def backup_state_file(reason="auto"):
     return str(target)
 
 
+def backup_info(path: Path):
+    state = None
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            state = json.load(f)
+    except Exception:
+        state = None
+    return {
+        "name": path.name,
+        "path": str(path),
+        "size": path.stat().st_size,
+        "updatedAt": datetime.fromtimestamp(path.stat().st_mtime).isoformat(timespec="seconds"),
+        "counts": counts(state),
+    }
+
+
+def list_backups():
+    if not BACKUP_DIR.exists():
+        return []
+    return [
+        backup_info(path)
+        for path in sorted(BACKUP_DIR.glob("*_crm-state.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if path.is_file()
+    ]
+
+
+def backup_path_from_name(name):
+    safe = Path(str(name or "")).name
+    target = (BACKUP_DIR / safe).resolve()
+    root = BACKUP_DIR.resolve()
+    if not str(target).startswith(str(root)) or not target.exists() or not target.is_file():
+        return None
+    return target
+
+
 def decode_data_url(data_url):
     if not isinstance(data_url, str) or not data_url.startswith("data:") or "," not in data_url:
         return None, None
@@ -176,6 +211,12 @@ class Handler(BaseHTTPRequestHandler):
                 "counts": counts(state),
             })
             return
+        if parsed.path == "/backups":
+            json_response(self, 200, {
+                "ok": True,
+                "backups": list_backups(),
+            })
+            return
         if parsed.path == "/file":
             qs = parse_qs(parsed.query)
             ref = unquote((qs.get("ref") or [""])[0])
@@ -240,7 +281,23 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/backup":
             target = backup_state_file(payload.get("reason") or "manual")
-            json_response(self, 200, {"ok": True, "backup": target})
+            json_response(self, 200, {"ok": True, "backup": target, "backups": list_backups()})
+            return
+        if parsed.path == "/restore-backup":
+            target = backup_path_from_name(payload.get("name"))
+            if not target:
+                json_response(self, 404, {"ok": False, "error": "Záloha nenalezena."})
+                return
+            previous_backup = backup_state_file("pred-obnovou-ze-zalohy")
+            shutil.copy2(target, STATE_FILE)
+            state = read_state()
+            json_response(self, 200, {
+                "ok": True,
+                "state": state,
+                "restored": backup_info(target),
+                "backup": previous_backup,
+                "counts": counts(state),
+            })
             return
         json_response(self, 404, {"ok": False, "error": "Neznámá adresa."})
 
