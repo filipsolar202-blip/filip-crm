@@ -624,8 +624,8 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
 <iframe id="gsyncFrame" name="gsyncFrame" style="display:none"></iframe>
 
 <script>
-const VERSION='2026.08.31-2';
-const VERSION_NOTE='Diskové zálohy se ukládají jako samostatné kopie aktuálního CRM a v záložce Záloha jde obnovit nejnovější nebo ručně vybranou starší zálohu.';
+const VERSION='2026.08.31-3';
+const VERSION_NOTE='Klientský HTML report má nový světlý glass vzhled, volitelné sekce a jasné rozdělení pojištění, úvěrů, investic a FKI.';
 const STORE='filip_crm_main_v1';
 const DISK_STORAGE_URL='http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP='filip_crm';
@@ -2066,6 +2066,129 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
     return html;
   };
   window.renderFkClientDetail=function(row){return prevFkiCard.apply(this,arguments)};
+})();
+;(function(){
+  const REPORT_SECTIONS=[
+    ['summary','Souhrn klienta','Rychlý přehled toho, co je uzavřeno a co je rozpracováno.'],
+    ['open','Rozpracováno','Aktuální návrhy, příležitosti a věci v řešení.'],
+    ['insurance','Pojištění','Všechna evidovaná pojištění klienta.'],
+    ['loans','Úvěry a hypotéky','Hypotéky, úvěry a jejich aktuální evidence.'],
+    ['investments','Investice a FKI','Investiční portfolio rozdělené na FKI a běžné investice.'],
+    ['liquidity','Odkupy a dostupnost peněz','Daňový test, možný odkup a nejzazší výplata prostředků.'],
+    ['notice','Upozornění','Krátké klientské upozornění k orientačnímu charakteru reportu.']
+  ];
+  function reportHas(id,data){
+    if(id==='summary'||id==='notice')return true;
+    if(id==='open')return data.open.length>0;
+    if(id==='insurance')return data.insurance.length>0;
+    if(id==='loans')return data.loans.length>0;
+    if(id==='investments')return data.fki.length+data.classic.length>0;
+    if(id==='liquidity')return data.liquidity.length>0;
+    return false;
+  }
+  function reportOptionHtml(data){
+    return REPORT_SECTIONS.filter(([id])=>reportHas(id,data)).map(([id,label,desc])=>`<label class="mini-card" style="display:flex;gap:10px;align-items:flex-start;margin:0"><input type="checkbox" class="report-section-check" value="${esc(id)}" checked><span><b>${esc(label)}</b><br><span class="note">${esc(desc)}</span></span></label>`).join('')||'<p class="note">U klienta zatím není co reportovat.</p>';
+  }
+  function textArea(x){return norm([x.type,x.category,x.product,x.company,x.note].filter(Boolean).join(' '))}
+  function isLoanReportItem(x){return ['uvery','hypoteky'].includes(areaForContract?.(x)||'')||/hypot|uver|úvěr|leasing|pujck|půjčk/.test(textArea(x))}
+  function isInvestmentReportItem(x){const a=areaForContract?.(x)||areaForDeal?.(x)||'';return ['investice','fki'].includes(a)||/invest|fki|fond|sicav/.test(textArea(x))}
+  function isInsuranceReportItem(x){return !isLoanReportItem(x)&&!isInvestmentReportItem(x)&&(/pojist|pojišt|zivot|život|auto|majetek|odpoved|odpověd|uraz|úraz/.test(textArea(x))||!!x.type)}
+  function reportClientData(c){
+    const contracts=(typeof clientContracts==='function'?clientContracts(c.id):[]).slice();
+    const deals=(typeof clientDeals==='function'?clientDeals(c.id):[]).slice();
+    const opps=(typeof clientOpenOpportunities==='function'?clientOpenOpportunities(c.id):[]).filter(o=>!isOpenOpportunity||isOpenOpportunity(o));
+    const row=(typeof fkClientRows==='function'?fkClientRows():[]).find(r=>String(r.client?.id)===String(c.id));
+    const fki=(row?.items||[]).filter(x=>!x.locked);
+    const classic=typeof clientClassicInvestmentReportItems==='function'?clientClassicInvestmentReportItems(c.id):[];
+    const insurance=contracts.filter(isInsuranceReportItem);
+    const loans=contracts.filter(isLoanReportItem);
+    const open=[
+      ...opps.map(o=>({kind:'Příležitost',area:areaLabel(opportunityArea?.(o)||o.category||''),title:o.product||o.category||'Příležitost',company:o.company||'',status:o.status||'',date:o.expectedDate||o.statusDate||o.date||'',note:o.note||''})),
+      ...contracts.filter(s=>!isClosedContract?.(s)&&getStatuses?.(s)?.some(x=>['v_reseni','email','opportunity','resit'].includes(x))).map(s=>({kind:'Smlouva',area:areaLabel(areaForContract?.(s)||''),title:s.product||s.type||'Smlouva',company:s.company||'',status:(getStatuses?.(s)||[]).map(x=>STATUS_LABELS?.[x]||x).join(', '),date:s.anniv||'',note:s.note||''}))
+    ].sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
+    const liquidity=[];
+    fki.forEach(x=>{
+      const r=(typeof investmentRecordsForClient==='function'?investmentRecordsForClient(c.id):[]).find(a=>isFkiReportRecord?.(a)&&invPositionKey?.(a)===x.key&&!invIsWithdrawal?.(a))||x.source||{};
+      const date=invEmissionDate?.(r)||x.date||'';
+      const note=liquidityNote?.('fki',x.key,x.isin||invIsin?.(r),date)||'';
+      if(note)liquidity.push({section:'FKI',product:x.product||invFund?.(r)||'FKI',company:x.company||invCompany?.(r)||'',date,note});
+    });
+    classic.forEach(x=>{
+      const key=investmentFundKey?.(x)||[x.company,x.product,x.isin].filter(Boolean).join('|');
+      const date=x.snapshot?.date||x.date||'';
+      const note=liquidityNote?.('investice',key,x.isin,date)||'';
+      if(note)liquidity.push({section:'Investice',product:x.product||'Investice',company:x.company||'',date,note});
+    });
+    return{contracts,deals,opps,open,insurance,loans,fki,classic,liquidity};
+  }
+  function reportMoneyCell(v){return `<td class="money">${money(v)}</td>`}
+  function reportPerf(amount,invested,realized=0){
+    const gain=typeof investmentPerformanceGain==='function'?investmentPerformanceGain(amount,invested,realized):(+amount||0)-(+invested||0);
+    const pct=typeof investmentPerformancePct==='function'?investmentPerformancePct(amount,invested,realized):((+invested||0)?gain/(+invested||0)*100:0);
+    return{gain,pct};
+  }
+  function reportTable(title,heads,rows,empty='Bez položek.'){
+    return `<section class="section"><div class="section-head"><div><div class="kicker">${esc(title)}</div><h2>${esc(title)}</h2></div><div class="section-sum">${num(rows.length)} položek</div></div><table><thead><tr>${heads.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.length?rows.join(''):`<tr><td colspan="${heads.length}" class="muted">${esc(empty)}</td></tr>`}</tbody></table></section>`;
+  }
+  function reportInvestRow(x,label){
+    const invested=+x.invested||0,amount=+x.amount||0,realized=typeof investmentRealizedAmount==='function'?investmentRealizedAmount(x):(+x.realized||0),p=reportPerf(amount,invested,realized);
+    return `<tr><td><b>${esc(x.product||label)}</b><br><span class="muted">${esc([x.company,x.isin,x.typ].filter(Boolean).join(' · '))}</span></td>${reportMoneyCell(invested)}${reportMoneyCell(amount)}<td class="money ${p.gain>=0?'green':'red'}">${money(p.gain)}<br><span>${p.pct.toFixed(1)} %</span></td><td>${esc(x.date||x.snapshot?.date||'')}</td></tr>`;
+  }
+  function reportFundCard(x,section,c){
+    const invested=+x.invested||0,amount=+x.amount||0,realized=typeof investmentRealizedAmount==='function'?investmentRealizedAmount(x):(+x.realized||0),p=reportPerf(amount,invested,realized);
+    let date=x.date||x.snapshot?.date||'',note='';
+    if(section==='FKI'){
+      const r=(typeof investmentRecordsForClient==='function'?investmentRecordsForClient(c.id):[]).find(a=>isFkiReportRecord?.(a)&&invPositionKey?.(a)===x.key&&!invIsWithdrawal?.(a))||x.source||{};
+      date=invEmissionDate?.(r)||date;
+      note=liquidityNote?.('fki',x.key,x.isin||invIsin?.(r),date)||'';
+    }else{
+      const key=investmentFundKey?.(x)||[x.company,x.product,x.isin].filter(Boolean).join('|');
+      note=liquidityNote?.('investice',key,x.isin,date)||'';
+    }
+    return `<article class="fund-card"><div class="fund-top"><div><div class="fund-icon">${section==='FKI'?'FK':'IN'}</div><h3>${esc(x.product||section)}</h3><p>${esc([x.company,x.isin,x.typ].filter(Boolean).join(' · '))}</p></div><div class="fund-metrics"><div><span>Vloženo</span><b>${money(invested)}</b></div><div><span>Hodnota</span><b>${money(amount)}</b></div><div><span>Výnos</span><b class="${p.gain>=0?'green':'red'}">${p.pct.toFixed(1)} %</b></div></div></div>${note?`<div class="notice small"><b>Výstup z investice:</b> ${esc(note)}</div>`:''}</article>`;
+  }
+  function clientOverviewReportHtml(c,opts,note){
+    const data=reportClientData(c),day=new Date().toLocaleDateString('cs-CZ');
+    const fkiAum=data.fki.reduce((s,x)=>s+(+x.amount||0),0),classicAum=data.classic.reduce((s,x)=>s+(+x.amount||0),0),totalAum=fkiAum+classicAum;
+    const invested=[...data.fki,...data.classic].reduce((s,x)=>s+(+x.invested||0),0);
+    const realized=[...data.fki,...data.classic].reduce((s,x)=>s+(typeof investmentRealizedAmount==='function'?investmentRealizedAmount(x):(+x.realized||0)),0);
+    const perf=reportPerf(totalAum,invested,realized),shareFki=totalAum?Math.round(fkiAum/totalAum*100):0,shareClassic=totalAum?100-shareFki:0;
+    const sections=[];
+    if(opts.summary)sections.push(`<section class="section"><div class="section-head"><div><div class="kicker">Souhrn</div><h2>Aktuální přehled</h2></div><div class="section-sum">${esc(day)}</div></div><div class="grid cards"><div class="card"><span>Pojištění</span><b>${num(data.insurance.length)}</b></div><div class="card"><span>Úvěry a hypotéky</span><b>${num(data.loans.length)}</b></div><div class="card"><span>Investice celkem</span><b>${money(totalAum)}</b></div><div class="card"><span>V řešení</span><b>${num(data.open.length)}</b></div><div class="card"><span>Vloženo</span><b>${money(invested)}</b></div><div class="card"><span>Výsledek</span><b class="${perf.gain>=0?'green':'red'}">${money(perf.gain)}</b><small>${perf.pct.toFixed(1)} %</small></div></div></section>`);
+    if(note)sections.push(`<section class="section"><div class="section-head"><div><div class="kicker">Poznámka</div><h2>Doplnění poradce</h2></div></div><p>${esc(note).replace(/\n/g,'<br>')}</p></section>`);
+    if(opts.open)sections.push(reportTable('Rozpracováno',['Typ','Oblast','Produkt','Stav','Termín'],data.open.map(x=>`<tr><td>${esc(x.kind)}</td><td>${esc(x.area)}</td><td><b>${esc(x.title)}</b><br><span class="muted">${esc(x.company||x.note||'')}</span></td><td>${esc(x.status||'')}</td><td>${esc(x.date||'')}</td></tr>`)));
+    if(opts.insurance)sections.push(reportTable('Pojištění',['Produkt','Společnost','Smlouva','Stav','Výročí'],data.insurance.map(s=>`<tr><td><b>${esc(s.product||s.type||'Pojištění')}</b><br><span class="muted">${esc(s.type||'')}</span></td><td>${esc(s.company||'')}</td><td>${esc(s.number||'')}</td><td>${esc((getStatuses?.(s)||[]).map(x=>STATUS_LABELS?.[x]||x).join(', ')||s.status||'')}</td><td>${esc(s.anniv||'')}</td></tr>`)));
+    if(opts.loans)sections.push(reportTable('Úvěry a hypotéky',['Produkt','Společnost','Objem','Stav','Termín'],data.loans.map(s=>`<tr><td><b>${esc(s.product||s.type||'Úvěr')}</b><br><span class="muted">${esc(s.type||'')}</span></td><td>${esc(s.company||'')}</td><td class="money">${money(s.amount||s.volume||0)}</td><td>${esc((getStatuses?.(s)||[]).map(x=>STATUS_LABELS?.[x]||x).join(', ')||s.status||'')}</td><td>${esc(s.anniv||s.fixation||'')}</td></tr>`)));
+    if(opts.investments){
+      sections.push(`<section class="section"><div class="section-head"><div><div class="kicker">Investice</div><h2>Investice a FKI</h2></div><div class="section-sum">${money(totalAum)}</div></div><div class="alloc"><div class="donut" style="background:conic-gradient(#164e72 0 ${shareFki}%,#35b7c8 ${shareFki}% ${shareFki+shareClassic}%,#f2c078 ${shareFki+shareClassic}% 100%)"><div><span>Portfolio</span><b>${money(totalAum)}</b></div></div><div class="legend"><div class="legend-row"><i style="background:#164e72"></i><b>FKI</b><span>${money(fkiAum)}</span></div><div class="legend-row"><i style="background:#35b7c8"></i><b>Běžné investice</b><span>${money(classicAum)}</span></div></div></div>${data.fki.length?`<h3>FKI fondy</h3><table><thead><tr><th>Fond</th><th>Vloženo</th><th>Hodnota</th><th>Výsledek</th><th>Datum</th></tr></thead><tbody>${data.fki.map(x=>reportInvestRow(x,'FKI')).join('')}</tbody></table>`:''}${data.classic.length?`<h3>Další investice</h3><table><thead><tr><th>Investice</th><th>Vloženo</th><th>Hodnota</th><th>Výsledek</th><th>Datum</th></tr></thead><tbody>${data.classic.map(x=>reportInvestRow(x,'Investice')).join('')}</tbody></table>`:''}</section>`);
+    }
+    if(opts.liquidity)sections.push(`<section class="section"><div class="section-head"><div><div class="kicker">Výstup</div><h2>Daňový test a dostupnost prostředků</h2></div><div class="section-sum">${num(data.liquidity.length)} položek</div></div>${[...data.fki.map(x=>reportFundCard(x,'FKI',c)),...data.classic.map(x=>reportFundCard(x,'Investice',c))].join('')||'<p class="muted">U investic zatím nejsou vyplněná pravidla odkupu.</p>'}</section>`);
+    if(opts.notice)sections.push(`<section class="section notice"><h2>Důležité upozornění</h2><p>Report je klientský informativní přehled podle údajů evidovaných ve FILIP CRM k datu vytvoření. Nejde o investiční doporučení ani nabídku k nákupu nebo prodeji. Rozhodující jsou vždy oficiální dokumenty poskytovatelů, smlouvy, sazebníky a aktuální výpisy.</p></section>`);
+    const css=`*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif;color:#152036;background:radial-gradient(circle at 12% 0%,rgba(214,245,250,.95),transparent 34%),linear-gradient(135deg,#f8fbff 0%,#eef5fc 48%,#f7fbff 100%)}.wrap{max-width:1160px;margin:0 auto;padding:34px}.hero,.section{background:rgba(255,255,255,.78);border:1px solid #d7e5f3;border-radius:24px;box-shadow:0 22px 70px rgba(44,76,110,.12);backdrop-filter:blur(18px);padding:24px;margin-bottom:18px}.hero{display:flex;justify-content:space-between;gap:20px;align-items:flex-end}.kicker{color:#657792;text-transform:uppercase;font-size:12px;letter-spacing:.12em;font-weight:900}h1{font-size:42px;line-height:1.04;margin:5px 0}h2{font-size:23px;margin:0}h3{font-size:16px;margin:18px 0 8px}.muted,p{color:#61718c}.chips{display:flex;flex-wrap:wrap;gap:8px}.chip,.section-sum{border-radius:999px;background:#ecf5ff;color:#245fbb;padding:6px 10px;font-size:12px;font-weight:850}.grid{display:grid;gap:12px}.cards{grid-template-columns:repeat(3,1fr)}.card{background:linear-gradient(145deg,rgba(255,255,255,.9),rgba(245,250,255,.72));border:1px solid #d7e5f3;border-radius:16px;padding:16px}.card span{display:block;color:#6a7b95;font-size:11px;text-transform:uppercase;font-weight:900}.card b{font-size:24px}.card small{display:block;margin-top:3px}.section-head{display:flex;justify-content:space-between;gap:14px;align-items:center;margin-bottom:16px}.alloc{display:grid;grid-template-columns:260px 1fr;gap:28px;align-items:center}.donut{width:210px;aspect-ratio:1;border-radius:50%;display:grid;place-items:center}.donut>div{width:118px;aspect-ratio:1;border-radius:50%;background:rgba(255,255,255,.92);display:grid;place-items:center;text-align:center}.donut span{font-size:11px;text-transform:uppercase;color:#6a7b95;font-weight:900}.donut b{font-size:15px}.legend{display:grid;gap:10px}.legend-row{display:grid;grid-template-columns:14px 1fr auto;gap:10px;align-items:center;border:1px solid #d8e6f4;border-radius:14px;padding:10px;background:rgba(255,255,255,.58)}.legend-row i{width:11px;height:11px;border-radius:50%}table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;margin-top:8px;border:1px solid #d8e6f4;border-radius:16px;overflow:hidden}th{text-align:left;background:#eef5fe;color:#667895;text-transform:uppercase;font-size:10px;letter-spacing:.06em}td,th{padding:10px 12px;border-bottom:1px solid #dfe9f4}tr:last-child td{border-bottom:0}.money{text-align:right;white-space:nowrap}.green{color:#15803d}.red{color:#c21d32}.fund-card{border:1px solid #d8e6f4;border-radius:18px;padding:16px;margin:12px 0;background:linear-gradient(145deg,rgba(255,255,255,.86),rgba(245,250,255,.7))}.fund-top{display:grid;grid-template-columns:1fr auto;gap:16px}.fund-icon{display:inline-grid;place-items:center;width:34px;height:34px;border-radius:12px;background:#eaf2ff;color:#1d63d8;font-size:12px;font-weight:900;margin-bottom:8px}.fund-metrics{display:grid;grid-template-columns:repeat(3,120px);gap:8px;text-align:right}.fund-metrics span{display:block;color:#6a7b95;text-transform:uppercase;font-size:10px;font-weight:900}.fund-metrics b{font-size:17px}.notice{background:rgba(255,249,242,.78);border-color:#ffd8a8}.notice.small{font-size:13px;border-radius:13px;padding:10px;margin-top:10px}.print{position:fixed;right:18px;bottom:18px;border:0;border-radius:15px;padding:13px 17px;font-weight:900;background:#2563eb;color:#fff;box-shadow:0 16px 40px rgba(37,99,235,.28)}@media(max-width:760px){.wrap{padding:16px}.hero,.section{border-radius:18px;padding:16px}.hero,.alloc,.fund-top{display:block}.cards{grid-template-columns:1fr 1fr}.fund-metrics{grid-template-columns:1fr;text-align:left}h1{font-size:32px}table{font-size:12px}}@media print{.print{display:none}.wrap{padding:0}.hero,.section{box-shadow:none;break-inside:avoid}}`;
+    return `<!doctype html><html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Klientský report - ${esc(clientName(c))}</title><style>${css}</style></head><body><button class="print" onclick="window.print()">Tisk / PDF</button><main class="wrap"><header class="hero"><div><div class="kicker">Klientský přehled</div><h1>${esc(clientName(c))}</h1><p>Aktuální rozpracované a sjednané produkty.</p><div class="chips"><span class="chip">${esc(day)}</span>${c.email?`<span class="chip">${esc(c.email)}</span>`:''}${c.phone?`<span class="chip">${esc(c.phone)}</span>`:''}</div></div><div class="card"><span>Celkové investice</span><b>${money(totalAum)}</b><small class="${perf.gain>=0?'green':'red'}">${money(perf.gain)} · ${perf.pct.toFixed(1)} %</small></div></header>${sections.join('')}<section class="section"><div class="section-head"><div><div class="kicker">Kontakt</div><h2>FILIP CRM</h2></div></div><p>V případě dotazů navážeme na tento přehled při osobní schůzce nebo telefonicky.</p></section></main></body></html>`;
+  }
+  function selectedReportOptions(){const out={};document.querySelectorAll('.report-section-check').forEach(x=>out[x.value]=x.checked);return out}
+  openClientReportModal=function(id){
+    const c=findClient(id);if(!c)return;
+    reportClientId=id;
+    const data=reportClientData(c);
+    setText('clientReportTitle','Report pro klienta: '+clientName(c));
+    setVal('clientReportNote','');
+    byId('clientReportOptions').innerHTML=reportOptionHtml(data);
+    openModal('clientReportModal');
+  };
+  downloadClientReport=function(){
+    const c=findClient(reportClientId);if(!c)return alert('Vyber klienta.');
+    const opts=selectedReportOptions();
+    if(!Object.values(opts).some(Boolean))return alert('Vyber aspoň jednu část reportu.');
+    const html=clientOverviewReportHtml(c,opts,val('clientReportNote').trim()),blob=new Blob([html],{type:'text/html;charset=utf-8'}),a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);a.download='klientsky-report-'+normId(clientName(c)||'klient')+'.html';document.body.appendChild(a);a.click();
+    setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500);closeModal('clientReportModal');toast('Klientský report stažen');
+  };
+  const oldOpenFkClientReportModal=openFkClientReportModal;
+  openFkClientReportModal=function(clientId){openClientReportModal(clientId)};
+  fkClientReportHtml=function(c,row,opts={}){return clientOverviewReportHtml(c,{summary:true,open:true,insurance:false,loans:false,investments:true,liquidity:true,notice:true},'')};
+  downloadFkClientReport=function(clientId){reportClientId=clientId;downloadClientReport()};
 })();
 </script></body>
 </html>
