@@ -286,37 +286,13 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
     <section id="referrers" class="view">
       <div class="card">
         <div class="toolbar">
-          <div><div class="eyebrow">Analýza</div><h2>Aktivity, plán a zdroje obchodů</h2></div>
+          <div><div class="eyebrow">Analýza</div><h2>Aktivity, vyhodnocení a zdroje obchodů</h2></div>
           <div class="filters"><input id="analysisWeek" type="week" onchange="renderReferrerHub()"><input id="analysisMonth" type="month" onchange="renderReferrerHub()"><input class="search" id="referrerSearch" placeholder="Hledat typaře, doporučitele, klienta..." oninput="renderReferrerHub()"><button class="btn primary" onclick="openClientModal()">+ Klient</button></div>
         </div>
         <div id="analysisMetrics" class="metric-strip"></div>
         <div class="split">
           <div class="mini-card">
-            <div class="toolbar"><div><div class="eyebrow">Týdenní plán</div><h3>Plán a plnění</h3></div><button class="btn primary" onclick="saveAnalysisPlan()">Uložit plán</button></div>
-            <div class="form-grid">
-              <div class="field"><label>Volání</label><input id="analysisPlanCalls" type="number" min="0" placeholder="počet"></div>
-              <div class="field"><label>Minuty volání</label><input id="analysisPlanMinutes" type="number" min="0" placeholder="minut"></div>
-              <div class="field"><label>Schůzky nový klient</label><input id="analysisPlanMeetingsNew" type="number" min="0"></div>
-              <div class="field"><label>Schůzky stávající klient</label><input id="analysisPlanMeetingsExisting" type="number" min="0"></div>
-              <div class="field"><label>Doporučení</label><input id="analysisPlanReferrals" type="number" min="0"></div>
-              <div class="field"><label>Analýzy</label><input id="analysisPlanAnalyses" type="number" min="0"></div>
-              <div class="field"><label>Prezentace</label><input id="analysisPlanPresentations" type="number" min="0"></div>
-              <div class="field"><label>Podpisy</label><input id="analysisPlanSignatures" type="number" min="0"></div>
-              <div class="field"><label>Spolupráce</label><input id="analysisPlanCoop" type="number" min="0"></div>
-            </div>
-            <div class="field"><label>Plán týdne</label><textarea id="analysisPlanText" rows="5" placeholder="Co chci tento týden udělat, komu volat, jaké podpisy dotáhnout..."></textarea></div>
-            <div class="mini-card" style="margin-top:10px">
-              <div class="eyebrow">Navolávání po dnech</div>
-              <div class="form-grid">
-                <div class="field"><label>Po</label><input id="analysisCallMon" type="number" min="0" placeholder="min"></div>
-                <div class="field"><label>Út</label><input id="analysisCallTue" type="number" min="0" placeholder="min"></div>
-                <div class="field"><label>St</label><input id="analysisCallWed" type="number" min="0" placeholder="min"></div>
-                <div class="field"><label>Čt</label><input id="analysisCallThu" type="number" min="0" placeholder="min"></div>
-                <div class="field"><label>Pá</label><input id="analysisCallFri" type="number" min="0" placeholder="min"></div>
-                <div class="field"><label>So</label><input id="analysisCallSat" type="number" min="0" placeholder="min"></div>
-                <div class="field"><label>Ne</label><input id="analysisCallSun" type="number" min="0" placeholder="min"></div>
-              </div>
-            </div>
+            <div class="toolbar"><div><div class="eyebrow">Vyhodnocení týdne</div><h3>Domluveno a zrealizováno</h3></div></div>
             <div class="table-wrap"><table id="analysisPlanStatus"></table></div>
           </div>
           <div class="mini-card">
@@ -327,6 +303,8 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
               <div class="field"><label>Klient volitelně</label><select id="analysisClient"></select></div>
               <div class="field"><label>Počet</label><input id="analysisCount" type="number" min="1" value="1"></div>
               <div class="field"><label>Minuty</label><input id="analysisMinutes" type="number" min="0" placeholder="hlavně u volání"></div>
+              <div class="field"><label>Výsledek</label><select id="analysisOutcome"><option value="realized">Zrealizováno</option><option value="agreed">Domluveno</option><option value="moved">Přesunuto</option><option value="no_show">Nedorazil / neproběhlo</option></select></div>
+              <div class="field"><label>Přesun na</label><input id="analysisFollowDate" type="date"></div>
               <div class="field"><label>Poznámka</label><input id="analysisNote" placeholder="stručně co se stalo"></div>
             </div>
             <div class="table-wrap"><table id="analysisActivityTable"></table></div>
@@ -624,8 +602,8 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
 <iframe id="gsyncFrame" name="gsyncFrame" style="display:none"></iframe>
 
 <script>
-const VERSION='2026.09.02-1';
-const VERSION_NOTE='U investic a FKI je v klientském detailu vidět datum, ke kterému platí aktuální hodnota fondu.';
+const VERSION='2026.09.02-2';
+const VERSION_NOTE='Analýza je předělaná z týdenního plánu na vyhodnocení domluveno, zrealizováno, přesunuto a úspěšnost.';
 const STORE='filip_crm_main_v1';
 const DISK_STORAGE_URL='http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP='filip_crm';
@@ -2259,6 +2237,98 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
     const html=clientOverviewReportHtml(c,{summary:true,open:true,insurance:false,loans:false,investments:true,liquidity:true,notice:true},''),blob=new Blob([html],{type:'text/html;charset=utf-8'}),a=document.createElement('a');
     a.href=URL.createObjectURL(blob);a.download='klientsky-report-'+normId(clientName(c)||'klient')+'.html';document.body.appendChild(a);a.click();
     setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500);toast('Klientský report stažen');
+  };
+})();
+</script>
+<script>
+(function(){
+  const OUTCOME_LABELS={agreed:'Domluveno',realized:'Zrealizováno',moved:'Přesunuto',no_show:'Nedorazil'};
+  const OUTCOME_BADGES={agreed:'blue',realized:'green',moved:'orange',no_show:'red'};
+  function outcomeOf(r){return r?.outcome||r?.result||r?.status||'realized'}
+  function outcomeLabel(r){return OUTCOME_LABELS[outcomeOf(r)]||OUTCOME_LABELS.realized}
+  function outcomeBadge(r){return OUTCOME_BADGES[outcomeOf(r)]||OUTCOME_BADGES.realized}
+  function normalizeAnalysisRow(r,source){
+    const out={...r,source,count:+r.count||1,minutes:+r.minutes||0};
+    out.outcome=outcomeOf(out);
+    return out;
+  }
+  function activityOutcome(a){
+    if(a?.completed||a?.completedAt)return'realized';
+    if(a?.status==='hotovo'||a?.status==='done')return'realized';
+    return'agreed';
+  }
+  window.analysisRows=analysisRows=function(start,end){
+    const manual=(state.analysisEntries||[]).filter(a=>dateInRange(a.date,start,end)).map(a=>normalizeAnalysisRow(a,'Analýza'));
+    const fromActivities=(state.activities||[]).map(a=>{
+      const type=crmActivityAnalysisType(a);
+      return type?normalizeAnalysisRow({id:'act_'+a.id,date:a.date,type,clientId:a.clientId,count:1,minutes:+a.duration||0,note:a.text||'',outcome:activityOutcome(a)},'Klientská aktivita'):null;
+    }).filter(Boolean).filter(a=>dateInRange(a.date,start,end));
+    const fromReferrals=(state.referrals||[]).map(r=>normalizeAnalysisRow({id:'ref_'+r.id,date:r.date,type:'Doporučení',clientId:r.clientId,count:1,minutes:0,note:[r.from,r.to,r.topic].filter(Boolean).join(' · '),outcome:'realized'},'Doporučení')).filter(a=>dateInRange(a.date,start,end));
+    const fromDeals=analysisSignedDeals(start,end).map(d=>normalizeAnalysisRow({id:'deal_'+d.id,date:d.date,type:'Podpis',clientId:d.clientId,count:1,minutes:0,note:[d.category,d.product,d.company].filter(Boolean).join(' · '),outcome:'realized'},'Obchod'));
+    return[...manual,...fromActivities,...fromReferrals,...fromDeals].sort((a,b)=>String(b.date).localeCompare(String(a.date))||String(b.id).localeCompare(String(a.id)));
+  };
+  function countByOutcome(rows,type,outcome){
+    return rows.filter(r=>r.type===type&&outcomeOf(r)===outcome).reduce((s,r)=>s+(+r.count||1),0);
+  }
+  function typeSum(rows,type){
+    return rows.filter(r=>r.type===type&&outcomeOf(r)==='realized').reduce((s,r)=>s+(+r.count||1),0);
+  }
+  function outcomeSummary(rows,types){
+    const selected=rows.filter(r=>types.includes(r.type));
+    const agreed=selected.filter(r=>outcomeOf(r)==='agreed').reduce((s,r)=>s+(+r.count||1),0);
+    const realized=selected.filter(r=>outcomeOf(r)==='realized').reduce((s,r)=>s+(+r.count||1),0);
+    const moved=selected.filter(r=>outcomeOf(r)==='moved').reduce((s,r)=>s+(+r.count||1),0);
+    const noShow=selected.filter(r=>outcomeOf(r)==='no_show').reduce((s,r)=>s+(+r.count||1),0);
+    const pct=agreed?Math.round(realized/agreed*100):null;
+    return{agreed,realized,moved,noShow,pct,open:Math.max(0,agreed-realized-moved-noShow)};
+  }
+  window.analysisActuals=analysisActuals=function(start,end,key=''){
+    const rows=analysisRows(start,end),signed=analysisSignedDeals(start,end),crmMinutes=rows.filter(r=>r.type==='Volání'&&outcomeOf(r)==='realized').reduce((s,r)=>s+(+r.minutes||0),0),activityCount=rows.filter(r=>outcomeOf(r)==='realized').reduce((s,r)=>s+(+r.count||1),0);
+    return{calls:typeSum(rows,'Volání'),minutes:crmMinutes,dayMinutes:0,crmMinutes,meetingsNew:typeSum(rows,'Schůzka nový klient'),meetingsExisting:typeSum(rows,'Schůzka stávající klient'),referrals:typeSum(rows,'Doporučení'),analyses:typeSum(rows,'Analýza'),presentations:typeSum(rows,'Prezentace'),signatures:typeSum(rows,'Podpis'),coop:typeSum(rows,'Spolupráce'),activities:activityCount,signedDeals:signed.length,signedBj:signed.reduce((s,d)=>s+dealBJ(d),0),signedCommission:signed.reduce((s,d)=>s+dealCash(d),0),rows,summary:{calls:outcomeSummary(rows,['Volání']),meetings:outcomeSummary(rows,['Schůzka nový klient','Schůzka stávající klient']),all:outcomeSummary(rows,['Volání','Schůzka nový klient','Schůzka stávající klient','Doporučení','Analýza','Prezentace','Podpis','Spolupráce'])}};
+  };
+  window.saveAnalysisActivity=saveAnalysisActivity=function(){
+    const type=val('analysisType')||'Volání',date=val('analysisDate')||today(),clientId=val('analysisClient')?+val('analysisClient'):null,outcome=val('analysisOutcome')||'realized',followDate=val('analysisFollowDate')||'';
+    const entry={id:uid(),date,type,clientId,count:Math.max(1,parseMoney(val('analysisCount'))||1),minutes:parseMoney(val('analysisMinutes'))||0,note:val('analysisNote').trim(),outcome,followDate,createdAt:new Date().toISOString()};
+    state.analysisEntries=state.analysisEntries||[];
+    state.analysisEntries.push(entry);
+    if(outcome==='moved'&&followDate)state.analysisEntries.push({...entry,id:uid(),date:followDate,outcome:'agreed',followDate:'',note:['Přesunuto z '+date,entry.note].filter(Boolean).join(' · '),createdAt:new Date().toISOString()});
+    setVal('analysisCount',1);setVal('analysisMinutes','');setVal('analysisFollowDate','');setVal('analysisNote','');setVal('analysisOutcome','realized');
+    persist();renderReferrerHub();saveToast('Aktivita uložena do vyhodnocení');
+  };
+  function evalRow(label,summary,extra=''){
+    const pct=summary.pct===null?'bez domluvených':num(summary.pct)+' %';
+    return`<tr><td><b>${esc(label)}</b>${extra?`<br><span class="note">${esc(extra)}</span>`:''}</td><td class="num">${num(summary.agreed)}</td><td class="num green">${num(summary.realized)}</td><td class="num orange">${num(summary.moved)}</td><td class="num red">${num(summary.noShow)}</td><td class="num">${pct}</td><td class="num">${num(summary.open)}</td></tr>`;
+  }
+  function monthlyOutcomeRows(start,end){
+    const rows=analysisRows(start,end),items=[
+      ['Volání',['Volání'],''],
+      ['Schůzky celkem',['Schůzka nový klient','Schůzka stávající klient'],'noví + stávající'],
+      ['Doporučení',['Doporučení'],''],
+      ['Analýzy',['Analýza'],''],
+      ['Prezentace',['Prezentace'],''],
+      ['Podpisy',['Podpis'],''],
+      ['Spolupráce',['Spolupráce'],'']
+    ];
+    return items.map(([label,types,extra])=>evalRow(label,outcomeSummary(rows,types),extra)).join('');
+  }
+  window.renderAnalysisWeekHistory=renderAnalysisWeekHistory=function(){
+    const t=byId('analysisWeekHistoryTable');if(!t)return;
+    const rows=analysisWeekKeys().map(k=>{const r=weekRange(k),a=analysisActuals(r.start,r.end,k);return{k,r,a}});
+    t.innerHTML=`<thead><tr><th>Týden</th><th>Domluveno</th><th>Zrealizováno</th><th>Přesunuto</th><th>Nedorazil</th><th>Úspěšnost</th><th>Volání</th><th>Schůzky</th><th>BJ</th><th>Provize</th><th></th></tr></thead><tbody>${rows.map(x=>`<tr><td><b>${esc(x.k)}</b><br><span class="note">${esc(x.r.start)} až ${esc(x.r.end)}</span></td><td class="num">${num(x.a.summary.all.agreed)}</td><td class="num green">${num(x.a.summary.all.realized)}</td><td class="num orange">${num(x.a.summary.all.moved)}</td><td class="num red">${num(x.a.summary.all.noShow)}</td><td class="num">${x.a.summary.all.pct===null?'bez domluvených':num(x.a.summary.all.pct)+' %'}</td><td class="num">${num(x.a.calls)}<br><span class="note">${num(x.a.minutes)} min</span></td><td class="num">${num(x.a.meetingsNew+x.a.meetingsExisting)}</td><td class="num">${num(x.a.signedBj)}</td><td class="money">${money(x.a.signedCommission)}</td><td><button class="btn slim" onclick="setAnalysisWeek('${esc(x.k)}')">Otevřít</button></td></tr>`).join('')}</tbody>`;
+  };
+  window.renderAnalysis=renderAnalysis=function(){
+    const weekEl=byId('analysisWeek'),monthEl=byId('analysisMonth');if(!weekEl)return;
+    if(!weekEl.value)weekEl.value=weekKey();if(!monthEl.value)monthEl.value=today().slice(0,7);if(!val('analysisDate'))setVal('analysisDate',today());
+    fillOptionalClientSelect('analysisClient',val('analysisClient'));
+    const selectedWeek=selectedAnalysisWeek(),wk=weekRange(selectedWeek),month=selectedAnalysisMonth(),monthStart=month+'-01',monthEnd=month+'-31',a=analysisActuals(wk.start,wk.end,selectedWeek),m=analysisActuals(monthStart,monthEnd),metrics=byId('analysisMetrics');
+    if(metrics)metrics.innerHTML=`<div class="metric"><span class="note">Domluveno týden</span><b>${num(a.summary.all.agreed)}</b></div><div class="metric"><span class="note">Zrealizováno týden</span><b>${num(a.summary.all.realized)}</b><small>${a.summary.all.pct===null?'bez domluvených':num(a.summary.all.pct)+' %'}</small></div><div class="metric"><span class="note">Přesunuto / nedorazil</span><b>${num(a.summary.all.moved)} / ${num(a.summary.all.noShow)}</b></div><div class="metric"><span class="note">Schůzky</span><b>${num(a.meetingsNew+a.meetingsExisting)}</b><small>noví ${num(a.meetingsNew)} · stávající ${num(a.meetingsExisting)}</small></div><div class="metric"><span class="note">Podpisy / uzavřené smlouvy</span><b>${num(a.signatures)}</b><small>${num(a.signedBj)} BJ · ${money(a.signedCommission)}</small></div><div class="metric"><span class="note">Aktivit měsíc</span><b>${num(m.activities)}</b></div>`;
+    const planTable=byId('analysisPlanStatus'),weekRows=analysisRows(wk.start,wk.end),items=[['Volání',['Volání'],`${num(a.minutes)} min zrealizováno`],['Schůzky nový klient',['Schůzka nový klient'],''],['Schůzky stávající klient',['Schůzka stávající klient'],''],['Doporučení',['Doporučení'],''],['Analýzy',['Analýza'],''],['Prezentace',['Prezentace'],''],['Podpisy',['Podpis'],`${num(a.signedBj)} BJ · ${money(a.signedCommission)}`],['Spolupráce',['Spolupráce'],'']];
+    if(planTable)planTable.innerHTML=`<thead><tr><th>Cíl týdne</th><th>Domluveno</th><th>Zrealizováno</th><th>Přesunuto</th><th>Nedorazil</th><th>Plnění</th><th>Zbývá</th></tr></thead><tbody>${items.map(([label,types,extra])=>evalRow(label,outcomeSummary(weekRows,types),extra)).join('')}</tbody>`;
+    const actTable=byId('analysisActivityTable'),rows=weekRows.slice(0,40);
+    if(actTable)actTable.innerHTML=`<thead><tr><th>Datum</th><th>Typ</th><th>Výsledek</th><th>Klient</th><th>Počet</th><th>Minuty</th><th>Poznámka</th><th></th></tr></thead><tbody>${rows.map(r=>{const c=findClient(r.clientId),move=r.followDate?`<br><span class="note">přesun na ${esc(r.followDate)}</span>`:'';return`<tr><td>${esc(r.date||'')}</td><td><b>${esc(r.type)}</b><br><span class="note">${esc(r.source||'')}</span></td><td><span class="badge ${outcomeBadge(r)}">${esc(outcomeLabel(r))}</span>${move}</td><td>${c?esc(clientName(c)):'-'}</td><td class="num">${num(r.count||1)}</td><td class="num">${num(r.minutes||0)}</td><td>${esc(r.note||'')}</td><td>${r.source==='Analýza'?`<button class="btn slim red" onclick="deleteAnalysisEntry(${r.id})">Smazat</button>`:''}</td></tr>`}).join('')||'<tr><td colspan="8" class="note">Tento týden zatím není zapsaná žádná aktivita.</td></tr>'}</tbody>`;
+    const mt=byId('analysisMonthTable');
+    if(mt)mt.innerHTML=`<thead><tr><th>Typ</th><th>Domluveno</th><th>Zrealizováno</th><th>Přesunuto</th><th>Nedorazil</th><th>Plnění</th><th>Zbývá</th></tr></thead><tbody>${monthlyOutcomeRows(monthStart,monthEnd)}</tbody>`;
+    renderAnalysisActivityChart();renderAnalysisWeekHistory();
   };
 })();
 </script></body>
