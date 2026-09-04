@@ -604,8 +604,8 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
 <iframe id="gsyncFrame" name="gsyncFrame" style="display:none"></iframe>
 
 <script>
-const VERSION='2026.09.04-1';
-const VERSION_NOTE='Investiční kalkulačka má min/max scénář, komentáře fondů do reportu a p.a. výnos u jednotlivých transakcí.';
+const VERSION='2026.09.04-2';
+const VERSION_NOTE='Opravené zobrazení min/max scénáře v investiční kalkulačce včetně pevné výšky grafu a tabulky hodnot.';
 const STORE='filip_crm_main_v1';
 const DISK_STORAGE_URL='http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP='filip_crm';
@@ -2430,16 +2430,18 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
   };
   function scenarioSeries(rateKind){
     const years=Math.max(1,n(val('scenarioYears'))||10),rows=investmentScenario?.rows||[],currentClient=val('scenarioClient')?findClient(+val('scenarioClient')):null,portfolio=currentClient&&typeof clientDisplayInvestmentItems==='function'?clientDisplayInvestmentItems(currentClient.id):[],current=portfolio.reduce((s,x)=>s+(+x.amount||0),0);
-    let vals=rows.map(r=>n(r.amount)),series=[0];
-    for(let y=1;y<=years;y++){vals=vals.map((v,i)=>{const r=rows[i],rate=rateKind==='min'?(r.minRate??r.rate):rateKind==='max'?(r.maxRate??r.rate):r.rate;let next=v*(1+n(rate)/100);if(n(r.topupYear)===y)next+=n(r.topupAmount);if(n(r.dropYear)===y)next*=Math.max(0,1-n(r.dropPct)/100);return next});series.push(vals.reduce((s,v)=>s+v,0))}
+    let vals=rows.map(r=>n(r.amount)),series=[current];
+    for(let y=1;y<=years;y++){vals=vals.map((v,i)=>{const r=rows[i],rate=rateKind==='min'?(r.minRate??r.rate):rateKind==='max'?(r.maxRate??r.rate):r.rate;let next=v*(1+n(rate)/100);if(n(r.topupYear)===y)next+=n(r.topupAmount);if(n(r.dropYear)===y)next*=Math.max(0,1-n(r.dropPct)/100);return next});series.push(current+vals.reduce((s,v)=>s+v,0))}
     return{labels:Array.from({length:years+1},(_,i)=>i?`${i}. rok`:'Dnes'),current,series};
   }
   function renderScenarioRange(){
     let host=byId('scenarioRangeBlock');const anchor=byId('scenarioAdvancedControls')||byId('scenarioSelectedFunds');if(!anchor)return;
-    if(!host){anchor.insertAdjacentHTML('afterend','<div id="scenarioRangeBlock" class="mini-card" style="margin-top:12px"><div class="toolbar"><div><div class="eyebrow">Rozptyl výnosu</div><h3>Minimální, očekávaný a maximální scénář</h3><div class="note">Pásmo ukazuje reálnější rozsah podle min/max p.a. u přidaných fondů.</div></div></div><canvas id="scenarioRangeChart" height="150"></canvas><div id="scenarioRangeTable"></div></div>');host=byId('scenarioRangeBlock')}
+    if(!host){anchor.insertAdjacentHTML('afterend','<div id="scenarioRangeBlock" class="mini-card scenario-range-block" style="margin-top:12px"><div class="toolbar"><div><div class="eyebrow">Rozptyl výnosu</div><h3>Minimální, očekávaný a maximální scénář</h3><div class="note">Pásmo ukazuje reálnější rozsah podle min/max p.a. u přidaných fondů.</div></div></div><div id="scenarioRangeTable"></div><div class="chart-wrap scenario-range-chart-wrap"><canvas id="scenarioRangeChart"></canvas></div><div id="scenarioRangeFallback" class="note"></div></div>');host=byId('scenarioRangeBlock')}
+    const rows=investmentScenario?.rows||[],fallback=byId('scenarioRangeFallback');
+    if(!rows.length){if(window.scenarioRangeChartInstance){window.scenarioRangeChartInstance.destroy();window.scenarioRangeChartInstance=null}const tbl=byId('scenarioRangeTable');if(tbl)tbl.innerHTML='<p class="note">Přidej alespoň jeden fond a CRM dopočítá minimální, očekávaný a maximální scénář.</p>';if(fallback)fallback.textContent='';return}
     const min=scenarioSeries('min'),base=scenarioSeries('base'),max=scenarioSeries('max'),labels=base.labels;
     const tbl=byId('scenarioRangeTable');if(tbl)tbl.innerHTML=`<div class="table-wrap"><table class="compact-table"><thead><tr><th>Rok</th><th>Minimum</th><th>Očekávaně</th><th>Maximum</th></tr></thead><tbody>${labels.map((l,i)=>`<tr><td>${esc(l)}</td><td class="money">${money(min.series[i])}</td><td class="money"><b>${money(base.series[i])}</b></td><td class="money">${money(max.series[i])}</td></tr>`).join('')}</tbody></table></div>`;
-    const canvas=byId('scenarioRangeChart');if(canvas&&typeof Chart!=='undefined'){if(window.scenarioRangeChartInstance)window.scenarioRangeChartInstance.destroy();window.scenarioRangeChartInstance=new Chart(canvas,{type:'line',data:{labels,datasets:[{label:'Minimum',data:min.series,borderColor:'#dc2626',backgroundColor:'rgba(220,38,38,.08)',tension:.25},{label:'Očekávaně',data:base.series,borderColor:'#2563eb',backgroundColor:'rgba(37,99,235,.08)',tension:.25},{label:'Maximum',data:max.series,borderColor:'#16a34a',backgroundColor:'rgba(22,163,74,.08)',tension:.25}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'}},scales:{y:{ticks:{callback:v=>money(v)}}}}})}
+    const canvas=byId('scenarioRangeChart');if(canvas&&typeof Chart!=='undefined'){if(window.scenarioRangeChartInstance)window.scenarioRangeChartInstance.destroy();window.scenarioRangeChartInstance=new Chart(canvas,{type:'line',data:{labels,datasets:[{label:'Minimum',data:min.series,borderColor:'#dc2626',backgroundColor:'rgba(220,38,38,.08)',fill:false,tension:.25},{label:'Očekávaně',data:base.series,borderColor:'#2563eb',backgroundColor:'rgba(37,99,235,.08)',fill:false,tension:.25},{label:'Maximum',data:max.series,borderColor:'#16a34a',backgroundColor:'rgba(22,163,74,.08)',fill:false,tension:.25}]},options:{responsive:true,maintainAspectRatio:false,resizeDelay:80,plugins:{legend:{position:'bottom'}},scales:{y:{ticks:{callback:v=>money(v)}}}}});if(fallback)fallback.textContent=''}else if(fallback)fallback.textContent='Graf se zobrazí po načtení knihovny Chart.js; tabulka hodnot je připravená výše.';
   }
   const oldAddScenario=window.addInvestmentScenarioFund;
   window.addInvestmentScenarioFund=function(){
@@ -2451,6 +2453,9 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
   };
   const oldRenderScenario=window.renderInvestmentScenario;
   window.renderInvestmentScenario=function(){const out=typeof oldRenderScenario==='function'?oldRenderScenario.apply(this,arguments):undefined;setTimeout(renderScenarioRange,0);return out};
+  const style=document.createElement('style');
+  style.textContent='.scenario-range-block{overflow:visible}.scenario-range-chart-wrap{height:220px;max-height:220px;margin-top:10px;overflow:hidden}.scenario-range-chart-wrap canvas{width:100%!important;height:220px!important;max-height:220px!important;display:block}.scenario-range-block .table-wrap{margin-top:0}';
+  document.head.appendChild(style);
   ['scenarioMinRate','scenarioMaxRate','scenarioYears'].forEach(id=>document.addEventListener('input',e=>{if(e.target?.id===id)renderScenarioRange()}));
   const oldClientReportHtml=window.clientOverviewReportHtml;
   if(typeof oldClientReportHtml==='function')window.clientOverviewReportHtml=function(c,opts,note){
