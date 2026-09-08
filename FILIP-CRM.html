@@ -133,6 +133,7 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
       <button class="tab" data-view="deals">Obchody</button>
       <button class="tab" data-view="investments">Investice</button>
       <button class="tab" data-view="fki">FKI</button>
+      <button class="tab" data-view="pensions">Penze</button>
       <button class="tab" data-view="notes">Poznámky</button>
       <button class="tab" data-view="plan">Roční plán</button>
       <button class="tab" data-view="reports">Report</button>
@@ -266,6 +267,31 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
           <div id="fkClientList" class="investment-list"></div>
         </aside>
         <section class="card investment-main" id="fkDetail"></section>
+      </div>
+    </section>
+
+    <section id="pensions" class="view">
+      <div class="investment-shell">
+        <aside class="card investment-side">
+          <div class="toolbar">
+            <div><div class="eyebrow">Penze</div><h2>Klienti</h2></div>
+            <button class="btn primary" onclick="openPensionContractModal(selectedClientId||null)">+ Penze</button>
+          </div>
+          <input class="search" id="pensionSearch" placeholder="Hledat klienta, společnost, DPS, DIP..." oninput="renderPensions()">
+          <div class="metric-strip" style="grid-template-columns:1fr 1fr;margin:10px 0">
+            <div class="metric"><span class="note">Klientů</span><b id="pensionClientCount">0</b></div>
+            <div class="metric"><span class="note">Aktivních smluv</span><b id="pensionContractCount">0</b></div>
+            <div class="metric"><span class="note">AUM celkem</span><b id="pensionTotalAum">0 Kč</b></div>
+            <div class="metric"><span class="note">Společností</span><b id="pensionCompanyCount">0</b></div>
+          </div>
+          <div class="fk-tabs" style="margin:10px 0">
+            <button class="fk-tab active" id="pensionTabClient" onclick="setPensionMode('client')">Klienti</button>
+            <button class="fk-tab" id="pensionTabCompanies" onclick="setPensionMode('companies')">Společnosti</button>
+            <button class="fk-tab" id="pensionTabAum" onclick="setPensionMode('aum')">AUM</button>
+          </div>
+          <div id="pensionClientList" class="investment-list"></div>
+        </aside>
+        <section class="card investment-main" id="pensionDetail"></section>
       </div>
     </section>
 
@@ -515,7 +541,7 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
 </div><div class="actions" style="justify-content:flex-end;margin-top:12px"><button class="btn primary" onclick="saveReferrerPayout()">Uložit výplatu</button></div></div></div>
 
 <div class="modal" id="contractModal"><div class="modal-box note-full"><div class="toolbar"><h2 id="contractModalTitle">Smlouva</h2><button class="btn" onclick="closeModal('contractModal')">Zavřít</button></div><div class="form-grid">
-  <div class="field"><label>Klient</label><select id="sClient" onchange="syncContractDealDefaults()"></select></div><div class="field"><label>Typ</label><select id="sType" onchange="syncContractDealDefaults(true)"><option>auto</option><option>majetek</option><option>život</option><option>hypotéka</option><option>úvěr</option><option>investice</option><option>FKI</option><option>DPS</option><option>ostatní</option></select></div><div class="field"><label>Stav</label><select id="sStatus" onchange="syncContractDealDefaults()"></select></div>
+  <div class="field"><label>Klient</label><select id="sClient" onchange="syncContractDealDefaults()"></select></div><div class="field"><label>Typ</label><select id="sType" onchange="syncContractDealDefaults(true)"><option>auto</option><option>majetek</option><option>život</option><option>hypotéka</option><option>úvěr</option><option>investice</option><option>FKI</option><option>DPS</option><option>DIP</option><option>ostatní</option></select></div><div class="field"><label>Stav</label><select id="sStatus" onchange="syncContractDealDefaults()"></select></div>
   <div class="field"><label>Společnost</label><input id="sCompany"></div><div class="field"><label>Produkt</label><input id="sProduct"></div><div class="field"><label>Číslo smlouvy</label><input id="sNumber"></div>
   <div class="field"><label>Výročí / fixace</label><input id="sAnniv" type="date"></div><div class="field"><label>Částka / platba</label><input id="sAmount"></div><div class="field"><label>Úrok</label><input id="sRate"></div>
   <div class="field"><label>Propsat jako uzavřený obchod</label><select id="sCreateDeal" onchange="toggleContractDealFields()"><option value="no">Ne, jen evidovaná smlouva</option><option value="yes">Ano, obchod sjednaný mnou</option></select></div><div class="field"><label>Datum obchodu</label><input id="sDealDate" type="date"></div><div class="field"><label>BJ</label><input id="sDealBj" type="number"></div>
@@ -530,7 +556,7 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
   <div class="field"><label>BJ</label><input id="dBj" type="number" oninput="updateDealExpectedCommission()"></div><div class="field"><label>Očekávaná provize</label><input id="dExpectedCommission" type="text" readonly></div><div class="field"><label>Skutečná provize</label><input id="dActualCommission" type="number" placeholder="vyplnit až po výplatě"></div>
   <div class="field"><label>Typař / doporučení</label><input id="dOwner" list="peopleList" oninput="syncDealOwnerDefaults()"></div><div class="field"><label>Typ zdroje</label><select id="dOwnerType" onchange="syncDealOwnerDefaults()"><option value="">Bez zdroje</option><option value="tipar">Typař</option><option value="referral">Doporučení</option></select></div><div class="field"><label>Provize typaři %</label><input id="dOwnerCommissionPct" type="number" min="0" max="100" step="1"></div><div class="field"><label>Typař vyplacen</label><select id="dOwnerPaid"><option value="no">Ne</option><option value="yes">Ano</option></select></div>
   <div class="field"><label>Provize vyplacena</label><select id="dCommissionPaid"><option value="no">Ne</option><option value="yes">Ano</option></select></div>
-  <div class="field"><label>Propsat do smluv</label><select id="dCreateContract" onchange="toggleDealContractFields()"><option value="yes">Ano</option><option value="no">Ne</option></select></div><div class="field"><label>Typ smlouvy</label><select id="dContractType"><option>auto</option><option>majetek</option><option>život</option><option>hypotéka</option><option>úvěr</option><option>investice</option><option>FKI</option><option>DPS</option><option>ostatní</option></select></div><div class="field"><label>Číslo smlouvy</label><input id="dContractNumber"></div>
+  <div class="field"><label>Propsat do smluv</label><select id="dCreateContract" onchange="toggleDealContractFields()"><option value="yes">Ano</option><option value="no">Ne</option></select></div><div class="field"><label>Typ smlouvy</label><select id="dContractType"><option>auto</option><option>majetek</option><option>život</option><option>hypotéka</option><option>úvěr</option><option>investice</option><option>FKI</option><option>DPS</option><option>DIP</option><option>ostatní</option></select></div><div class="field"><label>Číslo smlouvy</label><input id="dContractNumber"></div>
   <div class="field"><label>Výročí / fixace</label><input id="dContractAnniv" type="date"></div><div class="field"><label>Částka / platba</label><input id="dContractAmount"></div><div class="field"><label>Úrok</label><input id="dContractRate"></div>
   <div class="field"><label>Stav smlouvy</label><select id="dContractStatus" onchange="syncSignedDealContractRule()"></select></div><div class="field full"><label>Poznámka ke smlouvě</label><textarea class="contract-note-editor" id="dContractNote" onkeydown="datedTextareaEnter(event,this)" placeholder="Enter = nový datovaný záznam, Shift+Enter = nový řádek"></textarea></div>
 </div><div class="actions" style="justify-content:space-between;margin-top:12px"><button class="btn red" id="deleteDealBtn" onclick="deleteDeal()">Smazat</button><div class="actions"><button class="btn" id="moveDealToOppBtn" onclick="moveDealToOpportunity()">Přesunout do příležitostí</button><button class="btn primary" onclick="saveDeal()">Uložit obchod</button></div></div></div></div>
@@ -604,8 +630,8 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
 <iframe id="gsyncFrame" name="gsyncFrame" style="display:none"></iframe>
 
 <script>
-const VERSION='2026.09.04-3';
-const VERSION_NOTE='Přepracovaný klientský report: prodejní glass design, komentáře fondů, graf vývoje portfolia a volitelné sekce bez autora reportu.';
+const VERSION='2026.09.08-1';
+const VERSION_NOTE='Přidaná samostatná záložka Penze pro DPS/DIP: klienti, aktivní smlouvy, AUM a rozpad podle společností.';
 const STORE='filip_crm_main_v1';
 const DISK_STORAGE_URL='http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP='filip_crm';
@@ -2683,6 +2709,106 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
     a.href=URL.createObjectURL(blob);a.download='klientsky-report-'+(typeof normId==='function'?normId(rClientName(c)||'klient'):'klient')+'.html';document.body.appendChild(a);a.click();
     setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500);toast('Klientský report stažen');
   };
+})();
+
+(()=>{
+  let selectedPensionClientId=null,pensionMode='client';
+  const pEsc=v=>typeof esc==='function'?esc(v??''):String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const pMoney=v=>typeof money==='function'?money(v||0):(Math.round(+v||0).toLocaleString('cs-CZ')+' Kč');
+  const pNorm=v=>typeof norm==='function'?norm(v||''):String(v||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  const pClientName=c=>typeof clientName==='function'?clientName(c):(c?.name||'Bez klienta');
+  const pVal=id=>typeof val==='function'?val(id):(document.getElementById(id)?.value||'');
+  const pActiveStatusSet=new Set(['nechce','zruseno','zrušeno','ukonceno','ukončeno','storno','vypoved','výpověď']);
+  function pIsPensionContract(s){
+    if(!s)return false;
+    if(typeof areaForContract==='function'&&areaForContract(s)==='penze')return true;
+    return /\bdps\b|\bdip\b|penz/.test(pNorm([s.type,s.product,s.company,s.source].join(' ')));
+  }
+  function pIsPensionDeal(d){
+    if(!d)return false;
+    if(typeof areaForDeal==='function'&&areaForDeal(d)==='penze')return true;
+    return /\bdps\b|\bdip\b|penz/.test(pNorm([d.category,d.product,d.company].join(' ')));
+  }
+  function pStatuses(x){return typeof getStatuses==='function'?getStatuses(x):[x?.status].filter(Boolean)}
+  function pIsActive(x){return !pStatuses(x).some(s=>pActiveStatusSet.has(pNorm(s)))}
+  function pAmount(x){return typeof parseMoney==='function'?parseMoney(x?.amount??x?.volume??x?.aum??x?.current??0):(+String(x?.amount??x?.volume??x?.aum??x?.current??0).replace(/[^\d.-]/g,'')||0)}
+  function pDealAmount(d){return typeof dealVolume==='function'?dealVolume(d):pAmount(d)}
+  function pClient(id){return typeof findClient==='function'?findClient(id):((state.clients||[]).find(c=>String(c.id)===String(id))||null)}
+  function pTypeFromText(x){
+    const n=pNorm([x?.type,x?.category,x?.product].join(' '));
+    if(/\bdip\b/.test(n))return'DIP';
+    if(/\bdps\b/.test(n))return'DPS';
+    return'Penze';
+  }
+  function pIdentityBase(x){
+    const client=String(x.clientId||'');
+    const company=pNorm(x.company||'bez-spolecnosti');
+    const product=pNorm(x.product||x.type||x.category||'penze');
+    const number=pNorm(x.number||x.contractNumber||'');
+    return [client,company,product,number].join('|');
+  }
+  function pItems(){
+    const contracts=(state.contracts||[]).filter(s=>pIsPensionContract(s)&&pIsActive(s)).map(s=>({kind:'contract',id:s.id,clientId:s.clientId,company:s.company||'Bez společnosti',product:s.product||s.type||'Penze',type:pTypeFromText(s),number:s.number||'',amount:pAmount(s),date:s.anniv||s.dealDate||s.createdAt||'',status:pStatuses(s),source:s}));
+    const contractKeys=new Set(contracts.map(x=>pIdentityBase(x.source)));
+    const deals=(typeof visibleDeals==='function'?visibleDeals():(state.deals||[])).filter(d=>pIsPensionDeal(d)&&pIsActive(d)).filter(d=>!contractKeys.has(pIdentityBase(d))).map(d=>({kind:'deal',id:d.id,clientId:d.clientId,company:d.company||'Bez společnosti',product:d.product||'Penze',type:pTypeFromText(d),number:d.contractNumber||'',amount:pDealAmount(d),date:d.date||'',status:pStatuses(d),source:d}));
+    return [...contracts,...deals].filter(x=>x.clientId);
+  }
+  function pClientRows(items){
+    const map=new Map();
+    items.forEach(x=>{
+      const c=pClient(x.clientId),name=pClientName(c);
+      const row=map.get(String(x.clientId))||{clientId:x.clientId,name,amount:0,count:0,companies:new Set(),types:new Set(),items:[]};
+      row.amount+=x.amount;row.count++;row.companies.add(x.company||'Bez společnosti');row.types.add(x.type||'Penze');row.items.push(x);map.set(String(x.clientId),row);
+    });
+    return [...map.values()].sort((a,b)=>b.amount-a.amount||a.name.localeCompare(b.name,'cs'));
+  }
+  function pCompanyRows(items){
+    const map=new Map();
+    items.forEach(x=>{
+      const key=x.company||'Bez společnosti',row=map.get(key)||{company:key,amount:0,count:0,clients:new Set(),types:{DPS:0,DIP:0,Penze:0},items:[]};
+      row.amount+=x.amount;row.count++;row.clients.add(String(x.clientId));row.types[x.type] = (row.types[x.type]||0)+1;row.items.push(x);map.set(key,row);
+    });
+    return [...map.values()].sort((a,b)=>b.amount-a.amount||a.company.localeCompare(b.company,'cs'));
+  }
+  function pItemStatusHtml(x){return x.status?.length?x.status.map(s=>typeof statusBadge==='function'?statusBadge(s):`<span class="badge blue">${pEsc(s)}</span>`).join(' '):'<span class="badge green">aktivní</span>'}
+  function pOpenItem(x){x.kind==='contract'?openContractModal(x.clientId,x.id):openDealModal(x.clientId,x.id)}
+  function pRenderClientDetail(row){
+    const c=pClient(row.clientId),items=row.items.sort((a,b)=>(b.amount-a.amount)||a.product.localeCompare(b.product,'cs'));
+    return`<div class="toolbar"><div><div class="eyebrow">Penze klienta</div><h2>${pEsc(row.name)}</h2><p class="note">${pEsc([...row.companies].join(' · ')||'Bez společnosti')} · ${row.count} aktivních smluv/záznamů</p></div><div class="actions"><button class="btn" onclick="openClientModal(${row.clientId})">Klient</button><button class="btn primary" onclick="openPensionContractModal(${row.clientId})">+ Penze</button></div></div><div class="metric-strip"><div class="metric"><span class="note">AUM penzí</span><b>${pMoney(row.amount)}</b></div><div class="metric"><span class="note">Aktivních smluv</span><b>${row.count}</b></div><div class="metric"><span class="note">Společností</span><b>${row.companies.size}</b></div><div class="metric"><span class="note">Typy</span><b>${pEsc([...row.types].join(' / ')||'Penze')}</b></div></div><div class="table-wrap" style="margin-top:12px"><table class="compact-table"><thead><tr><th>Produkt</th><th>Společnost</th><th>Typ</th><th>Číslo</th><th>AUM</th><th>Stav</th><th>Akce</th></tr></thead><tbody>${items.map(x=>`<tr><td><b>${pEsc(x.product)}</b><br><span class="note">${pEsc(x.kind==='contract'?'Smlouva':'Obchod')}${x.date?' · '+pEsc(typeof dateCZ==='function'?dateCZ(x.date):x.date):''}</span></td><td>${pEsc(x.company)}</td><td>${pEsc(x.type)}</td><td>${pEsc(x.number||'-')}</td><td class="money"><b>${pMoney(x.amount)}</b></td><td>${pItemStatusHtml(x)}</td><td><button class="btn" onclick="editPensionItem('${x.kind}',${x.id})">Upravit</button></td></tr>`).join('')}</tbody></table></div>`;
+  }
+  function pRenderCompanies(companies){
+    return`<div class="toolbar"><div><div class="eyebrow">Penze</div><h2>Společnosti</h2><p class="note">Souhrn aktivních DPS/DIP podle penzijních společností.</p></div><button class="btn primary" onclick="openPensionContractModal(selectedClientId||null)">+ Penze</button></div><div class="table-wrap"><table class="compact-table"><thead><tr><th>Společnost</th><th>Klientů</th><th>Smluv/záznamů</th><th>DPS</th><th>DIP</th><th>AUM</th></tr></thead><tbody>${companies.map(r=>`<tr><td><b>${pEsc(r.company)}</b></td><td>${r.clients.size}</td><td>${r.count}</td><td>${r.types.DPS||0}</td><td>${r.types.DIP||0}</td><td class="money"><b>${pMoney(r.amount)}</b></td></tr>`).join('')||'<tr><td colspan="6" class="note">Zatím nemáš evidované aktivní penzijní smlouvy.</td></tr>'}</tbody></table></div>`;
+  }
+  function pRenderAum(companies){
+    const total=companies.reduce((s,r)=>s+r.amount,0)||1;
+    return`<div class="toolbar"><div><div class="eyebrow">Penze</div><h2>AUM podle společností</h2><p class="note">Rychlý přehled, kde je penzijní portfolio rozložené.</p></div></div><div class="stack">${companies.map(r=>{const pct=r.amount/total*100;return`<div class="mini-card"><div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><div><b>${pEsc(r.company)}</b><br><span class="note">${r.clients.size} klientů · ${r.count} položek</span></div><strong>${pMoney(r.amount)}</strong></div><div class="progress" style="margin-top:8px"><span style="width:${Math.max(2,pct)}%"></span></div><div class="note">${pct.toFixed(1).replace('.',',')} % penzijního AUM</div></div>`}).join('')||'<p class="note">Zatím není co zobrazit.</p>'}</div>`;
+  }
+  function pListHtml(rows){
+    return rows.map(r=>`<div class="investment-client ${String(selectedPensionClientId)===String(r.clientId)?'active':''}" onclick="selectPensionClient(${r.clientId})"><div><b>${pEsc(r.name)}</b><br><span class="note">${pEsc([...r.companies].join(' · ')||'Bez společnosti')}</span></div><div style="text-align:right"><strong>${pMoney(r.amount)}</strong><br><span class="badge blue">${r.count}</span></div></div>`).join('')||'<p class="note">Zatím tu nejsou žádné penze.</p>';
+  }
+  window.renderPensions=function(){
+    if(!document.getElementById('pensions'))return;
+    const q=pNorm(pVal('pensionSearch')),items=pItems().filter(x=>{const c=pClient(x.clientId);return !q||pNorm([pClientName(c),x.company,x.product,x.type,x.number].join(' ')).includes(q)}),rows=pClientRows(items),companies=pCompanyRows(items),detail=document.getElementById('pensionDetail');
+    if(!selectedPensionClientId&&rows[0])selectedPensionClientId=rows[0].clientId;
+    if(selectedPensionClientId&&!rows.some(r=>String(r.clientId)===String(selectedPensionClientId))&&rows[0])selectedPensionClientId=rows[0].clientId;
+    if(typeof setText==='function'){setText('pensionClientCount',rows.length);setText('pensionContractCount',items.length);setText('pensionTotalAum',pMoney(items.reduce((s,x)=>s+x.amount,0)));setText('pensionCompanyCount',companies.length)}
+    ['Client','Companies','Aum'].forEach(k=>{const el=document.getElementById('pensionTab'+k);if(el)el.classList.toggle('active',pensionMode.toLowerCase()===k.toLowerCase())});
+    const list=document.getElementById('pensionClientList');if(list)list.innerHTML=pListHtml(rows);
+    if(!detail)return;
+    if(pensionMode==='companies')detail.innerHTML=pRenderCompanies(companies);
+    else if(pensionMode==='aum')detail.innerHTML=pRenderAum(companies);
+    else{const row=rows.find(r=>String(r.clientId)===String(selectedPensionClientId));detail.innerHTML=row?pRenderClientDetail(row):'<div class="empty-state"><h2>Penze</h2><p class="note">Zatím tu nejsou žádné aktivní DPS/DIP smlouvy.</p></div>'}
+  };
+  window.selectPensionClient=function(id){selectedPensionClientId=id;pensionMode='client';renderPensions()};
+  window.setPensionMode=function(mode){pensionMode=mode||'client';renderPensions()};
+  window.editPensionItem=function(kind,id){const x=pItems().find(i=>i.kind===kind&&String(i.id)===String(id));if(x)pOpenItem(x)};
+  window.openPensionContractModal=function(clientId=null){
+    if(typeof openContractModal!=='function')return;
+    openContractModal(clientId||selectedPensionClientId||selectedClientId||null);
+    setTimeout(()=>{const t=document.getElementById('sType');if(t&&!t.value)t.value='DPS';else if(t&&t.value==='auto')t.value='DPS';if(typeof syncContractDealDefaults==='function')syncContractDealDefaults(true)},0);
+  };
+  const prevRenderAllPensions=window.renderAll||renderAll;
+  window.renderAll=renderAll=function(){const out=prevRenderAllPensions.apply(this,arguments);renderPensions();return out};
 })();
 </script></body>
 </html>
