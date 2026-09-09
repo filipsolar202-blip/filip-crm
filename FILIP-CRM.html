@@ -330,7 +330,9 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
               <div class="field"><label>Datum</label><input id="quickCallDate" type="date"></div>
               <div class="field"><label>Minuty</label><input id="quickCallMinutes" type="number" min="0" placeholder="např. 12"></div>
               <div class="field"><label>Výsledek hovoru</label><select id="quickCallOutcome"><option value="realized">Dovoláno</option><option value="no_show">Nedovoláno</option><option value="moved">Přesunuto</option><option value="agreed">Zavolat později</option></select></div>
-              <div class="field"><label>Vedlo k</label><select id="quickCallNext"><option value="">Bez dalšího kroku</option><option>Schůzka</option><option>Doporučení</option><option>Analýza</option><option>Prezentace</option><option>Podpis</option><option>Spolupráce</option></select></div>
+              <div class="field"><label>Vedlo k</label><select id="quickCallNext" onchange="updateQuickCallNextFields()"><option value="">Bez dalšího kroku</option><option>Schůzka</option><option>Zavolat později</option><option>Doporučení</option></select></div>
+              <div class="field quick-call-follow"><label>Datum schůzky / dalšího kroku</label><input id="quickCallNextDate" type="date"></div>
+              <div class="field quick-call-follow"><label>Čas</label><input id="quickCallNextTime" type="time"></div>
               <div class="field full"><label>Poznámka</label><input id="quickCallNote" placeholder="např. domluvena schůzka, nezvedá, poslat SMS..."></div>
             </div>
             <button class="btn primary" onclick="saveQuickAnalysis('call')">+ Uložit hovor</button>
@@ -649,8 +651,8 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
 <iframe id="gsyncFrame" name="gsyncFrame" style="display:none"></iframe>
 
 <script>
-const VERSION='2026.09.09-10';
-const VERSION_NOTE='Analýza aktivit funguje jako obchodní funnel: hovory, schůzky, navazující výsledky, týdenní a měsíční vyhodnocení úspěšnosti.';
+const VERSION='2026.09.09-11';
+const VERSION_NOTE='Hovor a navazující schůzka mají oddělené datum, aby se budoucí schůzky počítaly do správného týdne a měsíce.';
 const STORE='filip_crm_main_v1';
 const DISK_STORAGE_URL='http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP='filip_crm';
@@ -3469,6 +3471,7 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
 #referrers .analysis-day-pill b{display:block;margin-top:4px;font-size:18px}
 #referrers .analysis-week-table input{max-width:120px;text-align:right}
 #referrers .analysis-week-table .auto-cell{font-weight:950;font-variant-numeric:tabular-nums}
+#referrers .quick-call-follow.is-hidden{display:none}
 @media(max-width:900px){#referrers .analysis-quick-grid,#referrers .analysis-day-grid{grid-template-columns:1fr}}
 </style>
 <script>
@@ -3512,6 +3515,10 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
   }
   function dayKey(date){const d=new Date(String(date||t()).slice(0,10)+'T12:00:00');return['sun','mon','tue','wed','thu','fri','sat'][d.getDay()]||''}
   function callMinutesByDay(list){const out={mon:0,tue:0,wed:0,thu:0,fri:0};list.filter(x=>rowKey(x.type)==='calls').forEach(x=>{const k=dayKey(x.date);if(k in out)out[k]+=+x.minutes||0});return out}
+  window.updateQuickCallNextFields=updateQuickCallNextFields=function(){
+    const show=String(v('quickCallNext')||'')==='Schůzka'||String(v('quickCallNext')||'')==='Zavolat později';
+    document.querySelectorAll('#referrers .quick-call-follow').forEach(el=>el.classList.toggle('is-hidden',!show));
+  };
   window.analysisActuals=analysisActuals=function(start,end,key=''){
     const list=analysisRows(start,end),signed=typeof analysisSignedDeals==='function'?analysisSignedDeals(start,end):[],get=k=>summary(list,k),calls=get('calls'),meetings=get('meetings'),referrals=get('referrals'),analyses=get('analyses'),presentations=get('presentations'),signatures=get('signatures'),coop=get('coop'),realized=list.filter(x=>outcome(x)==='realized');
     const all=ROWS.reduce((a,[k])=>{const su=get(k);a.agreed+=su.planned;a.realized+=su.realized;a.moved+=su.moved;a.noShow+=su.noShow;return a},{agreed:0,realized:0,moved:0,noShow:0});
@@ -3519,15 +3526,19 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
   };
   window.saveQuickAnalysis=saveQuickAnalysis=function(kind){
     const call=kind==='call',date=v(call?'quickCallDate':'quickMeetingDate')||t(),minutes=n(v(call?'quickCallMinutes':'quickMeetingMinutes')),type=call?'Volání':v('quickMeetingType')||'Schůzka stávající klient',out=call?(v('quickCallOutcome')||'realized'):(v('quickMeetingOutcome')||'realized'),next=call?v('quickCallNext'):v('quickMeetingNext');
+    const followDate=call&&next&&(next==='Schůzka'||next==='Zavolat později')?v('quickCallNextDate'):'',followTime=call&&next?v('quickCallNextTime'):'';
+    if(call&&next==='Schůzka'&&!followDate)return alert('Doplň datum schůzky. Díky tomu se započte do správného týdne.');
+    if(call&&next==='Zavolat později'&&!followDate)return alert('Doplň datum dalšího hovoru.');
     const note=call?[v('quickCallNote'),next?('vedlo k: '+next):''].filter(Boolean).join(' · '):[v('quickMeetingNote'),next?('výsledek: '+next):''].filter(Boolean).join(' · ');
     state.analysisEntries=state.analysisEntries||[];
     const baseId=id();
-    state.analysisEntries.push({id:baseId,date,type,clientId:null,count:1,minutes,note:note||'',outcome:out,nextType:next||'',source:call?'Nový hovor':'Nová schůzka',createdAt:new Date().toISOString()});
-    if(next&&out==='realized'){
-      const nextType=next==='Schůzka'?'Schůzka stávající klient':next;
-      state.analysisEntries.push({id:id(),date,type:nextType,clientId:null,count:1,minutes:0,note:(call?'Navazující krok z hovoru':'Výsledek schůzky')+(v(call?'quickCallNote':'quickMeetingNote')?' · '+v(call?'quickCallNote':'quickMeetingNote'):''),outcome:call?'agreed':'realized',source:call?'Výsledek hovoru':'Výsledek schůzky',parentId:baseId,createdAt:new Date().toISOString()});
+    state.analysisEntries.push({id:baseId,date,type,clientId:null,count:1,minutes,note:note||'',outcome:out,nextType:next||'',nextDate:followDate||'',source:call?'Nový hovor':'Nová schůzka',createdAt:new Date().toISOString()});
+    const shouldCreateNext=next&&(call?['realized','agreed','moved'].includes(out):out==='realized');
+    if(shouldCreateNext){
+      const nextType=next==='Schůzka'?'Schůzka stávající klient':next==='Zavolat později'?'Volání':next,entryDate=call&&followDate?followDate:date,entryOutcome=call?'agreed':'realized';
+      state.analysisEntries.push({id:id(),date:entryDate,time:followTime||'',type:nextType,clientId:null,count:1,minutes:0,note:(call?'Navazující krok z hovoru':'Výsledek schůzky')+(followDate?' · termín '+followDate:'')+(v(call?'quickCallNote':'quickMeetingNote')?' · '+v(call?'quickCallNote':'quickMeetingNote'):''),outcome:entryOutcome,source:call?'Výsledek hovoru':'Výsledek schůzky',parentId:baseId,createdAt:new Date().toISOString()});
     }
-    if(call){s('quickCallMinutes','');s('quickCallNote','');s('quickCallNext','');s('quickCallOutcome','realized')}else{s('quickMeetingMinutes','');s('quickMeetingNote','');s('quickMeetingNext','');s('quickMeetingOutcome','realized')}
+    if(call){s('quickCallMinutes','');s('quickCallNote','');s('quickCallNext','');s('quickCallNextDate','');s('quickCallNextTime','');s('quickCallOutcome','realized');updateQuickCallNextFields()}else{s('quickMeetingMinutes','');s('quickMeetingNote','');s('quickMeetingNext','');s('quickMeetingOutcome','realized')}
     if(typeof persist==='function')persist();
     if(typeof renderReferrerHub==='function')renderReferrerHub();else renderAnalysis();
     if(typeof saveToast==='function')saveToast(call?'Hovor zapsán do týdne':'Schůzka zapsána do týdne');
@@ -3565,9 +3576,14 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
     const date=prompt('Datum zápisu',x.date||t());if(date===null)return;
     const type=prompt('Typ aktivity',x.type||'Volání');if(type===null)return;
     const out=prompt('Výsledek: agreed = domluveno, realized = zrealizováno, moved = přesunuto, no_show = nedorazil',outcome(x));if(out===null)return;
+    const next=prompt('Navazuje na: Schůzka, Analýza, Prezentace, Podpis, Doporučení, Spolupráce nebo prázdné',x.nextType||'');if(next===null)return;
     const minutes=prompt('Minuty',String(x.minutes||0));if(minutes===null)return;
     const note=prompt('Poznámka',x.note||'');if(note===null)return;
-    x.date=date||x.date;x.type=type||x.type;x.outcome=['agreed','realized','moved','no_show'].includes(out)?out:x.outcome;x.minutes=n(minutes);x.note=note;x.updatedAt=new Date().toISOString();
+    x.date=date||x.date;x.type=type||x.type;x.outcome=['agreed','realized','moved','no_show'].includes(out)?out:x.outcome;x.nextType=next||'';x.minutes=n(minutes);x.note=note;x.updatedAt=new Date().toISOString();
+    state.analysisEntries=(state.analysisEntries||[]).filter(a=>!(String(a.parentId||'')===String(x.id)&&String(a.source||'')==='Výsledek schůzky'));
+    if(rowKey(x.type)==='meetings'&&x.outcome==='realized'&&x.nextType){
+      state.analysisEntries.push({id:id(),date:x.date,type:x.nextType,clientId:null,count:1,minutes:0,note:'Výsledek schůzky'+(x.note?' · '+x.note:''),outcome:'realized',source:'Výsledek schůzky',parentId:x.id,createdAt:new Date().toISOString()});
+    }
     if(typeof persist==='function')persist();if(typeof renderReferrerHub==='function')renderReferrerHub();else renderAnalysis();if(typeof saveToast==='function')saveToast('Zápis upraven');
   };
   window.analysisWeekKeys=analysisWeekKeys=function(){
@@ -3585,7 +3601,7 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
   window.renderAnalysis=renderAnalysis=function(){
     const weekEl=document.getElementById('analysisWeek'),monthEl=document.getElementById('analysisMonth');if(!weekEl)return;
     if(!weekEl.value)weekEl.value=wk();if(monthEl&&!monthEl.value)monthEl.value=t().slice(0,7);
-    ['quickCallDate','quickMeetingDate'].forEach(x=>{if(!v(x))s(x,t())});
+    ['quickCallDate','quickMeetingDate'].forEach(x=>{if(!v(x))s(x,t())});updateQuickCallNextFields();
     const key=selectedWeek(),r=range(key),list=analysisRows(r.start,r.end),a=analysisActuals(r.start,r.end,key),month=selectedMonth(),m=analysisActuals(month+'-01',month+'-31'),all=a.summary.all,pct=all.agreed?Math.round(all.realized/all.agreed*100):null,metrics=document.getElementById('analysisMetrics');
     if(metrics)metrics.innerHTML=`<div class="metric"><span class="note">Úspěšnost týdne</span><b>${pct===null?'—':fmt(pct)+' %'}</b><small>${fmt(all.realized)} z ${fmt(all.agreed)} domluvených kroků</small></div><div class="metric"><span class="note">Navoláno</span><b>${fmt(a.minutes)} min</b><small>${fmt(a.calls)} hovorů</small></div><div class="metric"><span class="note">Hovor → schůzka</span><b>${a.calls?fmt(Math.round(a.summary.meetings.planned/a.calls*100))+' %':'—'}</b><small>${fmt(a.summary.meetings.planned)} domluveno</small></div><div class="metric"><span class="note">Doporučení / podpisy</span><b>${fmt(a.referrals)} / ${fmt(a.signatures)}</b></div>`;
     const table=document.getElementById('analysisPlanStatus');if(table){table.classList.add('analysis-week-table');table.innerHTML=weekTable(key,list)}
