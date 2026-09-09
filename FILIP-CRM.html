@@ -648,8 +648,8 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
 <iframe id="gsyncFrame" name="gsyncFrame" style="display:none"></iframe>
 
 <script>
-const VERSION='2026.09.09-7';
-const VERSION_NOTE='Investiční scénář bere schválené výnosy fondů před starými uloženými odhady a klientský HTML výstup používá prodejní report s grafem a detailními kartami fondů.';
+const VERSION='2026.09.09-8';
+const VERSION_NOTE='Doplněné výnosy a klientské popisy pro Direct PRO/Vigo, Vihorev, Penta RE, PFFL a ZDRR ve fondech i investičním scénáři.';
 const STORE='filip_crm_main_v1';
 const DISK_STORAGE_URL='http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP='filip_crm';
@@ -2424,6 +2424,9 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
       [['cz0008478187','nextgen','next gen'],'Fond vyhledává světové investiční příležitosti, hlavně akcie firem s růstovým potenciálem. Jednoduše: klient se podílí na firmách nové generace, které mohou v dalších letech růst.'],
       [['mt7000024857','rentier'],'Fond je smíšené řešení kombinující různé typy aktiv pro dlouhodobé budování majetku. Jednoduše: klient má rozloženou investici, která má pomáhat tvořit kapitál do budoucna.'],
       [['cz0008053642','penta equity'],'Fond investuje do skupiny Penta a jejích firemních projektů. Jednoduše: klient se podílí na růstu velké investiční skupiny a firem, které vlastní nebo rozvíjí.'],
+      [['penta real estate','penta re'],'Fond investuje do realitních projektů skupiny Penta, hlavně do nemovitostí, které mají vydělávat nájmem nebo růstem hodnoty. Jednoduše: klient se podílí na velkých realitních projektech silné investiční skupiny.'],
+      [['pffl','pffl i.podfond'],'Fond je zaměřený na nemovitostní nebo projektové financování v rámci privátního investičního řešení. Jednoduše: klient se podílí na fondu, který dává peníze do vybraných projektů s cílem pravidelného zhodnocení.'],
+      [['zdrr','zdr investments','zdr retail real estate'],'Fond investuje do retailových nemovitostí a obchodních parků, které vydělávají hlavně z nájmů. Jednoduše: klient se podílí na obchodech a službách, kam lidé běžně chodí nakupovat.'],
       [['cz0008048162','silverline real estate'],'Fond investuje do realitních projektů s preferovaným výnosem pro investory podle zvolené třídy akcií. Jednoduše: klient se podílí na nemovitostech, kde fond hledá výnos z projektů a růstu hodnoty.'],
       [['cz1005202968','cz1005202968','fidurock retail parks'],'Fond investuje do retail parků v Česku a na Slovensku, tedy do míst pro běžné každodenní nákupy. Jednoduše: klient se podílí na obchodních areálech, které lidé pravidelně využívají.'],
       [['edward'],'Edward je moderní investiční platforma pro správu a plánování klientského portfolia. Jednoduše: klient přes jedno řešení rozkládá peníze do více investičních nástrojů a může investici řídit v čase.'],
@@ -2441,7 +2444,7 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
     const hay=norm([isin,key,fv.isin,fv.fond,fv.product,fv.company,fv.typ].filter(Boolean).join(' '));
     const rows=[
       [['cz0008043445','r2p invest'],9],
-      [['cz0008043569','vihorev'],8.6],
+      [['cz0008043569','vihorev'],8],
       [['cz0008044880','realia fund','retail parks'],8],
       [['cz0008043700','csnf sicav'],null],
       [['cz0008051877','cz0008047263','csef aqua','čsef aqua'],8],
@@ -2462,11 +2465,14 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
       [['cz0008478187','nextgen','next gen'],11],
       [['mt7000024857','rentier'],10],
       [['cz0008053642','penta equity'],10],
+      [['penta real estate','penta re'],10],
+      [['pffl','pffl i.podfond'],7],
+      [['zdrr','zdr investments','zdr retail real estate'],8],
       [['cz0008048154','silverline podfond re','silverline re'],10],
       [['cz0008048162','silverline real estate','silverline fund sicav'],12],
       [['cz1005202968','fidurock retail parks'],8],
       [['edward'],5],
-      [['vigo public','vigo','direct pro'],5],
+      [['vigo public','vigo','direct pro'],8],
       [['cz0008044385','fckd','fčkd'],6],
       [['cz0008049020','koor esg'],11],
       [['cz0008049293','care esg','seniorcare','senior care'],7],
@@ -2505,7 +2511,7 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
     if(changed)persist();
   }
   function applyApprovedFundExpectedRates(){
-    const marker='2026.09.09-6';
+    const marker='2026.09.09-8';
     if(!state||!state.fundValues||state._fundExpectedRatesAppliedVersion===marker)return;
     let changed=0;
     Object.entries(state.fundValues).forEach(([key,fv])=>{
