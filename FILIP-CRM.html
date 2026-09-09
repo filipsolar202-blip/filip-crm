@@ -648,8 +648,8 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
 <iframe id="gsyncFrame" name="gsyncFrame" style="display:none"></iframe>
 
 <script>
-const VERSION='2026.09.09-3';
-const VERSION_NOTE='Nová investice předvyplňuje konzervativní očekávané výnosy fondů podle ISINu nebo názvu a vstupy pro částku i výnosy jsou kompaktně v jednom řádku.';
+const VERSION='2026.09.09-4';
+const VERSION_NOTE='Report klienta počítá roční výnos fondu váženě podle jednotlivých transakcí a konzervativní modelové výnosy se už automaticky nezapisují do uložených dat fondů.';
 const STORE='filip_crm_main_v1';
 const DISK_STORAGE_URL='http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP='filip_crm';
@@ -2503,7 +2503,6 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
   window.defaultFundComment=defaultFundComment;
   window.defaultFundExpectedRate=defaultFundExpectedRate;
   setTimeout(applyDefaultFundComments,1200);
-  setTimeout(applyDefaultFundExpectedRates,1400);
   function storeFundComment(area,key,isin,comment){
     state.fundValues=state.fundValues||{};
     const keys=new Set([key].filter(Boolean));
@@ -3003,7 +3002,7 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
   function xRowCpValue(r){const direct=typeof invCurrentNav==='function'?xN(invCurrentNav(r)):0;return direct||xN(xPick(r,['Poslední schválená hodnota CP','Posledni schvalena hodnota CP','Hodnota CP','valueCp','nav']))}
   function xFundRows(f){const rows=(Array.isArray(f.rows)&&f.rows.length?f.rows:[f]).filter(Boolean),positive=rows.filter(r=>!(typeof invIsWithdrawal==='function'&&invIsWithdrawal(r))),baseRows=positive.length?positive:rows,totalInvested=baseRows.reduce((s,r)=>s+xRowInvested(r),0);return baseRows.map((r,i)=>{const invested=xRowInvested(r),direct=xRowCurrentDirect(r),share=totalInvested>0?invested/totalInvested:0,current=direct>0?direct:xN(f.amount)*share,realized=typeof investmentRealizedAmount==='function'?xN(investmentRealizedAmount(r)):xN(r?.realized||r?.redemptionAmount||0),date=xRowDate(r)||xRowEmission(r)||f.date,valueDate=xValueDate(f.area==='FKI'?'fki':'investice',f.key,f.isin,f.valueDate||date),perf=xPerf(current,invested,realized),pa=xAnnualized(invested,current,realized,date,valueDate||f.valueDate);return{r,i,invested,current,realized,date,valueDate,perf,pa,cp:xRowCp(r),cpValue:xRowCpValue(r),emission:xRowEmission(r)}})}
   function xFundDetail(f,i,scenario=false){
-    const perf=xPerf(f.amount,f.invested,f.realized),valueDate=f.valueDate||xValueDate(f.area==='FKI'?'fki':'investice',f.key,f.isin,f.date||''),pa=xAnnualized(f.invested,f.amount,f.realized,f.date,valueDate),comment=f.comment||xComment(f.area==='FKI'?'fki':'investice',f.key,f.isin),rows=xFundRows(f),title=f.product||'Investice',sub=[f.company,f.area,f.isin].filter(Boolean).join(' · ');
+    const perf=xPerf(f.amount,f.invested,f.realized),valueDate=f.valueDate||xValueDate(f.area==='FKI'?'fki':'investice',f.key,f.isin,f.date||''),comment=f.comment||xComment(f.area==='FKI'?'fki':'investice',f.key,f.isin),rows=xFundRows(f),rowInvested=rows.reduce((s,x)=>s+x.invested,0),pa=rowInvested?rows.reduce((s,x)=>s+((x.pa!==null&&isFinite(x.pa)?x.pa:0)*x.invested),0)/rowInvested:xAnnualized(f.invested,f.amount,f.realized,f.date,valueDate),title=f.product||'Investice',sub=[f.company,f.area,f.isin].filter(Boolean).join(' · ');
     const rowHtml=rows.map(x=>`<tr><td><b>${xEsc(xRowTitle(x.r,x.i))}</b><br><small>${xEsc([x.date&&'připsání '+xDate(x.date),x.emission&&'emise '+xDate(x.emission)].filter(Boolean).join(' · '))}</small></td><td class="money">${xMoney(x.invested)}</td><td class="money">${x.cp?xNum(Math.round(x.cp)):'-'}</td><td>${x.cpValue?xNum(x.cpValue):'-'}</td><td class="money"><b>${xMoney(x.current)}</b><br><small>${x.valueDate?'k '+xDate(x.valueDate):''}</small></td><td class="money"><b class="${x.perf.gain>=0?'green':'red'}">${xPct(x.perf.pct)}</b><br><small>${xMoney(x.perf.gain)}</small></td><td><b class="${(x.pa||0)>=0?'green':'red'}">${xPctPlain(x.pa)}</b></td></tr>`).join('');
     return`<article class="report-fund-detail"><div class="report-fund-head"><div><h3>${xEsc(title)}</h3><div class="fund-tags">${[f.company,f.area,f.isin&&'ISIN '+f.isin,valueDate&&'hodnota k '+xDate(valueDate)].filter(Boolean).map(x=>`<span>${xEsc(x)}</span>`).join('')}</div></div><div class="fund-return ${perf.gain>=0?'green':'red'}">${xPct(perf.pct)}</div></div><div class="metrics"><div><small>Investováno</small><b>${xMoney(f.invested)}</b></div><div><small>Aktuální hodnota</small><b>${xMoney(f.amount)}</b></div><div><small>Čistý výnos</small><b class="${perf.gain>=0?'green':'red'}">${xMoney(perf.gain)}</b></div><div><small>Průměrný roční výnos</small><b class="${(pa||0)>=0?'green':'red'}">${xPctPlain(pa)}</b></div><div><small>Časový test</small><b>${rows.length>1?xNum(rows.length)+' transakcí':(valueDate?'k '+xDate(valueDate):'-')}</b></div></div><p class="fund-note">${xEsc(comment||'Popis fondu zatím není doplněný v CRM.')}</p><table class="fund-transactions"><thead><tr><th>Transakce</th><th>Investice</th><th>Počet CP</th><th>Hodnota CP</th><th>Aktuální hodnota</th><th>Celkové zhodnocení</th><th>Výnos p.a.</th></tr></thead><tbody>${rowHtml||`<tr><td colspan="7" class="muted">Bez samostatných transakcí.</td></tr>`}</tbody></table></article>`;
   }
