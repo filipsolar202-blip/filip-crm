@@ -648,8 +648,8 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
 <iframe id="gsyncFrame" name="gsyncFrame" style="display:none"></iframe>
 
 <script>
-const VERSION='2026.09.09-1';
-const VERSION_NOTE='Klientský report má kompaktní detail fondů bez velkých vizuálních slidů, vysvětlené rozložení portfolia a samostatné zhodnocení jednotlivých transakcí.';
+const VERSION='2026.09.09-2';
+const VERSION_NOTE='CRM doplňuje výchozí klientské popisky fondů podle ISINu nebo názvu, včetně Edward, Vigo Public, FČKD, KOOR ESG, ESG SeniorCARE a 1FRH.';
 const STORE='filip_crm_main_v1';
 const DISK_STORAGE_URL='http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP='filip_crm';
@@ -2392,8 +2392,60 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
   }
   function fundComment(area,key,isin){
     const fv=fundValueBy(area,key,isin);
-    return String(fv.comment||fv.reportComment||fv.note||'').trim();
+    return String(fv.comment||fv.reportComment||fv.note||defaultFundComment(area,key,isin,fv)).trim();
   }
+  function defaultFundComment(area,key,isin,fv={}){
+    const hay=norm([isin,key,fv.isin,fv.fond,fv.product,fv.company,fv.typ].filter(Boolean).join(' '));
+    const rows=[
+      [['cz0008043445','r2p invest'],'Fond investuje do portfolií pohledávek, tedy do dluhů, které nakupuje levněji a následně je spravuje přes zkušené inkasní partnery. Jednoduše: klient se podílí na byznysu, kde se z problémových dluhů snaží udělat výnosná investice.'],
+      [['cz0008043569','vihorev'],'Fond investuje do rezidenčních a investičních nemovitostí, které skupina sama vyhledává, staví a spravuje. Jednoduše: klient se podílí na realitních projektech od nákupu až po dokončení a provoz.'],
+      [['cz0008044880','realia fund','retail parks'],'Fond investuje do retail parků, tedy obchodních areálů s nájemci pro každodenní nákupy. Jednoduše: klient se podílí na nájmech z obchodů, kam lidé chodí běžně nakupovat.'],
+      [['cz0008043700','csnf sicav'],'Fond se zaměřuje na rezidenční nemovitosti, hlavně výstavbu a následný prodej bydlení v dostupných lokalitách. Jednoduše: klient se podílí na projektech, kde se staví bydlení pro rodiny.'],
+      [['cz0008051877','cz0008047263','csef aqua','čsef aqua'],'Fond investuje do energetiky a vodního hospodářství. Jednoduše: klient se podílí na infrastruktuře, kterou lidé a firmy potřebují každý den.'],
+      [['cz0008044195','aguila'],'Fond poskytuje úvěry firmám, které jsou zajištěné nemovitostmi. Jednoduše: klient pomáhá financovat projekty, kde za půjčenými penězi stojí nemovitost jako zajištění.'],
+      [['cz0008044179','domus'],'Fond investuje do pohledávek zajištěných nemovitostmi a do nemovitostních příležitostí z trhu. Jednoduše: klient se podílí na projektech, kde se problémová nemovitost nebo pohledávka mění na hodnotu.'],
+      [['cz0008042645','spilberk'],'Fond financuje projekty a společnosti navázané na skupinu SPILBERK, zejména v oblasti nemovitostí. Jednoduše: klient se podílí na financování realitních projektů s předem nastaveným výnosovým modelem.'],
+      [['cz0008050580','real luxembourg'],'Fond nakupuje hlavně činžovní domy a nemovitosti, které umí zhodnotit a následně prodat. Jednoduše: klient se podílí na proměně domů na hodnotnější nemovitosti.'],
+      [['cz0008053014','ebm residential'],'Fond investuje do rezidenčního developmentu a nemovitostních projektů skupiny EBM. Jednoduše: klient se podílí na výstavbě a rozvoji kvalitního bydlení.'],
+      [['cz1005202133','jrd eco living'],'Fond investuje do moderního a úsporného bydlení s ekologickým přesahem. Jednoduše: klient se podílí na bydlení, které má být šetrnější, modernější a dlouhodobě udržitelné.'],
+      [['cz0008053147','opc real estate','retail real estate'],'Fond je zaměřený na retailové nemovitosti, tedy prostory využívané obchody a službami. Jednoduše: klient se podílí na nemovitostech, které vydělávají hlavně z nájmů obchodníků.'],
+      [['cz0008045135','gartal'],'Fond financuje vybrané projekty developerské skupiny GARTAL formou půjček s pevným úrokem. Jednoduše: klient nepodstupuje přímo celé developerské riziko, ale podílí se na financování projektů skupiny.'],
+      [['cz0008046372','adax'],'Fond investuje do malých a středních firem, hlavně v Česku a na Slovensku, kde řeší růst nebo generační výměnu. Jednoduše: klient se podílí na firmách, které mají potenciál dál růst.'],
+      [['cz0008473139','atris realita'],'Fond investuje do nemovitostí a nemovitostních aktiv s cílem stabilního dlouhodobého výnosu. Jednoduše: klient se podílí na velkém portfoliu nemovitostí, které vydělává hlavně nájmem a růstem hodnoty.'],
+      [['cz0008477551','wood','realitni opf'],'Fond investuje do komerčních nemovitostí v Česku, Polsku a na Slovensku, například kanceláří, retailu, logistiky nebo rezidenčních projektů. Jednoduše: klient se podílí na velkých realitních projektech, na které by sám běžně nedosáhl.'],
+      [['cz0008477601','life balancovany'],'Fond kombinuje akciové a dluhopisové strategie J&T v jednom vyváženém řešení. Jednoduše: klient má jednu investici, která se snaží růst, ale zároveň držet rozumnější míru kolísání.'],
+      [['cz0008477593','life dynamicky'],'Fond má větší zaměření na akciové investice a dlouhodobý růst majetku. Jednoduše: klient investuje odvážněji, s cílem vyššího výnosu za delší dobu.'],
+      [['cz0008473634','bond a czk'],'Fond investuje hlavně do podnikových a státních dluhopisů. Jednoduše: klient půjčuje peníze firmám a státům přes fond a dostává se k širokému dluhopisovému portfoliu.'],
+      [['cz0008478187','nextgen','next gen'],'Fond vyhledává světové investiční příležitosti, hlavně akcie firem s růstovým potenciálem. Jednoduše: klient se podílí na firmách nové generace, které mohou v dalších letech růst.'],
+      [['mt7000024857','rentier'],'Fond je smíšené řešení kombinující různé typy aktiv pro dlouhodobé budování majetku. Jednoduše: klient má rozloženou investici, která má pomáhat tvořit kapitál do budoucna.'],
+      [['cz0008053642','penta equity'],'Fond investuje do skupiny Penta a jejích firemních projektů. Jednoduše: klient se podílí na růstu velké investiční skupiny a firem, které vlastní nebo rozvíjí.'],
+      [['cz0008048162','silverline real estate'],'Fond investuje do realitních projektů s preferovaným výnosem pro investory podle zvolené třídy akcií. Jednoduše: klient se podílí na nemovitostech, kde fond hledá výnos z projektů a růstu hodnoty.'],
+      [['cz1005202968','cz1005202968','fidurock retail parks'],'Fond investuje do retail parků v Česku a na Slovensku, tedy do míst pro běžné každodenní nákupy. Jednoduše: klient se podílí na obchodních areálech, které lidé pravidelně využívají.'],
+      [['edward'],'Edward je moderní investiční platforma pro správu a plánování klientského portfolia. Jednoduše: klient přes jedno řešení rozkládá peníze do více investičních nástrojů a může investici řídit v čase.'],
+      [['vigo public','vigo','direct pro'],'Vigo Public je retailový fond navázaný na Direct PRO, který zpřístupňuje investici i běžným klientům. Jednoduše: klient se dostává k řešení, které by jinak bylo dostupné hlavně pro kvalifikované investory.'],
+      [['cz0008044385','fckd','fčkd'],'FČKD je dluhopisově zaměřené FKI navázané na zkušenosti týmu kolem Dluhopisáře. Jednoduše: klient se podílí na portfoliu dluhopisových příležitostí, kde je hlavní myšlenkou půjčování kapitálu za výnos.'],
+      [['cz0008049020','koor esg'],'Fond investuje do projektu SeniorGarden v Pardubicích-Dražkovicích, který propojuje bydlení a péči pro seniory. Jednoduše: klient se podílí na zařízení, které má vydělávat a zároveň pomáhat lidem ve stáří.'],
+      [['cz0008049293','care esg','seniorcare','senior care'],'ESG SeniorCARE je fond zaměřený na zdravotně-sociální péči a nemovitosti pro seniory. Jednoduše: klient se podílí na provozu a zázemí služeb, které budou lidé s rostoucím věkem stále víc potřebovat.'],
+      [['cz0008045374','1frh','reverznich hypotek','reverzních hypoték'],'1. fond reverzních hypoték investuje do řešení, kde senioři získají peníze výměnou za budoucí vypořádání hodnoty nemovitosti. Jednoduše: klient se podílí na financování seniorů přes nemovitosti, které slouží jako zajištění.'],
+      [['cz0008052529','julius meinl'],'Fond dává peníze do skupiny Julius Meinl Living, která vlastní a provozuje luxusní hotelové/apartmánové domy ve velkých evropských městech. Jednoduše: klient se podílí na byznysu s krásným ubytováním pro cestující.']
+    ];
+    const found=rows.find(([keys])=>keys.some(k=>hay.includes(norm(k))));
+    return found?found[1]:'';
+  }
+  function applyDefaultFundComments(){
+    if(!state||!state.fundValues)return;
+    let changed=0;
+    Object.entries(state.fundValues).forEach(([key,fv])=>{
+      if(fv?.comment||fv?.reportComment||fv?.note)return;
+      const comment=defaultFundComment(fv?.area,key,fv?.isin,fv);
+      if(!comment)return;
+      state.fundValues[key]={...fv,comment};
+      changed++;
+    });
+    if(changed)persist();
+  }
+  window.defaultFundComment=defaultFundComment;
+  setTimeout(applyDefaultFundComments,1200);
   function storeFundComment(area,key,isin,comment){
     state.fundValues=state.fundValues||{};
     const keys=new Set([key].filter(Boolean));
@@ -2560,7 +2612,7 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
   }
   function rFundComment(area,key,isin){
     const fv=rFundValue(area,key,isin);
-    return String(fv.comment||fv.reportComment||fv.note||'').trim();
+    return String(fv.comment||fv.reportComment||fv.note||(typeof window.defaultFundComment==='function'?window.defaultFundComment(area,key,isin,fv):'')).trim();
   }
   function rStartDate(x){
     const rows=(x?.rows||[]).filter(Boolean),dates=rows.map(r=>String((typeof invEmissionDate==='function'?invEmissionDate(r):'')||(typeof invPaymentDate==='function'?invPaymentDate(r):'')||r.date||'')).filter(Boolean).sort();
@@ -2842,7 +2894,7 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
   const xDate=v=>{const s=xIso(v);if(!s)return String(v||'');const [y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d).toLocaleDateString('cs-CZ')};
   function xPerf(current,invested,realized=0){const gain=typeof investmentPerformanceGain==='function'?investmentPerformanceGain(current,invested,realized):(+current||0)+(+realized||0)-(+invested||0),pct=typeof investmentPerformancePct==='function'?investmentPerformancePct(current,invested,realized):((+invested||0)?gain/(+invested||0)*100:0);return{gain,pct}}
   function xFundValue(area,key,isin){const direct=state.fundValues?.[key];if(direct)return direct;const wanted=xNorm(isin||'');if(!wanted)return{};return Object.values(state.fundValues||{}).find(v=>(!area||v?.area===area)&&xNorm(v?.isin||'')===wanted)||{}}
-  function xComment(area,key,isin){const fv=xFundValue(area,key,isin);return String(fv.comment||fv.reportComment||fv.note||'').trim()}
+  function xComment(area,key,isin){const fv=xFundValue(area,key,isin);return String(fv.comment||fv.reportComment||fv.note||(typeof window.defaultFundComment==='function'?window.defaultFundComment(area,key,isin,fv):'')).trim()}
   function xValueDate(area,key,isin,fallback=''){return typeof fundValueDateText==='function'?fundValueDateText(area,key,isin,fallback):fallback}
   function xInvestmentKey(x){return typeof investmentFundKey==='function'?investmentFundKey(x):[x.company,x.product,x.isin].filter(Boolean).join('|')}
   function xClientInvestments(c){
