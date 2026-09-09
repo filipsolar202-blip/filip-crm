@@ -648,8 +648,8 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
 <iframe id="gsyncFrame" name="gsyncFrame" style="display:none"></iframe>
 
 <script>
-const VERSION='2026.09.09-5';
-const VERSION_NOTE='Klientský report u fondu zobrazuje jen investováno, aktuální hodnotu, čistý výnos, celkový výnos a časový test; roční p.a. zůstává pouze u jednotlivých transakcí.';
+const VERSION='2026.09.09-6';
+const VERSION_NOTE='Fondy mají doplněné schválené očekávané výnosy pro novou investici a dokup; CRM je jednorázově propíše i do uložených fondů.';
 const STORE='filip_crm_main_v1';
 const DISK_STORAGE_URL='http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP='filip_crm';
@@ -2437,40 +2437,41 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
   function defaultFundExpectedRate(area,key,isin,fv={}){
     const hay=norm([isin,key,fv.isin,fv.fond,fv.product,fv.company,fv.typ].filter(Boolean).join(' '));
     const rows=[
-      [['cz0008043445','r2p invest'],6],
-      [['cz0008043569','vihorev'],6],
-      [['cz0008044880','realia fund','retail parks'],6.5],
-      [['cz0008043700','csnf sicav'],5],
-      [['cz0008051877','cz0008047263','csef aqua','čsef aqua'],6],
-      [['cz0008044195','aguila'],5.5],
-      [['cz0008044179','domus'],6],
-      [['cz0008042645','spilberk'],6],
-      [['cz0008050580','real luxembourg'],5.5],
-      [['cz0008053014','ebm residential'],6],
-      [['cz1005202133','jrd eco living'],5.5],
-      [['cz0008053147','opc real estate','retail real estate'],5],
-      [['cz0008045135','gartal'],6],
-      [['cz0008046372','adax'],6],
-      [['cz0008473139','atris realita'],4],
-      [['cz0008477551','wood','realitni opf'],4],
-      [['cz0008477601','life balancovany'],4],
-      [['cz0008477593','life dynamicky'],5],
-      [['cz0008473634','bond a czk'],4],
-      [['cz0008478187','nextgen','next gen'],6],
-      [['mt7000024857','rentier'],4.5],
-      [['cz0008053642','penta equity'],6],
-      [['cz0008048162','silverline real estate'],6],
-      [['cz1005202968','fidurock retail parks'],6.5],
+      [['cz0008043445','r2p invest'],9],
+      [['cz0008043569','vihorev'],8.6],
+      [['cz0008044880','realia fund','retail parks'],8],
+      [['cz0008043700','csnf sicav'],null],
+      [['cz0008051877','cz0008047263','csef aqua','čsef aqua'],8],
+      [['cz0008044195','aguila'],7],
+      [['cz0008044179','domus'],8],
+      [['cz0008042645','spilberk'],7],
+      [['cz0008050580','real luxembourg'],10],
+      [['cz0008053014','ebm residential'],10],
+      [['cz1005202133','jrd eco living'],10],
+      [['cz0008053147','opc real estate','retail real estate'],11],
+      [['cz0008045135','gartal'],7],
+      [['cz0008046372','adax'],12],
+      [['cz0008473139','atris realita'],5.5],
+      [['cz0008477551','wood','realitni opf'],8],
+      [['cz0008477601','life balancovany'],8],
+      [['cz0008477593','life dynamicky'],10],
+      [['cz0008473634','bond a czk'],5],
+      [['cz0008478187','nextgen','next gen'],11],
+      [['mt7000024857','rentier'],10],
+      [['cz0008053642','penta equity'],10],
+      [['cz0008048154','silverline podfond re','silverline re'],10],
+      [['cz0008048162','silverline real estate','silverline fund sicav'],12],
+      [['cz1005202968','fidurock retail parks'],8],
       [['edward'],5],
       [['vigo public','vigo','direct pro'],5],
       [['cz0008044385','fckd','fčkd'],6],
-      [['cz0008049020','koor esg'],7],
+      [['cz0008049020','koor esg'],11],
       [['cz0008049293','care esg','seniorcare','senior care'],7],
       [['cz0008045374','1frh','reverznich hypotek','reverzních hypoték'],6],
-      [['cz0008052529','julius meinl'],5]
+      [['cz0008052529','julius meinl'],13]
     ];
     const found=rows.find(([keys])=>keys.some(k=>hay.includes(norm(k))));
-    if(!found)return{};
+    if(!found||found[1]===null)return{};
     const rate=found[1];
     return{expectedRate:rate,rate,minRate:Math.max(0,rate-2),maxRate:rate+2};
   }
@@ -2500,9 +2501,23 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
     });
     if(changed)persist();
   }
+  function applyApprovedFundExpectedRates(){
+    const marker='2026.09.09-6';
+    if(!state||!state.fundValues||state._fundExpectedRatesAppliedVersion===marker)return;
+    let changed=0;
+    Object.entries(state.fundValues).forEach(([key,fv])=>{
+      const defs=defaultFundExpectedRate(fv?.area,key,fv?.isin,fv);
+      if(!defs.expectedRate)return;
+      state.fundValues[key]={...fv,expectedRate:defs.expectedRate,rate:defs.rate,minRate:defs.minRate,maxRate:defs.maxRate};
+      changed++;
+    });
+    state._fundExpectedRatesAppliedVersion=marker;
+    if(changed)persist();
+  }
   window.defaultFundComment=defaultFundComment;
   window.defaultFundExpectedRate=defaultFundExpectedRate;
   setTimeout(applyDefaultFundComments,1200);
+  setTimeout(applyApprovedFundExpectedRates,1400);
   function storeFundComment(area,key,isin,comment){
     state.fundValues=state.fundValues||{};
     const keys=new Set([key].filter(Boolean));
