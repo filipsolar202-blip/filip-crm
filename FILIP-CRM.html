@@ -532,7 +532,7 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
   <div class="form-grid"><div class="field"><label>Klient</label><select id="scenarioClient" onchange="toggleInvestmentScenarioClient();renderInvestmentScenario()"></select></div><div class="field"><label>Oblast</label><select id="scenarioArea" onchange="fillInvestmentScenarioFunds()"><option>Investice</option><option>FKI</option></select></div><div class="field"><label>Horizont v letech</label><input id="scenarioYears" type="number" min="1" max="40" value="10" oninput="renderInvestmentScenario()"></div><div class="field"><label>Způsob uložení</label><select id="scenarioSaveMode" onchange="updateInvestmentScenarioSaveMode()"><option value="proposal">Návrh / příležitost</option><option value="signed">Sjednáno rovnou</option></select></div><div class="field"><label>Datum sjednání</label><input id="scenarioSignedDate" type="date"></div></div>
   <div id="scenarioNewClientFields" class="mini-card" style="display:none;margin-top:12px"><h3>Nový klient</h3><div class="form-grid"><div class="field"><label>Jméno a příjmení</label><input id="scenarioNewClientName"></div><div class="field"><label>Rodné číslo / IČO</label><input id="scenarioNewClientBirthId"></div><div class="field"><label>Telefon</label><input id="scenarioNewClientPhone"></div><div class="field"><label>E-mail</label><input id="scenarioNewClientEmail" type="email"></div></div></div>
   <div id="scenarioCurrentPortfolio" class="mini-card" style="margin-top:12px"></div>
-  <div class="mini-card" style="margin-top:12px"><h3>Přidat fond do návrhu</h3><div class="form-grid"><div class="field full"><label>Fond</label><select id="scenarioFund"></select></div><div class="field"><label>Nová investice</label><input id="scenarioAmount" type="number" min="0"></div><div class="field"><label>Očekávaný výnos p.a. %</label><input id="scenarioRate" type="number" step="0.1" value="5"></div><div class="field"><label>Min. zhodnocení p.a. %</label><input id="scenarioMinRate" type="number" step="0.1" placeholder="např. 3"></div><div class="field"><label>Max. zhodnocení p.a. %</label><input id="scenarioMaxRate" type="number" step="0.1" placeholder="např. 9"></div></div><div class="actions" style="justify-content:flex-end;margin-top:10px"><button class="btn" onclick="addInvestmentScenarioFund()">+ Přidat fond</button></div></div>
+  <div class="mini-card" style="margin-top:12px"><h3>Přidat fond do návrhu</h3><div class="form-grid scenario-add-grid"><div class="field scenario-fund-field"><label>Fond</label><select id="scenarioFund" onchange="applyInvestmentScenarioFundDefaults()"></select></div><div class="field"><label>Nová investice</label><input id="scenarioAmount" type="number" min="0"></div><div class="field"><label>Očekávaný výnos p.a. %</label><input id="scenarioRate" type="number" step="0.1" value="5"></div><div class="field"><label>Min. zhodnocení p.a. %</label><input id="scenarioMinRate" type="number" step="0.1" placeholder="např. 3"></div><div class="field"><label>Max. zhodnocení p.a. %</label><input id="scenarioMaxRate" type="number" step="0.1" placeholder="např. 9"></div></div><div class="actions" style="justify-content:flex-end;margin-top:10px"><button class="btn" onclick="addInvestmentScenarioFund()">+ Přidat fond</button></div></div>
   <div id="scenarioSelectedFunds" class="mini-card" style="margin-top:12px"></div>
   <div class="actions" style="justify-content:flex-end;margin-top:12px"><button class="btn" onclick="previewInvestmentScenario()">HTML pro klienta</button><button class="btn primary" id="scenarioSaveBtn" onclick="saveInvestmentScenario()">Uložit návrh</button></div>
 </div></div>
@@ -648,8 +648,8 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
 <iframe id="gsyncFrame" name="gsyncFrame" style="display:none"></iframe>
 
 <script>
-const VERSION='2026.09.09-2';
-const VERSION_NOTE='CRM doplňuje výchozí klientské popisky fondů podle ISINu nebo názvu, včetně Edward, Vigo Public, FČKD, KOOR ESG, ESG SeniorCARE a 1FRH.';
+const VERSION='2026.09.09-3';
+const VERSION_NOTE='Nová investice předvyplňuje konzervativní očekávané výnosy fondů podle ISINu nebo názvu a vstupy pro částku i výnosy jsou kompaktně v jednom řádku.';
 const STORE='filip_crm_main_v1';
 const DISK_STORAGE_URL='http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP='filip_crm';
@@ -1166,10 +1166,12 @@ function openReportWindow(html){const w=window.open('','_blank');if(!w)return al
 function previewFkClientReportFromModal(){const c=findClient(fkReportClientId),row=fkClientRows().find(r=>String(r.client?.id)===String(fkReportClientId));if(!c||!row)return alert('Report pro klienta není dostupný.');openReportWindow(fkClientReportHtml(c,row,fkClientReportOptions()))}
 function downloadFkClientReportFromModal(){downloadFkClientReport(fkReportClientId,fkClientReportOptions())}
 function fkClientReportHtml(c,row,opts={}){const day=new Date().toLocaleDateString('cs-CZ'),fki=row.items||[],classic=opts.includeClassic?clientClassicInvestmentReportItems(c.id):[],other=[...classic,...(opts.extraInvestments||[])],fkiAum=fki.reduce((s,x)=>s+(+x.amount||0),0),fkiIn=fki.reduce((s,x)=>s+(+x.invested||0),0),fkiRealized=fki.reduce((s,x)=>s+investmentRealizedAmount(x),0),otherAum=other.reduce((s,x)=>s+(+x.amount||0),0),otherIn=other.reduce((s,x)=>s+(+x.invested||0),0),otherRealized=other.reduce((s,x)=>s+investmentRealizedAmount(x),0),total=fkiAum+otherAum,put=fkiIn+otherIn,realized=fkiRealized+otherRealized,gain=investmentPerformanceGain(total,put,realized),pct=investmentPerformancePct(total,put,realized),managed=other.filter(x=>x.managed!==false).reduce((s,x)=>s+(+x.amount||0),0)+fkiAum,outside=other.filter(x=>x.managed===false).reduce((s,x)=>s+(+x.amount||0),0),fkiShare=total?Math.round(fkiAum/total*100):0,css=`*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f4f8fc;color:#14213a}.wrap{max-width:1080px;margin:auto;padding:34px}.glass{background:rgba(255,255,255,.9);border:1px solid #d6e3f2;border-radius:18px;box-shadow:0 18px 55px rgba(38,70,110,.1);padding:22px;margin-bottom:16px}h1{font-size:34px;margin:3px 0}h2{font-size:20px;margin:0 0 14px}.muted{color:#65748c}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.kpi{background:#f8fbff;border:1px solid #dce7f4;border-radius:13px;padding:12px}.kpi span{display:block;font-size:11px;text-transform:uppercase;font-weight:800;color:#687894}.kpi b{font-size:21px}.visual{display:grid;grid-template-columns:180px 1fr;gap:24px;align-items:center}.donut{width:150px;aspect-ratio:1;border-radius:50%;background:conic-gradient(#2563eb 0 ${fkiShare}%,#18a6bb ${fkiShare}% 100%);position:relative;margin:auto}.donut:after{content:"${fkiShare}% FKI";position:absolute;inset:28px;background:#fff;border-radius:50%;display:grid;place-items:center;font-weight:900}table{width:100%;border-collapse:collapse;font-size:13px}th{text-align:left;color:#65748c;text-transform:uppercase;font-size:10px;background:#f1f6fc}td,th{padding:9px 8px;border-bottom:1px solid #dbe5f1}.money{text-align:right}.green{color:#14823b}.red{color:#c12626}.badge{display:inline-block;border-radius:999px;padding:4px 8px;font-size:10px;font-weight:800}.managed{background:#dcfce7;color:#166534}.outside{background:#ffedd5;color:#9a3412}.actions{position:fixed;right:18px;bottom:18px;display:flex;gap:8px}.actions button{border:0;border-radius:11px;padding:12px 15px;font-weight:800;background:#fff;box-shadow:0 8px 30px #9aa8}.actions .primary{background:#2563eb;color:#fff}@media(max-width:700px){.wrap{padding:14px}.kpis{grid-template-columns:1fr 1fr}.visual{grid-template-columns:1fr}.actions{position:static;margin:14px}.hide-mobile{display:none}}@media print{.actions{display:none}.wrap{padding:0}.glass{box-shadow:none;break-inside:avoid}}`,rows=(arr,isFki)=>arr.map(x=>{const g=investmentPerformanceGain(x.amount,x.invested,investmentRealizedAmount(x)),isManaged=isFki||x.managed!==false;return`<tr><td><b>${esc(x.product||(isFki?'FKI':'Investice'))}</b><br><span class="muted">${esc([x.isin,x.typ,x.note].filter(Boolean).join(' · '))}</span></td><td>${esc(x.company||'')}</td><td class="money">${money(x.invested)}</td><td class="money">${money(x.amount)}</td><td class="money ${g>=0?'green':'red'}">${money(g)}</td><td><span class="badge ${isManaged?'managed':'outside'}">${isManaged?'V mé správě':'Mimo mou správu'}</span></td></tr>`}).join('');return`<!doctype html><html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Investiční report – ${esc(clientName(c))}</title><style>${css}</style></head><body><div class="actions"><button onclick="window.close()">Zavřít</button><button class="primary" onclick="window.print()">Tisk / PDF</button></div><div class="wrap"><header class="glass"><div class="muted">Investiční report klienta</div><h1>${esc(clientName(c))}</h1><div class="muted">Stav ke dni ${esc(day)} · FILIP CRM</div></header><section class="glass"><h2>Souhrn portfolia</h2><div class="kpis"><div class="kpi"><span>Hodnota celkem</span><b>${money(total)}</b></div><div class="kpi"><span>Vloženo</span><b>${money(put)}</b></div><div class="kpi"><span>Výsledek</span><b class="${gain>=0?'green':'red'}">${money(gain)}</b></div><div class="kpi"><span>Zhodnocení</span><b class="${gain>=0?'green':'red'}">${pct.toFixed(1)} %</b></div></div></section><section class="glass visual"><div class="donut"></div><div><h2>Rozložení investic</h2><p><b>FKI:</b> ${money(fkiAum)}</p><p><b>Další investice:</b> ${money(otherAum)}</p><p><b>V mé správě:</b> ${money(managed)}</p>${outside?`<p><b>Mimo mou správu:</b> ${money(outside)}</p>`:''}</div></section>${fki.length?`<section class="glass"><h2>FKI portfolio</h2><table><thead><tr><th>Fond</th><th>Společnost</th><th>Vloženo</th><th>Hodnota</th><th>Výsledek</th><th>Správa</th></tr></thead><tbody>${rows(fki,true)}</tbody></table></section>`:''}${other.length?`<section class="glass"><h2>Další investice</h2><table><thead><tr><th>Produkt</th><th>Společnost</th><th>Vloženo</th><th>Hodnota</th><th>Výsledek</th><th>Správa</th></tr></thead><tbody>${rows(other,false)}</tbody></table></section>`:''}<section class="glass"><h2>Upozornění</h2><p class="muted">Report je informativní přehled podle údajů evidovaných k datu vytvoření. Nejde o investiční doporučení. Rozhodující jsou oficiální výpisy a dokumentace poskytovatelů.</p></section></div></body></html>`}
-function investmentScenarioCatalog(){const all=[...investmentFundItems().map(f=>({key:'Investice|'+f.key,area:'Investice',company:f.company||'',product:f.product||f.label||'Investice',isin:f.isin||'',typ:f.typ||''})),...fkFundItems().map(f=>({key:'FKI|'+f.key,area:'FKI',company:f.company||'',product:f.product||'FKI',isin:f.isin||'',typ:f.typ||''}))],seen=new Set();return all.filter(x=>{const k=x.area+'|'+norm(x.isin||x.key);if(seen.has(k))return false;seen.add(k);return true}).sort((a,b)=>String(a.company+' '+a.product).localeCompare(String(b.company+' '+b.product),'cs'))}
+function scenarioFundRates(area,key,isin,fv={}){const defs=typeof window.defaultFundExpectedRate==='function'?window.defaultFundExpectedRate(area,key,isin,fv):{},rate=parseMoney(fv.expectedRate||fv.rate||fv.expectedYield||fv.modelRate||defs.expectedRate||5)||5;return{rate,minRate:parseMoney(fv.minRate||defs.minRate||Math.max(0,rate-2)),maxRate:parseMoney(fv.maxRate||defs.maxRate||rate+2)}}
+function investmentScenarioCatalog(){const all=[...investmentFundItems().map(f=>{const fv=investmentFundStoredValue(f)||{},rates=scenarioFundRates('investice',f.key,f.isin,fv);return{key:'Investice|'+f.key,area:'Investice',company:f.company||'',product:f.product||f.label||'Investice',isin:f.isin||'',typ:f.typ||'',...rates}}),...fkFundItems().map(f=>{const fv=state.fundValues?.[f.key]||{},rates=scenarioFundRates('fki',f.key,f.isin,fv);return{key:'FKI|'+f.key,area:'FKI',company:f.company||'',product:f.product||'FKI',isin:f.isin||'',typ:f.typ||'',...rates}})],seen=new Set();return all.filter(x=>{const k=x.area+'|'+norm(x.isin||x.key);if(seen.has(k))return false;seen.add(k);return true}).sort((a,b)=>String(a.company+' '+a.product).localeCompare(String(b.company+' '+b.product),'cs'))}
 function openInvestmentScenarioModal(clientId=null,area='Investice'){investmentScenario={rows:[]};const id=clientId||selectedClientId||state.clients[0]?.id;fillClientSelect('scenarioClient',id);const el=byId('scenarioClient');if(el)el.insertAdjacentHTML('afterbegin','<option value="__new">+ Nový klient</option>');setVal('scenarioClient',id||'__new');setVal('scenarioArea',area==='FKI'?'FKI':'Investice');setVal('scenarioYears','10');setVal('scenarioAmount','');setVal('scenarioRate','5');['scenarioNewClientName','scenarioNewClientBirthId','scenarioNewClientPhone','scenarioNewClientEmail'].forEach(x=>setVal(x,''));toggleInvestmentScenarioClient();fillInvestmentScenarioFunds();renderInvestmentScenario();openModal('investmentScenarioModal')}
 function toggleInvestmentScenarioClient(){const box=byId('scenarioNewClientFields');if(box)box.style.display=val('scenarioClient')==='__new'?'block':'none'}
-function fillInvestmentScenarioFunds(){const area=val('scenarioArea')||'Investice',el=byId('scenarioFund');if(!el)return;const rows=investmentScenarioCatalog().filter(x=>x.area===area);el.innerHTML=rows.map(x=>`<option value="${esc(x.key)}">${esc(x.company+' – '+x.product+(x.isin?' · '+x.isin:''))}</option>`).join('')||'<option value="">Nejdřív založ fond v Reportu</option>'}
+function fillInvestmentScenarioFunds(){const area=val('scenarioArea')||'Investice',el=byId('scenarioFund');if(!el)return;const rows=investmentScenarioCatalog().filter(x=>x.area===area);el.innerHTML=rows.map(x=>`<option value="${esc(x.key)}">${esc(x.company+' – '+x.product+(x.isin?' · '+x.isin:''))}</option>`).join('')||'<option value="">Nejdřív založ fond v Reportu</option>';applyInvestmentScenarioFundDefaults()}
+function applyInvestmentScenarioFundDefaults(){const item=investmentScenarioCatalog().find(x=>x.key===val('scenarioFund'));if(!item)return;setVal('scenarioRate',decimal(item.rate));setVal('scenarioMinRate',decimal(item.minRate));setVal('scenarioMaxRate',decimal(item.maxRate))}
 function scenarioSelectedClient(){return val('scenarioClient')==='__new'?null:findClient(val('scenarioClient'))}
 function renderInvestmentScenario(){
   const c=scenarioSelectedClient(),portfolio=c?clientDisplayInvestmentItems(c.id):[],sum=portfolio.reduce((s,x)=>s+(+x.amount||0),0),openOpps=c?clientOpenOpportunities(c.id).filter(o=>['investice','fki'].includes(opportunityArea(o))):[],current=byId('scenarioCurrentPortfolio');
@@ -1177,7 +1179,7 @@ function renderInvestmentScenario(){
   const years=Math.max(1,parseMoney(val('scenarioYears'))||10),box=byId('scenarioSelectedFunds'),total=investmentScenario.rows.reduce((s,x)=>s+x.amount,0),future=investmentScenario.rows.reduce((s,x)=>s+x.amount*Math.pow(1+x.rate/100,years),0);
   if(box)box.innerHTML=`<div class="toolbar"><div><h3>Navržené investice</h3><div class="note">Horizont ${num(years)} let · jednorázově ${money(total)} · modelová hodnota ${money(future)}</div></div></div>${investmentScenario.rows.length?`<div class="table-wrap"><table class="compact-table"><thead><tr><th>Fond</th><th>Oblast</th><th>Částka</th><th>Výnos p.a.</th><th>Dokup</th><th>Propad</th><th>Modelová hodnota</th><th></th></tr></thead><tbody>${investmentScenario.rows.map((x,i)=>`<tr><td><b>${esc(x.product)}</b><br><span class="note">${esc(x.company)}</span></td><td>${esc(x.area)}</td><td class="money">${money(x.amount)}</td><td class="money">${decimal(x.rate)} %</td><td>${x.topupYear?esc(x.topupYear+'. rok · '+money(x.topupAmount)):'-'}</td><td>${x.dropYear?esc(x.dropYear+'. rok · '+decimal(x.dropPct)+' %'):'-'}</td><td class="money">${money(x.amount*Math.pow(1+x.rate/100,years))}</td><td><button class="icon-btn" title="Odebrat" onclick="removeInvestmentScenarioFund(${i})">×</button></td></tr>`).join('')}</tbody></table></div>`:'<p class="note">Vyber fond a přidej jej do návrhu.</p>'}`;
 }
-function addInvestmentScenarioFund(){const item=investmentScenarioCatalog().find(x=>x.key===val('scenarioFund')),amount=parseMoney(val('scenarioAmount')),rate=parseMoney(val('scenarioRate'));if(!item)return alert('Vyber fond.');if(amount<=0)return alert('Vyplň částku nové investice.');investmentScenario.rows.push({...item,amount,rate});setVal('scenarioAmount','');renderInvestmentScenario();saveToast('Fond přidán do návrhu')}
+function addInvestmentScenarioFund(){const item=investmentScenarioCatalog().find(x=>x.key===val('scenarioFund')),amount=parseMoney(val('scenarioAmount')),rate=parseMoney(val('scenarioRate'))||item?.rate||5,minRate=parseMoney(val('scenarioMinRate'))||item?.minRate||Math.max(0,rate-2),maxRate=parseMoney(val('scenarioMaxRate'))||item?.maxRate||rate+2;if(!item)return alert('Vyber fond.');if(amount<=0)return alert('Vyplň částku nové investice.');investmentScenario.rows.push({...item,amount,rate,minRate,maxRate});setVal('scenarioAmount','');renderInvestmentScenario();saveToast('Fond přidán do návrhu')}
 function removeInvestmentScenarioFund(i){investmentScenario.rows.splice(i,1);renderInvestmentScenario()}
 function scenarioClientDraft(){return{name:val('scenarioNewClientName').trim(),birthId:val('scenarioNewClientBirthId').trim(),phone:val('scenarioNewClientPhone').trim(),email:val('scenarioNewClientEmail').trim()}}
 function ensureInvestmentScenarioClient(){let c=scenarioSelectedClient();if(c)return c;const d=scenarioClientDraft();if(!d.name){alert('Vyplň jméno nového klienta.');return null}const match=findMatchingClient(d);if(match){if(!confirm(`Klient ${clientName(match)} už pravděpodobně existuje. Použít jeho kartu?`))return null;c=match}else{c={id:uid(),...d,contactPref:'email',createdAt:today()};state.clients.push(c)}return c}
@@ -2432,6 +2434,46 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
     const found=rows.find(([keys])=>keys.some(k=>hay.includes(norm(k))));
     return found?found[1]:'';
   }
+  function defaultFundExpectedRate(area,key,isin,fv={}){
+    const hay=norm([isin,key,fv.isin,fv.fond,fv.product,fv.company,fv.typ].filter(Boolean).join(' '));
+    const rows=[
+      [['cz0008043445','r2p invest'],6],
+      [['cz0008043569','vihorev'],6],
+      [['cz0008044880','realia fund','retail parks'],6.5],
+      [['cz0008043700','csnf sicav'],5],
+      [['cz0008051877','cz0008047263','csef aqua','čsef aqua'],6],
+      [['cz0008044195','aguila'],5.5],
+      [['cz0008044179','domus'],6],
+      [['cz0008042645','spilberk'],6],
+      [['cz0008050580','real luxembourg'],5.5],
+      [['cz0008053014','ebm residential'],6],
+      [['cz1005202133','jrd eco living'],5.5],
+      [['cz0008053147','opc real estate','retail real estate'],5],
+      [['cz0008045135','gartal'],6],
+      [['cz0008046372','adax'],6],
+      [['cz0008473139','atris realita'],4],
+      [['cz0008477551','wood','realitni opf'],4],
+      [['cz0008477601','life balancovany'],4],
+      [['cz0008477593','life dynamicky'],5],
+      [['cz0008473634','bond a czk'],4],
+      [['cz0008478187','nextgen','next gen'],6],
+      [['mt7000024857','rentier'],4.5],
+      [['cz0008053642','penta equity'],6],
+      [['cz0008048162','silverline real estate'],6],
+      [['cz1005202968','fidurock retail parks'],6.5],
+      [['edward'],5],
+      [['vigo public','vigo','direct pro'],5],
+      [['cz0008044385','fckd','fčkd'],6],
+      [['cz0008049020','koor esg'],7],
+      [['cz0008049293','care esg','seniorcare','senior care'],7],
+      [['cz0008045374','1frh','reverznich hypotek','reverzních hypoték'],6],
+      [['cz0008052529','julius meinl'],5]
+    ];
+    const found=rows.find(([keys])=>keys.some(k=>hay.includes(norm(k))));
+    if(!found)return{};
+    const rate=found[1];
+    return{expectedRate:rate,rate,minRate:Math.max(0,rate-2),maxRate:rate+2};
+  }
   function applyDefaultFundComments(){
     if(!state||!state.fundValues)return;
     let changed=0;
@@ -2444,8 +2486,24 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
     });
     if(changed)persist();
   }
+  function applyDefaultFundExpectedRates(){
+    if(!state||!state.fundValues)return;
+    let changed=0;
+    Object.entries(state.fundValues).forEach(([key,fv])=>{
+      const defs=defaultFundExpectedRate(fv?.area,key,fv?.isin,fv);
+      if(!defs.expectedRate)return;
+      const next={...fv};
+      if(!next.expectedRate&&!next.rate&&!next.expectedYield&&!next.modelRate){next.expectedRate=defs.expectedRate;changed++}
+      if(!next.minRate){next.minRate=defs.minRate;changed++}
+      if(!next.maxRate){next.maxRate=defs.maxRate;changed++}
+      state.fundValues[key]=next;
+    });
+    if(changed)persist();
+  }
   window.defaultFundComment=defaultFundComment;
+  window.defaultFundExpectedRate=defaultFundExpectedRate;
   setTimeout(applyDefaultFundComments,1200);
+  setTimeout(applyDefaultFundExpectedRates,1400);
   function storeFundComment(area,key,isin,comment){
     state.fundValues=state.fundValues||{};
     const keys=new Set([key].filter(Boolean));
@@ -2544,13 +2602,13 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
     const before=(investmentScenario?.rows||[]).length,minRate=n(val('scenarioMinRate')),maxRate=n(val('scenarioMaxRate'));
     if(typeof oldAddScenario==='function')oldAddScenario.apply(this,arguments);
     const rows=investmentScenario?.rows||[];
-    if(rows.length>before){const row=rows[rows.length-1];row.minRate=minRate||Math.max(0,n(row.rate)-2);row.maxRate=maxRate||n(row.rate)+2;setVal('scenarioMinRate','');setVal('scenarioMaxRate','')}
+    if(rows.length>before){const row=rows[rows.length-1];row.minRate=minRate||row.minRate||Math.max(0,n(row.rate)-2);row.maxRate=maxRate||row.maxRate||n(row.rate)+2;setVal('scenarioMinRate','');setVal('scenarioMaxRate','')}
     renderScenarioRange();
   };
   const oldRenderScenario=window.renderInvestmentScenario;
   window.renderInvestmentScenario=function(){const out=typeof oldRenderScenario==='function'?oldRenderScenario.apply(this,arguments):undefined;setTimeout(renderScenarioRange,0);return out};
   const style=document.createElement('style');
-  style.textContent='.scenario-range-block{overflow:visible}.scenario-range-chart-wrap{height:220px;max-height:220px;margin-top:10px;overflow:hidden}.scenario-range-chart-wrap canvas{width:100%!important;height:220px!important;max-height:220px!important;display:block}.scenario-range-block .table-wrap{margin-top:0}';
+  style.textContent='.scenario-add-grid{grid-template-columns:minmax(260px,1fr) 160px 150px 150px 150px;align-items:end}.scenario-add-grid .scenario-fund-field{grid-column:auto}.scenario-range-block{overflow:visible}.scenario-range-chart-wrap{height:220px;max-height:220px;margin-top:10px;overflow:hidden}.scenario-range-chart-wrap canvas{width:100%!important;height:220px!important;max-height:220px!important;display:block}.scenario-range-block .table-wrap{margin-top:0}@media(max-width:980px){.scenario-add-grid{grid-template-columns:1fr 1fr}.scenario-add-grid .scenario-fund-field{grid-column:1/-1}}';
   document.head.appendChild(style);
   ['scenarioMinRate','scenarioMaxRate','scenarioYears'].forEach(id=>document.addEventListener('input',e=>{if(e.target?.id===id)renderScenarioRange()}));
   const oldClientReportHtml=window.clientOverviewReportHtml;
