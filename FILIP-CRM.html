@@ -537,7 +537,7 @@ h2{font-size:20px;margin:0 0 12px}.eyebrow{font-size:11px;color:var(--muted);fon
   <div id="scenarioCurrentPortfolio" class="mini-card" style="margin-top:12px"></div>
   <div class="mini-card" style="margin-top:12px"><h3>Přidat fond do návrhu</h3><div class="form-grid scenario-add-grid"><div class="field scenario-fund-field"><label>Fond</label><select id="scenarioFund" onchange="applyInvestmentScenarioFundDefaults()"></select></div><div class="field"><label>Nová investice</label><input id="scenarioAmount" type="number" min="0"></div><div class="field"><label>Očekávaný výnos p.a. %</label><input id="scenarioRate" type="number" step="0.1" value="5"></div><div class="field"><label>Min. zhodnocení p.a. %</label><input id="scenarioMinRate" type="number" step="0.1" placeholder="např. 3"></div><div class="field"><label>Max. zhodnocení p.a. %</label><input id="scenarioMaxRate" type="number" step="0.1" placeholder="např. 9"></div></div><div class="actions" style="justify-content:flex-end;margin-top:10px"><button class="btn" onclick="addInvestmentScenarioFund()">+ Přidat fond</button></div></div>
   <div id="scenarioSelectedFunds" class="mini-card" style="margin-top:12px"></div>
-  <div class="actions" style="justify-content:flex-end;margin-top:12px"><button class="btn" onclick="previewInvestmentScenario()">HTML pro klienta</button><button class="btn primary" id="scenarioSaveBtn" onclick="saveInvestmentScenario()">Uložit návrh</button></div>
+  <div class="actions" style="justify-content:flex-end;margin-top:12px"><button class="btn" onclick="previewInvestmentScenario()">Stáhnout HTML pro klienta</button><button class="btn primary" id="scenarioSaveBtn" onclick="saveInvestmentScenario()">Uložit návrh</button></div>
 </div></div>
 
 <div class="modal" id="clientReferralModal"><div class="modal-box"><div class="toolbar"><div><div class="eyebrow">Doporučení / tip</div><h2 id="clientReferralTitle">Nové doporučení</h2></div><button class="btn" onclick="closeModal('clientReferralModal')">Zavřít</button></div><div class="form-grid">
@@ -3073,7 +3073,19 @@ body{font-size:13px;line-height:1.25}.app{padding:12px}.top{margin:-12px -12px 1
   window.fkClientReportHtml=function(c,row,opts={}){return xReportHtml(c,{summary:true,open:true,insurance:false,loans:false,investments:true,notice:true},'')};
   window.downloadFkClientReport=function(clientId){const c=typeof findClient==='function'?findClient(clientId):null;if(!c)return alert('Vyber klienta.');const html=xReportHtml(c,{summary:true,open:true,insurance:false,loans:false,investments:true,notice:true},''),blob=new Blob([html],{type:'text/html;charset=utf-8'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='klientsky-report-'+(typeof normId==='function'?normId(xName(c)):'klient')+'.html';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500);toast('Klientský report stažen')};
   window.investmentScenarioReportHtml=investmentScenarioReportHtml=function(c){return xScenarioHtml(c)};
-  window.previewInvestmentScenario=function(){if(!investmentScenario?.rows?.length)return alert('Nejdřív přidej alespoň jeden fond.');openReportWindow(xScenarioHtml(typeof scenarioSelectedClient==='function'?scenarioSelectedClient():null))};
+  window.previewInvestmentScenario=function(){
+    if(!investmentScenario?.rows?.length)return alert('Nejdřív přidej alespoň jeden fond.');
+    const c=typeof scenarioSelectedClient==='function'?scenarioSelectedClient():null;
+    const name=c?clientName(c):(scenarioClientDraft().name||'novy-klient');
+    const blob=new Blob([xScenarioHtml(c)],{type:'text/html;charset=utf-8'}),a=document.createElement('a');
+    const url=URL.createObjectURL(blob);
+    a.href=url;
+    a.download='investicni-navrh-'+(normId(name)||'klient')+'.html';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{URL.revokeObjectURL(url);a.remove()},1000);
+    toast('HTML návrh připraven ke stažení');
+  };
 })();
 </script>
 <script>
