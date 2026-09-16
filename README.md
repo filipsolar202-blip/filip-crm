@@ -2,6 +2,22 @@
 
 Lokální CRM pro klienty, smlouvy, obchody, investice, FKI, poznámky, reporty a zálohu.
 
+## Verze 2026.09.16-1
+
+Hlavní CRM má jednu aplikační logiku a společný modrý glass vzhled. Přehled změn je v `CHANGELOG.md`, výsledky ověření v `QA-2026-09-16.md`.
+
+## Soubory aplikace
+
+- `FILIP-CRM.html` — vstupní stránka a formuláře.
+- `assets/js/crm.js` — společná aplikační logika.
+- `assets/css/crm.css` — společný vzhled včetně rozložení pro tablet.
+- `assets/vendor/` — lokální knihovny pro grafy a tabulky.
+- `index.html` — přesměrování na aktuální verzi.
+
+Při kopírování aplikace je nutné přenést také celou složku `assets`. Samostatné klientské HTML reporty jsou nadále přenosné jako jediný soubor.
+
+Ostatní HTML kalkulačky v kořeni jsou zachované samostatné nástroje; hlavní CRM je nenačítá jako další aplikační vrstvu. Podrobnosti: `ARCHITECTURE.md`.
+
 ## Spuštění
 
 ### Na Macu
