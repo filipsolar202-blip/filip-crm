@@ -1,5 +1,10 @@
 # Historie verzí
 
+## 2026.09.16-6
+
+- AUM na kartě klienta obsahuje běžné investice, FKI i aktivní penze.
+- Penze jsou ve stejné kartě zobrazené samostatně.
+
 ## 2026.09.16-5
 
 - Denní úkoly jsou na celé šířce v kompaktních řádcích podle vzhledu Příležitostí.

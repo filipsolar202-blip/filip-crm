@@ -32,6 +32,9 @@ try{
  const {page,context,errors}=current;
  for(const view of await page.locator('.tab[data-view]').evaluateAll(xs=>xs.map(x=>x.dataset.view))){await page.locator(`.tab[data-view="${view}"]`).click();assert(await page.locator('#'+view).isVisible());}
  results.push('13 populated views');
+ await page.evaluate(()=>{showView('clients');selectClient(1);clientSection='overview';renderClientDetail()});
+ const aum=await page.evaluate(()=>{const pension=clientPensionSummary(1).total,total=clientInvestmentSummary(1).total+pension,text=byId('clientDetail').innerText;return{pension,total,hasLabel:text.includes('AUM klienta celkem'),hasTotal:text.includes(money(total))}});
+ assert.equal(aum.pension,1500);assert(aum.hasLabel);assert(aum.hasTotal);results.push('Client AUM includes pensions separately');
  for(const expr of ["selectClient(1)","selectInvestmentClient(1)","selectFkClient(1)","selectPensionClient(1)","openClientModal(1)","openContractModal(1,10)","openDealModal(1,20)","openOpportunityModal(1,30)","openActivityModal(1,40)","openInvestmentFundModal()","openFkFundModal()","openInvestmentScenarioModal(1,'FKI')"]){await page.evaluate(expr);await page.evaluate(()=>document.querySelectorAll('.modal.show').forEach(x=>x.classList.remove('show')))}
  results.push('Client, investment, pension and editing dialogs');
  // Exercise real downloads; generated reports must be usable as independent files.

@@ -2952,12 +2952,20 @@ function clientInvestmentSummary(clientId) {
     gain: classic + fki - invested
   };
 }
+function clientPensionSummary(clientId) {
+  const id = String(clientId),
+    items = typeof pensions_pItems === 'function' ? pensions_pItems().filter(x => String(x.clientId) === id) : [],
+    total = items.reduce((sum, x) => sum + (+x.amount || 0), 0);
+  return {items, total};
+}
 function clientOverview(c, contracts, deals, acts, year) {
   const stats = clientAreaStats(c.id),
     inv = clientDisplayInvestmentItems(c.id),
     sum = clientInvestmentSummary(c.id),
+    pensions = clientPensionSummary(c.id),
+    totalAum = sum.total + pensions.total,
     opps = clientOpenOpportunities(c.id).filter(isOpenOpportunity);
-  return `${clientTools(stats)}<div class="mini-card"><h3>Souhrn</h3><p class="note">${esc(c.note || 'Bez poznámky.')}</p><div class="chips"><span class="badge blue">${contracts.length} produktů</span><span class="badge green">${deals.length} obchodů</span><span class="badge orange">${acts.length} aktivit</span>${opps.length ? `<span class="badge purple">${opps.length} v řešení</span>` : ''}</div>${sum.items.length ? `<div class="investment-summary" style="margin-top:14px"><div class="metric"><span class="note">Investice celkem</span><b>${money(sum.total)}</b></div><div class="metric"><span class="note">Běžné investice</span><b>${money(sum.classic)}</b></div><div class="metric"><span class="note">FKI</span><b>${money(sum.fki)}</b></div><div class="metric"><span class="note">Vloženo celkem</span><b>${money(sum.invested)}</b></div></div>` : ''}</div><div class="split" style="margin-top:12px"><div class="mini-card"><h3>X-sell panel</h3>${xsellPanel(stats)}${opportunityMiniList(opps)}</div><div class="mini-card"><h3>Investice a FKI klienta</h3>${investmentMini(inv, c.id)}</div></div>`;
+  return `${clientTools(stats)}<div class="mini-card"><h3>Souhrn</h3><p class="note">${esc(c.note || 'Bez poznámky.')}</p><div class="chips"><span class="badge blue">${contracts.length} produktů</span><span class="badge green">${deals.length} obchodů</span><span class="badge orange">${acts.length} aktivit</span>${opps.length ? `<span class="badge purple">${opps.length} v řešení</span>` : ''}</div>${sum.items.length || pensions.items.length ? `<div class="investment-summary" style="margin-top:14px"><div class="metric"><span class="note">AUM klienta celkem</span><b>${money(totalAum)}</b></div><div class="metric"><span class="note">Běžné investice</span><b>${money(sum.classic)}</b></div><div class="metric"><span class="note">FKI</span><b>${money(sum.fki)}</b></div><div class="metric"><span class="note">Penze</span><b>${money(pensions.total)}</b></div></div>` : ''}</div><div class="split" style="margin-top:12px"><div class="mini-card"><h3>X-sell panel</h3>${xsellPanel(stats)}${opportunityMiniList(opps)}</div><div class="mini-card"><h3>Investice, FKI a penze klienta</h3>${investmentMini(inv, c.id)}</div></div>`;
 }
 function clientTools(stats) {
   const tools = ['investice', 'fki', 'pojisteni', 'uvery', 'ostatni'];
@@ -11009,8 +11017,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.09.16-5';
-const VERSION_NOTE = 'Celoplošný kompaktní přehled dnešních úkolů ve stylu Příležitostí.';
+const VERSION = '2026.09.16-6';
+const VERSION_NOTE = 'AUM klienta zahrnuje běžné investice, FKI i penze.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
