@@ -1,5 +1,10 @@
 # Historie verzí
 
+## 2026.09.16-2
+
+- Světlý stříbrný glass vzhled se zachovanými modrými akcenty.
+- Kompaktnější pracovní plocha, panely, ovládací prvky a rozestupy.
+
 ## 2026.09.16-1
 
 - Sjednocení postupně přidaných přepisů funkcí do jedné aplikační logiky a jednoho spuštění.
