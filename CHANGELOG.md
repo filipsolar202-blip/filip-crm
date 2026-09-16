@@ -1,5 +1,10 @@
 # Historie verzí
 
+## 2026.09.16-5
+
+- Denní úkoly jsou na celé šířce v kompaktních řádcích podle vzhledu Příležitostí.
+- Akce jsou na široké obrazovce v jednom řádku.
+
 ## 2026.09.16-4
 
 - Každá položka hlavní navigace má vlastní stříbrný glass rámeček.

@@ -2610,8 +2610,7 @@ function renderDashboardMetrics() {
     late = unpaid.filter(isLateUnpaid),
     paidActual = deals.reduce((s, d) => s + dealPaidActualCommission(d), 0),
     unpaidValue = unpaid.reduce((s, d) => s + dealExpectedCommission(d, year), 0),
-    lateValue = late.reduce((s, d) => s + dealExpectedCommission(d, year), 0),
-    source = val('dashLeadSourceFilter');
+    lateValue = late.reduce((s, d) => s + dealExpectedCommission(d, year), 0);
   dashboardFilterSummary(year, yearDeals, deals);
   setText('kpiYearBj', num(deals.reduce((s, d) => s + dealBJ(d), 0)));
   setText('kpiYearCash', money(paidActual));
@@ -2623,12 +2622,6 @@ function renderDashboardMetrics() {
   setText('kpiInv', money(deals.filter(d => ['investice', 'fki'].includes(areaForDeal(d))).reduce((s, d) => s + dealVolume(d), 0)));
   setText('kpiMortgageYear', money(deals.filter(d => d.category === 'Hypotéky').reduce((s, d) => s + dealVolume(d), 0)));
   setText('kpiDealsYear', num(deals.filter(isOtherDashboardDeal).length));
-  const tasks = state.contracts.filter(s => !hasStatus(s, 'vyrizeno') && !hasStatus(s, 'nechce')).map(s => ({
-    s,
-    c: findClient(s.clientId),
-    d: contractDays(s)
-  })).filter(x => (!source || leadSourceType(x.c) === source) && (x.d <= 100 || isActiveContract(x.s))).sort(compareContractRows).slice(0, 12);
-  byId('dashTasks').innerHTML = `<thead><tr><th>Klient</th><th>Smlouva</th><th>Termín</th><th>Stav</th></tr></thead><tbody>${tasks.map(x => `<tr class="${rowClassContract(x.s)}"><td><b>${esc(clientName(x.c))}</b></td><td>${esc(x.s.type)} · ${esc(x.s.product || '')}</td><td>${x.s.anniv || ''}<br>${daysBadge(x.d)}</td><td>${getStatuses(x.s).map(statusBadge).join(' ')}</td></tr>`).join('') || '<tr><td colspan="4" class="note">Nic akutního.</td></tr>'}</tbody>`;
   renderCharts(year, deals);
   renderDuplicateWarnings();
 }
@@ -10631,12 +10624,13 @@ function dashboardWorkRows() {
   return [...acts, ...contracts];
 }
 function renderDashboardWorkQueue() {
-  const table = document.getElementById('dashTasks');
-  if (!table) return;
+  const container = document.getElementById('dashTasks');
+  if (!container) return;
   const rows = dashboardWorkRows(),
     shown = rows.slice(0, 180),
     more = rows.length - shown.length;
-  table.innerHTML = `<thead><tr><th>Typ</th><th>Klient</th><th>Co řešit</th><th>Termín</th><th>Stav</th><th>Akce</th></tr></thead><tbody>${shown.map(x => `<tr class="${x.rowClass || ''}"><td><span class="badge ${x.kind === 'activity' ? 'blue' : 'orange'}">${activities_aEsc(x.type)}</span></td><td><b>${activities_aEsc(activities_aClientName(x.c))}</b><br><span class="note">${activities_aEsc(x.c?.phone || 'bez telefonu')} ${x.c?.email ? '· ' + activities_aEsc(x.c.email) : ''}</span></td><td><b>${activities_aEsc(x.title)}</b>${x.text ? `<br><span class="note">${activities_aEsc(x.text)}</span>` : ''}</td><td>${activities_aEsc(x.date || '')} ${x.time ? `<br><span class="note">${activities_aEsc(x.time)}</span>` : ''}${x.kind === 'contract' && typeof daysBadge === 'function' ? `<br>${daysBadge(x.days)}` : ''}</td><td>${x.status}</td><td><div class="actions"><button class="btn slim green" data-dash-action="done" data-kind="${activities_aEsc(x.kind)}" data-id="${activities_aEsc(x.id)}">Hotovo</button><button class="btn slim" data-dash-action="edit" data-kind="${activities_aEsc(x.kind)}" data-id="${activities_aEsc(x.id)}">Upravit</button><button class="btn slim" data-dash-action="client" data-client="${activities_aEsc(x.clientId)}">Klient</button>${activities_aContactAction(x)}</div></td></tr>`).join('') || '<tr><td colspan="6" class="note">Na dnešek nevidím žádné otevřené úkoly ani aktivity.</td></tr>'}${more > 0 ? `<tr><td colspan="6" class="note">Zobrazuji prvních ${shown.length} položek. Dalších ${more} je bezpečně skryto, aby se Dashboard nezasekl.</td></tr>` : ''}</tbody>`;
+  container.innerHTML = shown.map(x => `<article class="dash-work-row ${activities_aEsc(x.rowClass || '')}"><div class="dash-work-client"><span class="badge ${x.kind === 'activity' ? 'blue' : 'orange'}">${activities_aEsc(x.type)}</span><b>${activities_aEsc(activities_aClientName(x.c))}</b><span class="note">${activities_aEsc(x.c?.phone || 'bez telefonu')}${x.c?.email ? ' · ' + activities_aEsc(x.c.email) : ''}</span></div><div class="dash-work-topic"><b>${activities_aEsc(x.title)}</b>${x.text ? `<span class="note">${activities_aEsc(x.text)}</span>` : ''}</div><div class="dash-work-date"><b>${activities_aEsc(x.date || '')}</b>${x.time ? `<span class="note">${activities_aEsc(x.time)}</span>` : ''}${x.kind === 'contract' && typeof daysBadge === 'function' ? daysBadge(x.days) : ''}</div><div class="dash-work-status">${x.status}</div><div class="dash-work-actions"><button class="btn slim green" data-dash-action="done" data-kind="${activities_aEsc(x.kind)}" data-id="${activities_aEsc(x.id)}">Hotovo</button><button class="btn slim" data-dash-action="edit" data-kind="${activities_aEsc(x.kind)}" data-id="${activities_aEsc(x.id)}">Upravit</button><button class="btn slim" data-dash-action="client" data-client="${activities_aEsc(x.clientId)}">Klient</button>${activities_aContactAction(x)}</div></article>`).join('') || '<div class="dash-work-empty note">Na dnešek nevidím žádné otevřené úkoly ani aktivity.</div>';
+  if (more > 0) container.insertAdjacentHTML('beforeend', `<div class="dash-work-empty note">Zobrazuji prvních ${shown.length} položek. Dalších ${more} je bezpečně skryto, aby se Dashboard nezasekl.</div>`);
 }
 function renderDashboard() {
   renderDashboardMetrics();
@@ -11015,8 +11009,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.09.16-4';
-const VERSION_NOTE = 'Kompaktní dashboard, orámovaná navigace a informace o disku v Záloze.';
+const VERSION = '2026.09.16-5';
+const VERSION_NOTE = 'Celoplošný kompaktní přehled dnešních úkolů ve stylu Příležitostí.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
