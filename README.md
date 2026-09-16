@@ -2,7 +2,7 @@
 
 Lokální CRM pro klienty, smlouvy, obchody, investice, FKI, poznámky, reporty a zálohu.
 
-## Verze 2026.09.16-2
+## Verze 2026.09.16-3
 
 Hlavní CRM má jednu aplikační logiku a společný modrý glass vzhled. Přehled změn je v `CHANGELOG.md`, výsledky ověření v `QA-2026-09-16.md`.
 

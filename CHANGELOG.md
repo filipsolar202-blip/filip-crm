@@ -1,5 +1,12 @@
 # Historie verzí
 
+## 2026.09.16-3
+
+- Logo a název CRM jsou větší v levém rohu, verze je samostatně v pravém rohu.
+- Dashboard má výraznější rámečky karet; denní úkoly jsou samostatná kompaktní karta.
+- Plnění ročního plánu je pouze v záložce Roční plán.
+- Stav diskového úložiště je pouze v záložce Záloha.
+
 ## 2026.09.16-2
 
 - Světlý stříbrný glass vzhled se zachovanými modrými akcenty.

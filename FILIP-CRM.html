@@ -7,12 +7,12 @@
 <script src="assets/vendor/chart.umd.min.js"></script>
 <script src="assets/vendor/xlsx.full.min.js"></script>
 
-<link rel="stylesheet" href="assets/css/crm.css?v=2026.09.16-2">
+<link rel="stylesheet" href="assets/css/crm.css?v=2026.09.16-3">
 </head>
 <body>
 <div class="app">
   <header class="top"><div class="topin">
-    <div class="brand"><div class="logo"><img src="fairlife-lion-watermark.png" alt=""></div><div><h1>FILIP CRM</h1></div><span class="version-badge" id="appVersionBadge">verze</span></div>
+    <div class="brand"><div class="logo"><img src="fairlife-lion-watermark.png" alt=""></div><div><h1>FILIP CRM</h1></div></div>
     <nav class="tabs">
       <button class="tab active" data-view="dashboard">Dashboard</button>
       <button class="tab" data-view="clients">Klienti</button>
@@ -28,8 +28,7 @@
       <button class="tab" data-view="referrers">Analýza</button>
       <button class="tab" data-view="settings">Záloha</button>
     </nav>
-    <div class="actions"></div>
-    <div id="diskBanner" class="disk-banner"></div>
+    <span class="version-badge" id="appVersionBadge">verze</span>
   </div></header>
 
   <main>
@@ -56,8 +55,7 @@
         <div class="card kpi span-3"><div class="label">Ostatní obchody letos</div><div class="value" id="kpiDealsYear">0</div><div class="note">mimo investice a hypotéky</div></div>
         <div class="card span-6 chart-card"><div class="toolbar"><div><div class="eyebrow">Graf</div><h2>BJ podle měsíců</h2></div><select id="chartYear" onchange="renderAll()"></select></div><div class="chart-wrap"><canvas id="bjChart"></canvas></div></div>
         <div class="card span-6 chart-card"><div class="eyebrow">Graf</div><h2>Investice a hypotéky</h2><div class="chart-wrap"><canvas id="investmentChart"></canvas></div></div>
-        <div class="card span-7"><div class="toolbar"><div><div class="eyebrow">Dnes řešit</div><h2>Denní úkoly a aktivity</h2></div><div class="actions"><button class="btn" onclick="openActivityModal(selectedClientId||null)">+ Aktivita</button><button class="btn" onclick="showView('contracts')">Smlouvy</button></div></div><div class="table-wrap dash-task-scroll"><table id="dashTasks"></table></div></div>
-        <div class="card span-5"><div class="eyebrow">Výkon</div><h2>Plnění ročního plánu</h2><div class="planProgress"></div></div>
+        <div class="card span-8 dashboard-tasks"><div class="toolbar"><div><div class="eyebrow">Dnes řešit</div><h2>Denní úkoly a aktivity</h2></div><div class="actions"><button class="btn" onclick="openActivityModal(selectedClientId||null)">+ Aktivita</button><button class="btn" onclick="showView('contracts')">Smlouvy</button></div></div><div class="table-wrap dash-task-scroll"><table id="dashTasks"></table></div></div>
         <div class="card span-12"><div class="toolbar"><div><div class="eyebrow">Kontrola dat</div><h2>Duplicity klientů a smluv</h2></div><button class="btn" onclick="renderDuplicateWarnings()">Zkontrolovat</button></div><div class="table-wrap"><table id="duplicateTable"></table></div></div>
       </div>
     </section>
@@ -342,6 +340,7 @@
     <section id="settings" class="view">
       <div class="grid">
         <div class="card span-7">
+          <div id="diskBanner" class="disk-banner"></div>
           <div class="eyebrow">Verze aplikace</div><h2 id="settingsVersionTitle">FILIP CRM</h2>
           <div id="settingsVersionStatus" class="sync-status">Verze se načítá.</div>
           <div class="divider"></div>
@@ -557,6 +556,6 @@
 
 
 
-<script src="assets/js/crm.js?v=2026.09.16-2"></script>
+<script src="assets/js/crm.js?v=2026.09.16-3"></script>
 </body>
 </html>
