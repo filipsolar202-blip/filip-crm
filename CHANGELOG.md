@@ -1,5 +1,9 @@
 # Historie verzí
 
+## 2026.09.16-4
+
+- Každá položka hlavní navigace má vlastní stříbrný glass rámeček.
+
 ## 2026.09.16-3
 
 - Logo a název CRM jsou větší v levém rohu, verze je samostatně v pravém rohu.
