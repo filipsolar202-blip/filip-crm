@@ -440,6 +440,21 @@ async function checkDiskStorage() {
 function clientName(c) {
   return c?.name || 'Bez jména';
 }
+function clientAgeFromBirthId(birthId, now = new Date()) {
+  const digits = String(birthId || '').replace(/\D/g, '');
+  if (digits.length !== 9 && digits.length !== 10) return null;
+  const yy = +digits.slice(0, 2),
+    rawMonth = +digits.slice(2, 4),
+    day = +digits.slice(4, 6),
+    month = rawMonth > 70 ? rawMonth - 70 : rawMonth > 50 ? rawMonth - 50 : rawMonth > 20 ? rawMonth - 20 : rawMonth,
+    currentYear = now.getFullYear(),
+    year = digits.length === 9 ? 1900 + yy : (yy > currentYear % 100 ? 1900 : 2000) + yy;
+  const born = new Date(year, month - 1, day);
+  if (month < 1 || month > 12 || day < 1 || born.getFullYear() !== year || born.getMonth() !== month - 1 || born.getDate() !== day || born > now) return null;
+  let age = currentYear - year;
+  if (now.getMonth() < born.getMonth() || now.getMonth() === born.getMonth() && now.getDate() < born.getDate()) age--;
+  return age >= 0 && age < 130 ? age : null;
+}
 function initials(name) {
   return (name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(x => x[0]).join('').toUpperCase() || '?';
 }
@@ -2680,11 +2695,12 @@ function toast(msg) {
 function contactGrid(c) {
   const phone = c.phone || '',
     email = c.email || '',
-    addr = c.address || '';
+    addr = c.address || '',
+    literal = v => esc(JSON.stringify(v));
   return `<div class="contact-grid">
-  <a class="contact-link" href="${phone ? 'tel:' + encodeURIComponent(phone) : '#'}" onclick="${phone ? `copyText('${esc(phone)}','Telefon')` : 'return false'}"><span>☎</span><b>Tel</b><span>${esc(phone || 'bez telefonu')}</span>${phone ? '<em class="copy-btn">kopie</em>' : ''}</a>
-  <a class="contact-link" href="${email ? 'mailto:' + encodeURIComponent(email) : '#'}" onclick="${email ? `copyText('${esc(email)}','E-mail')` : 'return false'}"><span>@</span><b>E-mail</b><span>${esc(email || 'bez e-mailu')}</span>${email ? '<em class="copy-btn">napsat</em>' : ''}</a>
-  <a class="contact-link" href="${addr ? 'https://maps.google.com/?q=' + encodeURIComponent(addr) : '#'}" target="_blank" onclick="${addr ? `copyText('${esc(addr)}','Adresa')` : 'return false'}"><span>⌂</span><b>Adresa</b><span>${esc(addr || 'bez adresy')}</span>${addr ? '<em class="copy-btn">mapa</em>' : ''}</a>
+  <div class="contact-link"><span>☎</span><b>Tel</b>${phone ? `<button class="contact-value" onclick="copyText(${literal(phone)},'Telefon')">${esc(phone)}</button><div class="contact-actions"><button class="copy-btn" onclick="copyText(${literal(phone)},'Telefon')">Kopírovat</button><a class="copy-btn" href="tel:${encodeURIComponent(phone)}">Volat</a></div>` : '<span>bez telefonu</span>'}</div>
+  <div class="contact-link"><span>@</span><b>E-mail</b>${email ? `<a class="contact-value" href="mailto:${encodeURIComponent(email)}">${esc(email)}</a><div class="contact-actions"><button class="copy-btn" onclick="copyText(${literal(email)},'E-mail')">Kopírovat</button><a class="copy-btn" href="mailto:${encodeURIComponent(email)}">Napsat</a></div>` : '<span>bez e-mailu</span>'}</div>
+  <div class="contact-link"><span>⌂</span><b>Adresa</b>${addr ? `<a class="contact-value" href="https://maps.google.com/?q=${encodeURIComponent(addr)}" target="_blank" rel="noopener">${esc(addr)}</a><div class="contact-actions"><button class="copy-btn" onclick="copyText(${literal(addr)},'Adresa')">Kopírovat</button><a class="copy-btn" href="https://maps.google.com/?q=${encodeURIComponent(addr)}" target="_blank" rel="noopener">Mapa</a></div>` : '<span>bez adresy</span>'}</div>
 </div>`;
 }
 function splitEmails(v) {
@@ -2924,7 +2940,8 @@ function renderClientDetail() {
     opps = clientOpenOpportunities(c.id),
     notes = clientNotes(c.id),
     year = new Date().getFullYear();
-  el.innerHTML = `<div class="client-hero"><div class="avatar">${esc(initials(c.name))}</div><div class="detail-title"><div class="eyebrow">Karta klienta</div><h2>${esc(clientName(c))}</h2><div class="chips"><span class="badge blue">Kontakt: ${esc(contactLabel(c))}</span>${c.birthId ? `<span class="chip">RČ/IČO: ${esc(c.birthId)}</span>` : ''}<span class="chip">${contracts.length} produktů</span><span class="chip">${deals.length} obchodů</span><span class="chip">${opps.filter(isOpenOpportunity).length} příležitostí</span>${clientSourceSummary(c)}</div></div>${contactGrid(c)}</div><div class="actions client-actions"><button class="btn primary" onclick="openClientReportModal(${c.id})">Report pro klienta</button><button class="btn" onclick="openClientReferralModal(${c.id})">+ Doporučení</button><button class="btn" onclick="openActivityModal(${c.id})">+ Aktivita</button><button class="btn" onclick="openOpportunityModal(${c.id})">+ Příležitost</button><button class="btn" onclick="openDealModal(${c.id})">+ Obchod</button><button class="btn" onclick="openContractModal(${c.id})">+ Smlouva</button><button class="btn" onclick="openNoteModal(${c.id})">+ Poznámka</button><button class="btn" onclick="openClientModal(${c.id})">Upravit klienta</button></div><div class="subnav"></div>`;
+  const age = clientAgeFromBirthId(c.birthId);
+  el.innerHTML = `<div class="client-hero"><div class="avatar">${esc(initials(c.name))}</div><div class="detail-title"><div class="eyebrow">Karta klienta</div><h2>${esc(clientName(c))}${age !== null ? `<span class="client-age">· ${num(age)} let</span>` : ''}</h2><div class="chips"><span class="badge blue">Kontakt: ${esc(contactLabel(c))}</span>${c.birthId ? `<span class="chip">RČ/IČO: ${esc(c.birthId)}</span>` : ''}<span class="chip">${contracts.length} produktů</span><span class="chip">${deals.length} obchodů</span><span class="chip">${opps.filter(isOpenOpportunity).length} příležitostí</span>${clientSourceSummary(c)}</div></div>${contactGrid(c)}</div><div class="actions client-actions"><button class="btn primary" onclick="openClientReportModal(${c.id})">Report pro klienta</button><button class="btn" onclick="openClientReferralModal(${c.id})">+ Doporučení</button><button class="btn" onclick="openActivityModal(${c.id})">+ Aktivita</button><button class="btn" onclick="openOpportunityModal(${c.id})">+ Příležitost</button><button class="btn" onclick="openDealModal(${c.id})">+ Obchod</button><button class="btn" onclick="openContractModal(${c.id})">+ Smlouva</button><button class="btn" onclick="openNoteModal(${c.id})">+ Poznámka</button><button class="btn" onclick="openClientModal(${c.id})">Upravit klienta</button></div><div class="subnav"></div>`;
   const labels = {
     overview: 'Přehled',
     portfolio: 'Portfolio',
@@ -11017,8 +11034,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.09.16-6';
-const VERSION_NOTE = 'AUM klienta zahrnuje běžné investice, FKI i penze.';
+const VERSION = '2026.09.17-1';
+const VERSION_NOTE = 'Věk klienta z rodného čísla a samostatné akce pro kopírování kontaktů.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';

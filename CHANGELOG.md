@@ -1,5 +1,12 @@
 # Historie verzí
 
+## 2026.09.17-1
+
+- Na kartě klienta se z platného rodného čísla zobrazí aktuální věk.
+- Telefon se kopíruje kliknutím na číslo; samostatné tlačítko slouží pro volání.
+- E-mail a adresa mají samostatné akce pro otevření i kopírování.
+- Přichycená horní lišta má zaoblený spodní okraj.
+
 ## 2026.09.16-6
 
 - AUM na kartě klienta obsahuje běžné investice, FKI i aktivní penze.
