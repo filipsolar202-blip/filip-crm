@@ -5,7 +5,7 @@ function renderAll() {
   persist();
   fillYears();
   fillPeopleList();
-  [['Dashboard', renderDashboard], ['Klienti', renderClients], ['Poznámky', renderNotes], ['Příležitosti', renderOpportunities], ['Smlouvy', renderContracts], ['Investice', renderInvestments], ['FKI', renderFk], ['Penze', renderPensions], ['Obchody', renderDeals], ['Reporty', renderReports], ['Typaři', renderReferrerHub], ['Roční plán', renderPlanForm], ['Plnění plánu', renderPlanProgress], ['Segmenty plánu', renderPlanSegments], ['Provize plánu', renderPlanCommission], ['Nastavení', renderSettings]].forEach(x => renderPart(x[0], x[1]));
+  [['Dashboard', renderDashboard], ['Klienti', renderClients], ['Poznámky', renderNotes], ['Kampaně', renderCampaigns], ['Příležitosti', renderOpportunities], ['Smlouvy', renderContracts], ['Investice', renderInvestments], ['FKI', renderFk], ['Penze', renderPensions], ['Obchody', renderDeals], ['Reporty', renderReports], ['Typaři', renderReferrerHub], ['Roční plán', renderPlanForm], ['Plnění plánu', renderPlanProgress], ['Segmenty plánu', renderPlanSegments], ['Provize plánu', renderPlanCommission], ['Nastavení', renderSettings]].forEach(x => renderPart(x[0], x[1]));
 }
 // Shared file delivery for all client-facing HTML outputs.
 function downloadHtmlFile(html, filename) {
@@ -43,6 +43,7 @@ function def() {
     opportunities: [],
     commissionImports: [],
     analysisEntries: [],
+    campaigns: [],
     analysisPlans: {},
     contractOpportunityStatuses: {},
     verifiedDuplicates: {},
@@ -68,7 +69,7 @@ function normalizeState(s) {
     ...s
   };
   delete s.mailHeaders;
-  ['clients', 'contracts', 'deals', 'activities', 'referrals', 'referrerPayouts', 'notes', 'opportunities', 'investmentRecords', 'investmentSnapshots', 'commissionImports', 'analysisEntries'].forEach(k => s[k] = Array.isArray(s[k]) ? s[k] : []);
+  ['clients', 'contracts', 'deals', 'activities', 'referrals', 'referrerPayouts', 'notes', 'opportunities', 'investmentRecords', 'investmentSnapshots', 'commissionImports', 'analysisEntries', 'campaigns'].forEach(k => s[k] = Array.isArray(s[k]) ? s[k] : []);
   ['contractOpportunityStatuses', 'verifiedDuplicates', 'fundValues', 'lockedFunds', 'trailSettings', 'analysisPlans', '_syncMeta'].forEach(k => s[k] = s[k] && typeof s[k] === 'object' ? s[k] : {});
   s.settings = {
     ...base.settings,
@@ -78,7 +79,7 @@ function normalizeState(s) {
   Object.values(s.plans).forEach(p => normalizePlan(p, s.settings.bjCoef));
   dedupeInvestmentRecordsInState(s);
   dedupeInvestmentSnapshotsInState(s);
-  let maxId = Math.max(0, ...['clients', 'contracts', 'deals', 'activities', 'referrals', 'referrerPayouts', 'notes', 'opportunities', 'commissionImports', 'investmentSnapshots', 'analysisEntries'].flatMap(k => s[k].map(x => +x.id || 0)));
+  let maxId = Math.max(0, ...['clients', 'contracts', 'deals', 'activities', 'referrals', 'referrerPayouts', 'notes', 'opportunities', 'commissionImports', 'investmentSnapshots', 'analysisEntries', 'campaigns'].flatMap(k => s[k].map(x => +x.id || 0)));
   if (!s.nextId || s.nextId <= maxId) s.nextId = maxId + 1;
   return s;
 }
@@ -2708,6 +2709,127 @@ function splitEmails(v) {
 }
 function clientEmails(c) {
   return [...new Set([...splitEmails(c?.email), ...splitEmails(c?.altEmails)])];
+}
+function campaignSegmentLabel(segment) {
+  return {all:'Všichni klienti',investice:'Investice',fki:'FKI',penze:'Penze',nemovitost:'Nemovitost',auto:'Auto'}[segment] || segment;
+}
+function campaignClientSegments(clientId) {
+  const segments = new Set(),
+    classify = x => {
+      const area = x.kind === 'contract' ? areaForContract(x.row) : areaForDeal(x.row),
+        text = norm([x.row?.type, x.row?.source, x.row?.category, x.row?.product, x.row?.company].join(' '));
+      if (area) segments.add(area);
+      if (/auto|vozid|motor|moto/.test(text)) segments.add('auto');
+      if (/nemovit|majet|dum|byt|domacnost/.test(text)) segments.add('nemovitost');
+    };
+  clientContracts(clientId).forEach(row => classify({kind:'contract',row}));
+  clientDeals(clientId).forEach(row => classify({kind:'deal',row}));
+  clientDisplayInvestmentItems(clientId).forEach(x => segments.add(investmentAreaOfItem(x)));
+  return segments;
+}
+function campaignMatchedClients() {
+  const segment = val('campaignSegment') || 'all';
+  return (state.clients || []).filter(c => segment === 'all' || campaignClientSegments(c.id).has(segment));
+}
+function campaignAlreadyReceived(clientId, subject) {
+  const key = norm(subject);
+  if (!key) return false;
+  return (state.campaigns || []).some(c => norm(c.subject) === key && (c.recipientIds || []).some(id => String(id) === String(clientId)));
+}
+function campaignBuildRecipients() {
+  const subject = val('campaignSubject').trim(),
+    seen = new Set();
+  return campaignMatchedClients().map(c => {
+    const email = clientEmails(c)[0] || '',
+      emailKey = norm(email);
+    if (!email || seen.has(emailKey)) return null;
+    seen.add(emailKey);
+    return {client:c,email,duplicate:campaignAlreadyReceived(c.id,subject)};
+  }).filter(Boolean);
+}
+function campaignUpdateSelectedCount() {
+  const rows = campaignRecipientRows.filter(x => campaignSelectedClientIds.has(String(x.client.id))),
+    count = byId('campaignSelectedCount'),
+    summary = byId('campaignRecipientSummary'),
+    matched = campaignMatchedClients(),
+    withoutEmail = matched.filter(c => !clientEmails(c).length).length,
+    duplicates = campaignRecipientRows.filter(x => x.duplicate).length;
+  if (count) count.textContent = `${num(rows.length)} vybráno`;
+  if (summary) summary.innerHTML = `<b>${num(rows.length)} příjemců připraveno</b> · skupina: ${esc(campaignSegmentLabel(val('campaignSegment') || 'all'))}${withoutEmail ? ` · bez e-mailu: ${num(withoutEmail)}` : ''}${duplicates ? ` · stejný předmět už dostalo: ${num(duplicates)}` : ''}`;
+}
+function renderCampaignRecipients(reset = false) {
+  const box = byId('campaignRecipients');
+  if (!box) return;
+  campaignRecipientRows = campaignBuildRecipients();
+  const exclude = byId('campaignExcludeDuplicate')?.checked !== false;
+  if (reset || !campaignRecipientsInitialized) {
+    campaignSelectedClientIds = new Set(campaignRecipientRows.filter(x => !exclude || !x.duplicate).map(x => String(x.client.id)));
+    campaignRecipientsInitialized = true;
+  } else {
+    const available = new Set(campaignRecipientRows.map(x => String(x.client.id)));
+    campaignSelectedClientIds = new Set([...campaignSelectedClientIds].filter(id => available.has(id)));
+  }
+  box.innerHTML = campaignRecipientRows.map(x => {
+    const id = String(x.client.id),
+      checked = campaignSelectedClientIds.has(id);
+    return `<label class="campaign-recipient-row ${x.duplicate ? 'duplicate' : ''}"><input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleCampaignRecipient('${esc(id)}',this.checked)"><span class="avatar">${esc(initials(x.client.name))}</span><span class="campaign-recipient-main"><b>${esc(clientName(x.client))}</b><small>${esc(x.email)}</small></span><span class="campaign-recipient-tags"><span class="badge blue">${esc(campaignSegmentLabel(val('campaignSegment') || 'all'))}</span>${x.duplicate ? '<span class="badge orange">stejný předmět již odeslán</span>' : ''}</span></label>`;
+  }).join('') || '<div class="campaign-empty note">V této skupině není žádný klient s použitelnou e-mailovou adresou.</div>';
+  campaignUpdateSelectedCount();
+}
+function toggleCampaignRecipient(clientId, checked) {
+  checked ? campaignSelectedClientIds.add(String(clientId)) : campaignSelectedClientIds.delete(String(clientId));
+  campaignUpdateSelectedCount();
+}
+function campaignSelectAll(select) {
+  const exclude = byId('campaignExcludeDuplicate')?.checked !== false;
+  campaignSelectedClientIds = new Set(select ? campaignRecipientRows.filter(x => !exclude || !x.duplicate).map(x => String(x.client.id)) : []);
+  renderCampaignRecipients(false);
+}
+function saveCampaignSender() {
+  state.settings.campaignSenderEmail = val('campaignSenderEmail').trim();
+  persist();
+}
+function renderCampaignHistory() {
+  const box = byId('campaignHistory');
+  if (!box) return;
+  const rows = [...(state.campaigns || [])].sort((a,b) => String(b.sentAt || '').localeCompare(String(a.sentAt || '')));
+  box.innerHTML = rows.map(c => `<details class="campaign-history-card"><summary><span><b>${esc(c.name || c.subject || 'Kampaň')}</b><small>${esc(c.sentAt ? new Date(c.sentAt).toLocaleString('cs-CZ') : c.date || '')} · ${esc(campaignSegmentLabel(c.segment || 'all'))}</small></span><span class="badge green">${num((c.recipients || []).length)} příjemců</span></summary><div class="campaign-history-body"><div><span class="note">Předmět</span><b>${esc(c.subject || '')}</b></div><div class="campaign-message-preview">${esc(c.body || '')}</div><div class="chips">${(c.recipients || []).map(r => `<span class="chip">${esc(r.name || r.email)} · ${esc(r.email)}</span>`).join('')}</div></div></details>`).join('') || '<p class="note">Zatím nebyla potvrzena žádná e-mailová kampaň.</p>';
+}
+function renderCampaigns() {
+  const sender = byId('campaignSenderEmail');
+  if (!sender) return;
+  if (!sender.value) sender.value = state.settings?.campaignSenderEmail || '';
+  renderCampaignRecipients(false);
+  renderCampaignHistory();
+}
+function campaignLaunchMailto(url) {
+  window.location.href = url;
+}
+function confirmCampaignEmail() {
+  const sender = val('campaignSenderEmail').trim(),
+    name = val('campaignName').trim(),
+    subject = val('campaignSubject').trim(),
+    body = val('campaignBody').trim(),
+    segment = val('campaignSegment') || 'all',
+    selected = campaignRecipientRows.filter(x => campaignSelectedClientIds.has(String(x.client.id)));
+  if (!splitEmails(sender).length) return alert('Doplň platný vlastní e-mail do pole Komu.');
+  if (!subject) return alert('Doplň předmět e-mailu.');
+  if (!body) return alert('Doplň text zprávy.');
+  if (!selected.length) return alert('Vyber alespoň jednoho příjemce.');
+  if (!confirm(`Potvrdit kampaň pro ${selected.length} klientů? Po potvrzení se zapíše jako odeslaná a otevře se nový e-mail.`)) return;
+  const id = uid(),
+    sentAt = new Date().toISOString(),
+    recipients = selected.map(x => ({clientId:x.client.id,name:clientName(x.client),email:x.email})),
+    recipientIds = recipients.map(x => x.clientId),
+    emails = [...new Set(recipients.map(x => x.email.toLowerCase()))];
+  state.settings.campaignSenderEmail = sender;
+  state.campaigns.push({id,channel:'email',name:name || subject,subject,body,segment,sender,sentAt,date:today(),recipientIds,recipients,status:'sent'});
+  recipients.forEach(r => state.activities.push({id:uid(),clientId:r.clientId,type:'Smart emailing',date:today(),time:'',duration:0,text:`${name || subject} · ${subject}`,completed:true,completedAt:today(),outcome:'realized',analysisType:'Poznámka',campaignId:id,updatedAt:today()}));
+  persist();
+  renderCampaignHistory();
+  renderCampaignRecipients(true);
+  const query = new URLSearchParams({bcc:emails.join(','),subject,body});
+  campaignLaunchMailto(`mailto:${encodeURIComponent(sender)}?${query.toString()}`);
 }
 function clientGivenRecommendations(c) {
   const name = norm(clientName(c));
@@ -11034,8 +11156,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.09.17-1';
-const VERSION_NOTE = 'Věk klienta z rodného čísla a samostatné akce pro kopírování kontaktů.';
+const VERSION = '2026.09.17-2';
+const VERSION_NOTE = 'První verze e-mailových kampaní s cílením, skrytou kopií a historií klientů.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
@@ -11108,6 +11230,9 @@ let state = loadState(),
   diskSavePending = false,
   diskLoadDone = false;
 let fkReportManualItems = [];
+let campaignSelectedClientIds = new Set(),
+  campaignRecipientRows = [],
+  campaignRecipientsInitialized = false;
 let investmentScenario = {
   rows: []
 };
@@ -11129,7 +11254,7 @@ const BACKUP_COUNT_LABELS = {
   referrerPayouts: 'výplat tipařům',
   referrals: 'doporučení'
 };
-const BACKUP_PROTECTED_KEYS = ['clients', 'contracts', 'deals', 'opportunities', 'notes', 'activities', 'analysisEntries', 'investments', 'investmentSnapshots', 'commissionImports', 'referrerPayouts', 'referrals'];
+const BACKUP_PROTECTED_KEYS = ['clients', 'contracts', 'deals', 'opportunities', 'notes', 'activities', 'analysisEntries', 'campaigns', 'investments', 'investmentSnapshots', 'commissionImports', 'referrerPayouts', 'referrals'];
 let scenario_editableScope = '';
 let fkiEditor_editingFkRecordKey = '',
   fkiEditor_editingFkClientId = null;

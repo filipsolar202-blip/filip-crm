@@ -1,5 +1,13 @@
 # Historie verzí
 
+## 2026.09.17-2
+
+- Nová záložka Kampaně mezi Poznámkami a Ročním plánem.
+- Výběr klientů podle investic, FKI, penzí, nemovitostí, aut nebo všech klientů.
+- Kontrola a ruční vyřazení příjemců před otevřením e-mailu; klienti jsou vloženi do skryté kopie.
+- Potvrzená kampaň se ihned uloží do evidence a zapíše klientům do historie jako Smart emailing.
+- Volitelná ochrana před opakovaným oslovením stejným předmětem.
+
 ## 2026.09.17-1
 
 - Na kartě klienta se z platného rodného čísla zobrazí aktuální věk.

@@ -7,7 +7,7 @@
 <script src="assets/vendor/chart.umd.min.js"></script>
 <script src="assets/vendor/xlsx.full.min.js"></script>
 
-<link rel="stylesheet" href="assets/css/crm.css?v=2026.09.17-1">
+<link rel="stylesheet" href="assets/css/crm.css?v=2026.09.17-2">
 </head>
 <body>
 <div class="app">
@@ -23,6 +23,7 @@
       <button class="tab" data-view="fki">FKI</button>
       <button class="tab" data-view="pensions">Penze</button>
       <button class="tab" data-view="notes">Poznámky</button>
+      <button class="tab" data-view="campaigns">Kampaně</button>
       <button class="tab" data-view="plan">Roční plán</button>
       <button class="tab" data-view="reports">Report</button>
       <button class="tab" data-view="referrers">Analýza</button>
@@ -79,6 +80,33 @@
         </div>
         <div id="noteMetrics" class="metric-strip"></div>
         <div class="table-wrap"><table id="notesList"></table></div>
+      </div>
+    </section>
+
+    <section id="campaigns" class="view">
+      <div class="grid campaign-layout">
+        <div class="card span-5">
+          <div class="eyebrow">Nová kampaň</div><h2>Hromadný e-mail</h2>
+          <p class="note">Potvrzením příjemců se kampaň považuje za odeslanou, zapíše se klientům do historie a otevře se ve vašem e-mailovém programu.</p>
+          <div class="form-grid campaign-form">
+            <div class="field full"><label>Můj e-mail (pole Komu)</label><input id="campaignSenderEmail" type="email" placeholder="vas@email.cz" onchange="saveCampaignSender()"></div>
+            <div class="field full"><label>Název kampaně</label><input id="campaignName" placeholder="např. Novinky k investicím"></div>
+            <div class="field full"><label>Předmět e-mailu</label><input id="campaignSubject" placeholder="Předmět pro klienty" oninput="renderCampaignRecipients(true)"></div>
+            <div class="field full"><label>Text zprávy</label><textarea id="campaignBody" class="campaign-message" placeholder="Dobrý den, ..."></textarea></div>
+            <div class="field full"><label>Cílová skupina</label><select id="campaignSegment" onchange="renderCampaignRecipients(true)"><option value="all">Všichni klienti</option><option value="investice">Investice</option><option value="fki">FKI</option><option value="penze">Penze</option><option value="nemovitost">Nemovitost</option><option value="auto">Auto</option></select></div>
+          </div>
+          <label class="check-row" style="margin-top:10px"><input type="checkbox" id="campaignExcludeDuplicate" checked onchange="renderCampaignRecipients(true)"> <span>Vynechat klienty, kteří už dostali kampaň se stejným předmětem</span></label>
+          <div class="campaign-summary" id="campaignRecipientSummary">Vyberte cílovou skupinu.</div>
+          <div class="actions" style="margin-top:10px"><button class="btn" onclick="campaignSelectAll(true)">Vybrat vše</button><button class="btn" onclick="campaignSelectAll(false)">Zrušit výběr</button><button class="btn primary" onclick="confirmCampaignEmail()">Potvrdit a otevřít e-mail</button></div>
+        </div>
+        <div class="card span-7">
+          <div class="toolbar"><div><div class="eyebrow">Příjemci</div><h2>Kontrola seznamu</h2></div><span class="badge blue" id="campaignSelectedCount">0 vybráno</span></div>
+          <div id="campaignRecipients" class="campaign-recipient-list"></div>
+        </div>
+        <div class="card span-12">
+          <div class="eyebrow">Evidence</div><h2>Historie kampaní</h2>
+          <div id="campaignHistory" class="campaign-history"></div>
+        </div>
       </div>
     </section>
 
@@ -556,6 +584,6 @@
 
 
 
-<script src="assets/js/crm.js?v=2026.09.17-1"></script>
+<script src="assets/js/crm.js?v=2026.09.17-2"></script>
 </body>
 </html>
