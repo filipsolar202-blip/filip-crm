@@ -1,12 +1,14 @@
 # Architektura hlavního CRM
 
-Stav k verzi 2026.09.17-2. Starší ARCHITECTURE_AUDIT.md popisuje stav před tímto sjednocením.
+Stav k verzi 2026.09.21-1. Starší ARCHITECTURE_AUDIT.md popisuje stav před tímto sjednocením.
 
 ## Jedna aplikace
 
 FILIP-CRM.html obsahuje společnou navigaci, agendy a formuláře. Vzhled dodává assets/css/crm.css a chování assets/js/crm.js. Hlavní stránka neobsahuje dodatečné balíky, které by za běhu nahrazovaly implementace funkcí. Pojmenované aplikační funkce mají každá jedinou definici.
 
 Společný stav `state` používají klienti, smlouvy, obchody, investice, FKI, penze, aktivity, reporty a zálohy. Jedno spuštění připraví scénáře, vykreslí rozhraní a inicializuje diskové úložiště. Po jeho načtení se sjednotí výchozí údaje fondů a zobrazení se obnoví. `renderAll` je společný vstup pro překreslení.
+
+Investice mimo správu jsou uloženy samostatně v `externalInvestments` a prognózy v `investmentForecasts`. Výpočty AUM, produkce a provizí tyto externí položky nečtou. Prognóza si ukládá vlastní snímek spravovaných i externích pozic a návrhu, aby šla později znovu otevřít beze změny historického výstupu.
 
 Samostatné historické HTML nástroje zůstávají zachované. Nejsou součástí běhu hlavní aplikace a nebyly tímto vydáním funkčně sloučeny ani odstraněny.
 
@@ -20,7 +22,7 @@ Diskový zápis odesílá snímek stavu. Pokud během čekání vzniknou nověj�
 
 ## Výstupy a závislosti
 
-Klientský přehled, FKI přehled a investiční scénář používají společné stahování HTML. Výstupy obsahují vlastní styly a lze je předat samostatně. Změna vzhledu aplikace nepřepisuje vzhled klientských reportů.
+Klientský přehled, FKI přehled a investiční prognóza používají společné stahování HTML. Výstupy obsahují vlastní styly a lze je předat samostatně. Změna vzhledu aplikace nepřepisuje vzhled klientských reportů.
 
 Chart.js 4.5.0 a SheetJS 0.18.5 jsou uložené v assets/vendor s licencemi. Nasazení vyžaduje HTML i assets; pouhé přenesení hlavního HTML nestačí. Odkazy na hlavní CSS a JS obsahují verzi vydání.
 

@@ -1,5 +1,15 @@
 # Historie verzí
 
+## 2026.09.21-1
+
+- Proklik na Investici nebo FKI z karty klienta otevře příslušnou záložku rovnou s vybraným klientem.
+- Rychlý investiční přehled na kartě klienta má u každé položky stejné tlačítko Detail.
+- Karta klienta eviduje investice mimo správu odděleně od AUM, produkce a provizí.
+- Nová prognóza porovnává vývoj bez změny s novým jednorázovým nebo pravidelným nákupem.
+- Prognóza obsahuje opatrnou, očekávanou a optimistickou variantu a lze ji uložit ke klientovi.
+- Uloženou prognózu lze znovu otevřít nebo stáhnout jako samostatný klientský HTML report.
+- Samotné uložení prognózy nevytváří obchod ani příležitost; propsání je samostatná volba.
+
 ## 2026.09.17-2
 
 - Nová záložka Kampaně mezi Poznámkami a Ročním plánem.
