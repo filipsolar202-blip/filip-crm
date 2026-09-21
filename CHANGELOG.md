@@ -1,5 +1,12 @@
 # Historie verzí
 
+## 2026.09.21-6
+
+- Klientský investiční plán má nový jednostránkový výstup A4 na výšku ve světlém modrostříbrném stylu.
+- Hlavní doporučená varianta je zvýrazněná nahoře včetně rozložení portfolia, průměrného očekávaného výnosu a konkrétních odprodejů, přesunů a nákupů.
+- Pod hlavní variantou lze zobrazit nejvýše dvě stručné alternativy, aby se celý materiál vešel na jednu stránku.
+- Editor omezuje plán na jednu hlavní variantu a maximálně dvě alternativy; uložené plány používají stejný výstup.
+
 ## 2026.09.21-5
 
 - Prognóza umí libovolný počet pojmenovaných variant, které lze kopírovat, upravovat, uložit a znovu otevřít.
