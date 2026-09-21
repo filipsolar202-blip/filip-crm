@@ -7,6 +7,7 @@
 - Investice i FKI ukazují termín přímo u každého fondu a každé jednotlivé pozice klienta.
 - Klientský report obsahuje samostatný sloupec s termínem časového testu každé transakce.
 - Pokud chybí datum nákupu, CRM zobrazí chybějící údaj a nevytvoří zavádějící odhad.
+- Přechod z karty klienta do Investic nebo FKI automaticky skryje seznam ostatních klientů; tlačítko jej kdykoli znovu zobrazí.
 
 ## 2026.09.21-1
 

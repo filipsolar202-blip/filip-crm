@@ -761,6 +761,7 @@ function openClientProductArea(clientId, area) {
   if (area === 'fki') {
     selectedFkClientId = clientId;
     fkMode = 'client';
+    fkClientsHidden = true;
     showView('fki');
     return;
   }
@@ -772,7 +773,27 @@ function openClientProductArea(clientId, area) {
   }
   selectedInvestmentClientId = clientId;
   investmentMode = 'client';
+  investmentClientsHidden = true;
   showView('investments');
+}
+function toggleInvestmentClientList(area) {
+  if (area === 'fki') {
+    fkClientsHidden = !fkClientsHidden;
+    renderFk();
+    return;
+  }
+  investmentClientsHidden = !investmentClientsHidden;
+  renderInvestments();
+}
+function applyInvestmentClientListVisibility(area) {
+  const hidden = area === 'fki' ? fkClientsHidden : investmentClientsHidden,
+    shell = document.querySelector(`#${area === 'fki' ? 'fki' : 'investments'} .investment-shell`),
+    button = byId(area === 'fki' ? 'fkClientListToggle' : 'investmentClientListToggle');
+  shell?.classList.toggle('clients-hidden', hidden);
+  if (button) {
+    button.textContent = hidden ? 'Zobrazit klienty' : 'Skrýt klienty';
+    button.setAttribute('aria-expanded', hidden ? 'false' : 'true');
+  }
 }
 function opportunityFolderDefs(rows = []) {
   const base = [['zivot', 'Život'], ['auto', 'Auto'], ['nemovitost', 'Nemovitost'], ['hypoteka', 'Hypotéka'], ['uvery', 'Úvěry'], ['penze', 'Penze'], ['investice', 'Investice'], ['fki', 'FKI'], ['ostatni', 'Ostatní']];
@@ -3211,7 +3232,7 @@ function xsellPanel(stats) {
   }).join('')}</div>`;
 }
 function investmentMini(items, clientId) {
-  if (!items.length) return `<p class="note">U klienta zatím nevidím investiční produkt ani FKI. Nový návrh založ v záložce Investice nebo FKI.</p><button class="btn slim" onclick="selectedInvestmentClientId=${clientId};selectedClientId=${clientId};showView('investments')">Otevřít Investice</button> <button class="btn slim primary" onclick="selectedFkClientId=${clientId};selectedClientId=${clientId};showView('fki')">Otevřít FKI</button>`;
+  if (!items.length) return `<p class="note">U klienta zatím nevidím investiční produkt ani FKI. Nový návrh založ v záložce Investice nebo FKI.</p><button class="btn slim" onclick="openClientProductArea(${clientId},'investice')">Otevřít Investice</button> <button class="btn slim primary" onclick="openClientProductArea(${clientId},'fki')">Otevřít FKI</button>`;
   return `<div>${items.slice(0, 5).map(x => `<div class="product-row"><div><b>${esc(x.product || areaLabel(investmentAreaOfItem(x)))}</b><span class="note">${esc(x.company || 'bez producenta')} · ${esc(areaLabel(investmentAreaOfItem(x)))} · ${esc(x.kind)}</span></div><div class="actions"><div class="money">${money(x.amount)}</div><button class="btn slim" onclick="openClientProductArea(${clientId},'${investmentAreaOfItem(x)}')">Detail</button></div></div>`).join('')}</div>`;
 }
 function clientPortfolio(c, contracts, deals) {
@@ -10185,6 +10206,7 @@ function renderInvestments() {
   byId('investmentTabFunds')?.classList.toggle('active', investmentMode === 'funds');
   byId('investmentTabAum')?.classList.toggle('active', investmentMode === 'aum');
   detail.innerHTML = investmentMode === 'funds' ? window.renderInvestmentFunds(visibleFunds) : investmentMode === 'aum' ? renderInvestmentAum(visibleFunds) : window.renderInvestmentDetail(rows.find(r => String(r.client?.id) === String(selectedInvestmentClientId)));
+  applyInvestmentClientListVisibility('investice');
 }
 function fkClientRows() {
   return state.clients.map(c => {
@@ -10626,6 +10648,7 @@ function renderFk() {
   liquidity_q('fkTabFunds')?.classList.toggle('active', fkMode === 'funds');
   liquidity_q('fkTabAum')?.classList.toggle('active', fkMode === 'aum');
   detail.innerHTML = fkMode === 'funds' ? window.renderFkFunds(funds) : fkMode === 'aum' ? renderFkAum(funds) : window.renderFkClientDetail(rows.find(r => String(r.client?.id) === String(selectedFkClientId)));
+  applyInvestmentClientListVisibility('fki');
 }
 function renderReportFundSettings() {
   const out = typeof liquidity_oldReportSettings === 'function' ? liquidity_oldReportSettings.apply(this, arguments) : undefined;
@@ -11491,7 +11514,7 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
 const VERSION = '2026.09.21-2';
-const VERSION_NOTE = 'Opravený 36měsíční časový test podle data nákupu a jeho termín u každé investiční pozice.';
+const VERSION_NOTE = 'Opravený 36měsíční časový test a soukromý přechod z klienta do Investic nebo FKI.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
@@ -11529,6 +11552,8 @@ let state = loadState(),
   selectedInvestmentClientId = null,
   selectedInvestmentFundKey = null,
   selectedFkClientId = null,
+  investmentClientsHidden = false,
+  fkClientsHidden = false,
   investmentMode = 'client',
   fkMode = 'client',
   clientSection = 'overview',
