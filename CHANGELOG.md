@@ -1,5 +1,13 @@
 # Historie verzí
 
+## 2026.09.21-2
+
+- Opraven klientský report, který zaměňoval datum ocenění fondu za termín časového testu.
+- Časový test se počítá podle pravidla konkrétního fondu, standardně 36 měsíců od nákupu nebo emise.
+- Investice i FKI ukazují termín přímo u každého fondu a každé jednotlivé pozice klienta.
+- Klientský report obsahuje samostatný sloupec s termínem časového testu každé transakce.
+- Pokud chybí datum nákupu, CRM zobrazí chybějící údaj a nevytvoří zavádějící odhad.
+
 ## 2026.09.21-1
 
 - Proklik na Investici nebo FKI z karty klienta otevře příslušnou záložku rovnou s vybraným klientem.

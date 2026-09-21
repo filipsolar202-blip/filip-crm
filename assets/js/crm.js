@@ -3687,6 +3687,7 @@ function applyInvestmentSnapshot(x) {
   const originalInvested = s.investedBeforeRedemption === '' || s.investedBeforeRedemption == null ? s.invested : +s.investedBeforeRedemption;
   return {
     ...x,
+    purchaseDate: x.purchaseDate || x.snapshot?.purchaseDate || x.source?.purchaseDate || x.source?.startDate || x.source?.dealDate || (['deal', 'record'].includes(x.sourceType) ? x.source?.date || x.date : ''),
     amount: s.current === '' || s.current == null ? +x.amount || 0 : +s.current,
     invested: originalInvested === '' || originalInvested == null ? investmentInvestedAmount(x) : +originalInvested,
     realized: +s.redemptionAmount || 0,
@@ -4203,6 +4204,8 @@ function clientClassicInvestmentReportItems(clientId) {
     amount: +x.amount || 0,
     realized: investmentRealizedAmount(x),
     date: x.snapshot?.date || x.date || '',
+    purchaseDate: x.purchaseDate || x.snapshot?.purchaseDate || x.source?.purchaseDate || x.source?.startDate || x.source?.dealDate || (['deal', 'record'].includes(x.sourceType) ? x.source?.date || (!x.snapshot ? x.date : '') : '') || '',
+    sourceType: x.sourceType || '',
     note: x.snapshot?.note || '',
     source: 'CRM investice',
     managed: true
@@ -8109,8 +8112,9 @@ function liquidity_fmtDate(v) {
   return d ? d.toLocaleDateString('cs-CZ') : String(v);
 }
 function liquidity_fundRulesFromValue(fv = {}) {
+  const taxMonths = fv.taxMonths ?? fv.taxTestMonths ?? liquidity_TAX_DEFAULT;
   return {
-    taxMonths: Math.max(0, liquidity_n(fv.taxMonths || fv.taxTestMonths || liquidity_TAX_DEFAULT) || liquidity_TAX_DEFAULT),
+    taxMonths: Math.max(0, liquidity_n(taxMonths)),
     redemptionFrequency: fv.redemptionFrequency || 'quarterly',
     settlementMonths: Math.max(0, liquidity_n(fv.settlementMonths || 0) || 0)
   };
@@ -8131,7 +8135,7 @@ function liquidity_liquidityInfo(area, key, isin, startDate) {
   if (!start) return null;
   const fv = liquidity_findFundValue(area, key, isin),
     rules = liquidity_fundRulesFromValue(fv);
-  const taxReady = liquidity_addDays(liquidity_addMonths(start, rules.taxMonths), 1);
+  const taxReady = liquidity_addMonths(start, rules.taxMonths);
   const redemption = liquidity_nextRedemptionDate(taxReady, rules.redemptionFrequency);
   let payout = new Date(redemption);
   if (rules.settlementMonths > 0) payout = liquidity_endOfMonth(liquidity_addMonths(redemption, rules.settlementMonths));
@@ -8140,6 +8144,44 @@ function liquidity_liquidityInfo(area, key, isin, startDate) {
     redemption: liquidity_toIso(redemption),
     payout: liquidity_toIso(payout),
     rules
+  };
+}
+function liquidity_investmentTaxStart(x) {
+  const explicit = x?.purchaseDate || x?.snapshot?.purchaseDate || x?.source?.purchaseDate || x?.source?.startDate || x?.source?.dealDate;
+  if (explicit) return liquidity_isoDate(explicit);
+  if (['deal', 'record'].includes(x?.sourceType)) return liquidity_isoDate(x?.source?.date || (!x?.snapshot ? x?.date : ''));
+  return '';
+}
+function liquidity_fkiTaxStart(r) {
+  if (r?._crmSourceType === 'contract') {
+    const deal = (state.deals || []).find(x => String(x.id) === String(r._crmDealId || '')),
+      contract = (state.contracts || []).find(x => String(x.id) === String(r._crmContractId || r._crmSourceId || ''));
+    return liquidity_isoDate(deal?.date || deal?.dealDate || contract?.purchaseDate || contract?.startDate || contract?.dealDate || '');
+  }
+  return liquidity_isoDate(invEmissionDate(r) || invPaymentDate(r) || r?.purchaseDate || r?.date);
+}
+function liquidity_taxReady(info) {
+  const d = liquidity_localDate(info?.taxReady);
+  if (!d) return false;
+  const t = new Date();
+  t.setHours(0, 0, 0, 0);
+  return d <= t;
+}
+function liquidity_taxBadge(info) {
+  if (!info) return '<span class="badge orange">datum nákupu chybí</span>';
+  return liquidity_taxReady(info) ? `<span class="badge green">splněno od ${liquidity_fmtDate(info.taxReady)}</span>` : `<span class="badge blue">končí ${liquidity_fmtDate(info.taxReady)}</span>`;
+}
+function liquidity_taxSummary(infos) {
+  const all = infos || [],
+    valid = all.filter(Boolean).sort((a, b) => String(a.taxReady).localeCompare(String(b.taxReady))),
+    missing = all.length - valid.length;
+  if (!valid.length || missing) return null;
+  const latest = valid[valid.length - 1];
+  return {
+    latest,
+    count: valid.length,
+    missing,
+    html: missing ? `<span class="badge orange">${num(missing)}× datum nákupu chybí</span>` : liquidity_taxReady(latest) ? `<span class="badge green">vše splněno od ${liquidity_fmtDate(latest.taxReady)}</span>` : `<span class="badge blue">vše splněno ${liquidity_fmtDate(latest.taxReady)}</span>`
   };
 }
 function liquidity_liquidityNote(area, key, isin, startDate) {
@@ -8533,17 +8575,18 @@ function fundPerformance_classicGroups(items) {
   return Object.values(map).sort((a, b) => b.amount - a.amount);
 }
 function fundPerformance_classicPositionRows(f, clientId) {
-  return `<div class="table-wrap" style="margin-top:12px"><table class="compact-table"><thead><tr><th>Pozice / záznam</th><th>Vloženo</th><th>Aktuální</th><th>Celkový výnos</th><th>Výnos p.a.</th><th>Datum</th><th>Zdroj</th><th>Stav</th><th>Akce</th></tr></thead><tbody>${(f.items || []).sort((a, b) => String(b.snapshot?.date || b.date || '').localeCompare(String(a.snapshot?.date || a.date || ''))).map((x, i) => {
+  return `<div class="table-wrap" style="margin-top:12px"><table class="compact-table"><thead><tr><th>Pozice / záznam</th><th>Vloženo</th><th>Aktuální</th><th>Celkový výnos</th><th>Výnos p.a.</th><th>Časový test</th><th>Hodnota k datu</th><th>Zdroj</th><th>Stav</th><th>Akce</th></tr></thead><tbody>${(f.items || []).sort((a, b) => String(b.snapshot?.date || b.date || '').localeCompare(String(a.snapshot?.date || a.date || ''))).map((x, i) => {
     const put = investmentInvestedAmount(x),
       cur = +x.amount || 0,
       realized = investmentRealizedAmount(x),
       gain = investmentPerformanceGain(cur, put, realized),
       pct = investmentPerformancePct(cur, put, realized),
-      start = x.date || x.snapshot?.purchaseDate || x.snapshot?.date || '',
+      start = liquidity_investmentTaxStart(x),
       valueDate = typeof fundValueDateText === 'function' ? fundValueDateText('investice', f.key, x.isin, x.snapshot?.date || x.source?.valueDate || x.source?.date || '') : x.snapshot?.date || x.date || '',
-      pa = fundPerformance_annualizedPct(put, cur, realized, start, valueDate || new Date());
-    return `<tr><td><b>${esc(x.product || x.kind || 'Investice')} #${i + 1}</b><br><span class="note">${esc([x.company, x.isin, x.typ || x.kind].filter(Boolean).join(' · '))}</span></td><td class="money">${money(put)}</td><td class="money">${money(cur)}<br><span class="note">k ${esc(valueDate || '-')}</span></td><td class="money ${gain >= 0 ? 'green' : 'red'}">${money(gain)}<br><span>${pct.toFixed(1)} %</span></td><td class="money ${pa === null || pa >= 0 ? 'green' : 'red'}">${fundPerformance_pctText(pa)}</td><td>${esc(x.snapshot?.date || x.date || '')}</td><td>${esc(x.snapshot?.source || x.sourceType || 'CRM')}</td><td>${typeof invStatus === 'function' ? invStatus(x) : ''}</td><td>${typeof invRowAction === 'function' ? invRowAction(x, clientId) : ''}</td></tr>`;
-  }).join('') || '<tr><td colspan="9" class="note">Pod fondem není žádná pozice.</td></tr>'}</tbody></table></div>`;
+      pa = fundPerformance_annualizedPct(put, cur, realized, start, valueDate || new Date()),
+      info = liquidity_liquidityInfo('investice', f.key, x.isin || f.isin, start);
+    return `<tr><td><b>${esc(x.product || x.kind || 'Investice')} #${i + 1}</b><br><span class="note">${esc([x.company, x.isin, x.typ || x.kind].filter(Boolean).join(' · '))}</span></td><td class="money">${money(put)}</td><td class="money">${money(cur)}<br><span class="note">k ${esc(valueDate || '-')}</span></td><td class="money ${gain >= 0 ? 'green' : 'red'}">${money(gain)}<br><span>${pct.toFixed(1)} %</span></td><td class="money ${pa === null || pa >= 0 ? 'green' : 'red'}">${fundPerformance_pctText(pa)}</td><td>${liquidity_taxBadge(info)}<br><span class="note">${info ? `${num(info.rules.taxMonths)} měsíců od ${liquidity_fmtDate(start)}` : 'Doplň datum nákupu'}</span></td><td>${esc(valueDate || '-')}</td><td>${esc(x.snapshot?.source || x.sourceType || 'CRM')}</td><td>${typeof invStatus === 'function' ? invStatus(x) : ''}</td><td>${typeof invRowAction === 'function' ? invRowAction(x, clientId) : ''}</td></tr>`;
+  }).join('') || '<tr><td colspan="10" class="note">Pod fondem není žádná pozice.</td></tr>'}</tbody></table></div>`;
 }
 function fundPerformance_classicCard(f, clientId) {
   const gain = investmentPerformanceGain(f.amount, f.invested, f.realized),
@@ -8552,8 +8595,9 @@ function fundPerformance_classicCard(f, clientId) {
     fv = state.fundValues?.[f.key] || {},
     valueDate = typeof fundValueDateText === 'function' ? fundValueDateText('investice', f.key, f.isin, fv.date) : fv.date || '',
     locked = isInvestmentFundLocked(f.key),
-    comment = fundPerformance_fundComment('investice', f.key, f.isin);
-  return `<details class="fki-work-card ${gain < 0 ? 'loss' : ''} ${locked ? 'locked' : ''}"><summary class="fki-work-head"><div class="fki-work-name"><b>${esc(f.label)}</b><div class="chips"><span class="chip">${esc(f.company)}</span><span class="badge blue">Investice</span><span class="chip">${num(f.items.length)} pozic</span>${locked ? '<span class="badge orange">zamčeno</span>' : ''}</div></div><div class="fki-work-metric"><small>Vloženo</small><strong>${money(f.invested)}</strong></div><div class="fki-work-metric"><small>Aktuální</small><strong class="${gain >= 0 ? 'green' : 'red'}">${money(f.amount)}</strong><small>k ${esc(valueDate || '-')}</small></div><div class="fki-work-metric"><small>Výnos celkem</small><strong class="${gain >= 0 ? 'green' : 'red'}">${pct.toFixed(1)} %</strong></div><div class="actions"><button class="btn slim primary" onclick="event.preventDefault();openInvestmentScenarioModal(${clientId},'Investice')">+ Nová investice</button><button class="btn slim" onclick="event.preventDefault();openInvestmentSnapshotModal(${clientId},'${esc(encodeURIComponent(String(clientId) + '|' + f.key))}')">Hodnota</button><button class="btn slim" onclick="event.preventDefault();openInvestmentFundModal('${esc(key)}')">Fond</button><button class="icon-btn ${locked ? 'primary' : ''}" onclick="event.preventDefault();toggleInvestmentFundLock('${esc(key)}')" title="Zámek reportu">${locked ? '🔒' : '🔓'}</button></div></summary><div class="fki-work-detail"><div class="fki-detail-grid"><div><small>Investováno</small><b>${money(f.invested)}</b></div><div><small>Výnos Kč</small><b class="${gain >= 0 ? 'green' : 'red'}">${money(gain)}</b></div><div><small>Celkový výnos</small><b class="${gain >= 0 ? 'green' : 'red'}">${pct.toFixed(1)} %</b></div><div><small>Hodnota CP / NAV</small><b>${fv.nav ? num(fv.nav) : '-'}</b></div><div><small>Hodnota fondu k datu</small><b>${esc(valueDate || '-')}</b></div><div><small>ISIN</small><b>${esc(f.isin || '-')}</b></div><div><small>Typ</small><b>${esc(f.typ || '-')}</b></div><div><small>Pozic</small><b>${num(f.items.length)}</b></div></div>${comment ? `<div class="notice small"><b>Komentář fondu:</b> ${esc(comment)}</div>` : ''}${fundPerformance_classicPositionRows(f, clientId)}</div></details>`;
+    comment = fundPerformance_fundComment('investice', f.key, f.isin),
+    tax = liquidity_taxSummary((f.items || []).map(x => liquidity_liquidityInfo('investice', f.key, x.isin || f.isin, liquidity_investmentTaxStart(x))));
+  return `<details class="fki-work-card ${gain < 0 ? 'loss' : ''} ${locked ? 'locked' : ''}"><summary class="fki-work-head"><div class="fki-work-name"><b>${esc(f.label)}</b><div class="chips"><span class="chip">${esc(f.company)}</span><span class="badge blue">Investice</span><span class="chip">${num(f.items.length)} pozic</span>${tax ? tax.html : '<span class="badge orange">datum nákupu chybí</span>'}${locked ? '<span class="badge orange">zamčeno</span>' : ''}</div></div><div class="fki-work-metric"><small>Vloženo</small><strong>${money(f.invested)}</strong></div><div class="fki-work-metric"><small>Aktuální</small><strong class="${gain >= 0 ? 'green' : 'red'}">${money(f.amount)}</strong><small>k ${esc(valueDate || '-')}</small></div><div class="fki-work-metric"><small>Výnos celkem</small><strong class="${gain >= 0 ? 'green' : 'red'}">${pct.toFixed(1)} %</strong></div><div class="actions"><button class="btn slim primary" onclick="event.preventDefault();openInvestmentScenarioModal(${clientId},'Investice')">+ Nová investice</button><button class="btn slim" onclick="event.preventDefault();openInvestmentSnapshotModal(${clientId},'${esc(encodeURIComponent(String(clientId) + '|' + f.key))}')">Hodnota</button><button class="btn slim" onclick="event.preventDefault();openInvestmentFundModal('${esc(key)}')">Fond</button><button class="icon-btn ${locked ? 'primary' : ''}" onclick="event.preventDefault();toggleInvestmentFundLock('${esc(key)}')" title="Zámek reportu">${locked ? '🔒' : '🔓'}</button></div></summary><div class="fki-work-detail"><div class="fki-detail-grid"><div><small>Investováno</small><b>${money(f.invested)}</b></div><div><small>Výnos Kč</small><b class="${gain >= 0 ? 'green' : 'red'}">${money(gain)}</b></div><div><small>Celkový výnos</small><b class="${gain >= 0 ? 'green' : 'red'}">${pct.toFixed(1)} %</b></div><div><small>Časový test všech pozic</small><b>${tax ? liquidity_fmtDate(tax.latest.taxReady) : 'datum nákupu chybí'}</b></div><div><small>Hodnota CP / NAV</small><b>${fv.nav ? num(fv.nav) : '-'}</b></div><div><small>Hodnota fondu k datu</small><b>${esc(valueDate || '-')}</b></div><div><small>ISIN</small><b>${esc(f.isin || '-')}</b></div><div><small>Typ</small><b>${esc(f.typ || '-')}</b></div><div><small>Pozic</small><b>${num(f.items.length)}</b></div></div>${comment ? `<div class="notice small"><b>Komentář fondu:</b> ${esc(comment)}</div>` : ''}${fundPerformance_classicPositionRows(f, clientId)}</div></details>`;
 }
 function fundPerformance_fkiRowsFor(clientId, key) {
   return (typeof investmentRecordsForClient === 'function' ? investmentRecordsForClient(clientId) : []).filter(r => invPositionKey(r) === key && isFkiReportRecord(r)).sort((a, b) => String(invEmissionDate(a) || invPaymentDate(a)).localeCompare(String(invEmissionDate(b) || invPaymentDate(b))));
@@ -8590,11 +8634,12 @@ function fundPerformance_fkiPositionRowsPa(clientId, item) {
       cur = isOut ? typeof invWithdrawalValue === 'function' ? invWithdrawalValue(r) : Math.abs(invCurrentValue(r)) : Math.max(0, (invCurrentValue(r) || invDeposit(r) || 0) - redeemed),
       gain = isOut ? cur : cur + redeemed - inv,
       issue = invEmissionDate(r),
+      taxStart = liquidity_fkiTaxStart(r),
       valueDate = typeof fundValueDateText === 'function' ? fundValueDateText('fki', item.key, invIsin(r) || item.isin, r['Poslední schválená hodnota do']) : r['Poslední schválená hodnota do'] || '',
       pa = isOut ? null : fundPerformance_annualizedPct(inv, cur, redeemed, issue || invPaymentDate(r), valueDate || new Date()),
-      info = typeof liquidityInfo === 'function' ? liquidityInfo('fki', item.key, invIsin(r) || item.isin, issue) : null,
+      info = liquidity_liquidityInfo('fki', item.key, invIsin(r) || item.isin, taxStart),
       rk = encodeURIComponent(invRecordKey(r));
-    return `<tr><td><b>${esc(r['Typ transakce'] || 'Platba')} #${i + 1}</b><br><span class="note">Připsání ${esc(invPaymentDate(r) || '-')} · emise ${esc(issue || '-')}</span></td><td class="money">${money(inv)}</td><td class="money">${money(cur)}<br><span class="note">k ${esc(valueDate || '-')}</span></td><td class="money ${gain >= 0 ? 'green' : 'red'}">${isOut ? 'realizováno ' + money(gain) : money(gain)}</td><td class="money ${pa === null || pa >= 0 ? 'green' : 'red'}">${fundPerformance_pctText(pa)}</td><td>${isOut ? '<span class="badge green">odkup zadán</span>' : `${typeof liquidityBadge === 'function' ? liquidityBadge(info) : ''}<br><span class="note">${redeemed ? `odkoupeno ${money(redeemed)} · ` : ''}zbývá ${money(cur)}</span>`}</td><td><button class="btn slim" onclick="openFkRecordModal(${clientId},'${esc(encodeURIComponent(item.key))}','${esc(rk)}')">Upravit</button></td></tr>`;
+    return `<tr><td><b>${esc(r['Typ transakce'] || 'Platba')} #${i + 1}</b><br><span class="note">Připsání ${esc(invPaymentDate(r) || '-')} · emise ${esc(issue || '-')}</span></td><td class="money">${money(inv)}</td><td class="money">${money(cur)}<br><span class="note">k ${esc(valueDate || '-')}</span></td><td class="money ${gain >= 0 ? 'green' : 'red'}">${isOut ? 'realizováno ' + money(gain) : money(gain)}</td><td class="money ${pa === null || pa >= 0 ? 'green' : 'red'}">${fundPerformance_pctText(pa)}</td><td>${isOut ? '<span class="badge green">odkup zadán</span>' : `${liquidity_taxBadge(info)}<br><span class="note">${info ? `${num(info.rules.taxMonths)} měsíců od ${liquidity_fmtDate(taxStart)} · ` : ''}${redeemed ? `odkoupeno ${money(redeemed)} · ` : ''}zbývá ${money(cur)}</span>`}</td><td><button class="btn slim" onclick="openFkRecordModal(${clientId},'${esc(encodeURIComponent(item.key))}','${esc(rk)}')">Upravit</button></td></tr>`;
   }).join('') || '<tr><td colspan="7" class="note">Pod fondem není žádná konkrétní pozice.</td></tr>'}</tbody></table></div>`;
 }
 function fundPerformance_fkiCardPa(item, clientId) {
@@ -8606,11 +8651,11 @@ function fundPerformance_fkiCardPa(item, clientId) {
     gain = investmentPerformanceGain(cur, inv, realized),
     pct = investmentPerformancePct(cur, inv, realized),
     issue = invEmissionDate(main),
-    info = typeof liquidityInfo === 'function' ? liquidityInfo('fki', item.key, item.isin || invIsin(main), issue) : null,
+    tax = liquidity_taxSummary(rows.filter(r => !invIsWithdrawal(r)).map(r => liquidity_liquidityInfo('fki', item.key, invIsin(r) || item.isin, liquidity_fkiTaxStart(r)))),
     key = encodeURIComponent(item.key),
     comment = fundPerformance_fundComment('fki', item.key, item.isin || invIsin(main)),
     valueDate = typeof fundValueDateText === 'function' ? fundValueDateText('fki', item.key, item.isin || invIsin(main), main['Poslední schválená hodnota do']) : '';
-  return `<details class="fki-work-card ${gain < 0 ? 'loss' : ''} ${item.locked ? 'locked' : ''}"><summary class="fki-work-head"><div class="fki-work-name"><b>${esc(cleanInvFundName(item.product || invFund(main), item.company))}</b><div class="chips"><span class="chip">${esc(item.company || invCompany(main) || '')}</span><span class="badge purple">FKI</span><span class="chip">${num(rows.length)} pozic</span>${typeof liquidityBadge === 'function' ? liquidityBadge(info) : ''}</div></div><div class="fki-work-metric"><small>Vloženo</small><strong>${money(inv)}</strong></div><div class="fki-work-metric"><small>Aktuální</small><strong class="${gain >= 0 ? 'green' : 'red'}">${money(cur)}</strong><small>k ${esc(valueDate || '-')}</small></div><div class="fki-work-metric"><small>Výnos celkem</small><strong class="${gain >= 0 ? 'green' : 'red'}">${pct.toFixed(1)} %</strong></div><div class="actions"><button class="btn slim primary" onclick="event.preventDefault();openInvestmentScenarioModal(${clientId},'FKI')">+ Dokup</button><button class="btn slim" onclick="event.preventDefault();openFkRecordModal(${clientId},'${esc(key)}','${esc(encodeURIComponent(invRecordKey(main)))}')">Upravit</button><button class="icon-btn ${item.locked ? 'primary' : ''}" onclick="event.preventDefault();toggleFkFundLock('${esc(key)}')" title="Zámek AUM">${item.locked ? '🔒' : '🔓'}</button></div></summary><div class="fki-work-detail"><div class="fki-detail-grid"><div><small>Investováno</small><b>${money(inv)}</b></div><div><small>Výnos Kč</small><b class="${gain >= 0 ? 'green' : 'red'}">${money(gain)}</b></div><div><small>Celkový výnos</small><b class="${gain >= 0 ? 'green' : 'red'}">${pct.toFixed(1)} %</b></div><div><small>Datum emise</small><b>${esc(issue || '-')}</b></div><div><small>Hodnota fondu k datu</small><b>${esc(valueDate || '-')}</b></div><div><small>ISIN</small><b>${esc(item.isin || invIsin(main) || '-')}</b></div></div>${comment ? `<div class="notice small"><b>Komentář fondu:</b> ${esc(comment)}</div>` : ''}${fundPerformance_fkiPositionRowsPa(clientId, item)}</div></details>`;
+  return `<details class="fki-work-card ${gain < 0 ? 'loss' : ''} ${item.locked ? 'locked' : ''}"><summary class="fki-work-head"><div class="fki-work-name"><b>${esc(cleanInvFundName(item.product || invFund(main), item.company))}</b><div class="chips"><span class="chip">${esc(item.company || invCompany(main) || '')}</span><span class="badge purple">FKI</span><span class="chip">${num(rows.length)} pozic</span>${tax ? tax.html : '<span class="badge orange">datum nákupu chybí</span>'}</div></div><div class="fki-work-metric"><small>Vloženo</small><strong>${money(inv)}</strong></div><div class="fki-work-metric"><small>Aktuální</small><strong class="${gain >= 0 ? 'green' : 'red'}">${money(cur)}</strong><small>k ${esc(valueDate || '-')}</small></div><div class="fki-work-metric"><small>Výnos celkem</small><strong class="${gain >= 0 ? 'green' : 'red'}">${pct.toFixed(1)} %</strong></div><div class="actions"><button class="btn slim primary" onclick="event.preventDefault();openInvestmentScenarioModal(${clientId},'FKI')">+ Dokup</button><button class="btn slim" onclick="event.preventDefault();openFkRecordModal(${clientId},'${esc(key)}','${esc(encodeURIComponent(invRecordKey(main)))}')">Upravit</button><button class="icon-btn ${item.locked ? 'primary' : ''}" onclick="event.preventDefault();toggleFkFundLock('${esc(key)}')" title="Zámek AUM">${item.locked ? '🔒' : '🔓'}</button></div></summary><div class="fki-work-detail"><div class="fki-detail-grid"><div><small>Investováno</small><b>${money(inv)}</b></div><div><small>Výnos Kč</small><b class="${gain >= 0 ? 'green' : 'red'}">${money(gain)}</b></div><div><small>Celkový výnos</small><b class="${gain >= 0 ? 'green' : 'red'}">${pct.toFixed(1)} %</b></div><div><small>Časový test všech pozic</small><b>${tax ? liquidity_fmtDate(tax.latest.taxReady) : 'datum nákupu chybí'}</b></div><div><small>Datum emise</small><b>${esc(issue || '-')}</b></div><div><small>Hodnota fondu k datu</small><b>${esc(valueDate || '-')}</b></div><div><small>ISIN</small><b>${esc(item.isin || invIsin(main) || '-')}</b></div></div>${comment ? `<div class="notice small"><b>Komentář fondu:</b> ${esc(comment)}</div>` : ''}${fundPerformance_fkiPositionRowsPa(clientId, item)}</div></details>`;
 }
 function fundPerformance_scenarioSeries(rateKind) {
   const years = Math.max(1, fundPerformance_n(val('scenarioYears')) || 10),
@@ -9042,6 +9087,12 @@ function clientOutput_xRowDate(r) {
 function clientOutput_xRowEmission(r) {
   return typeof invEmissionDate === 'function' ? invEmissionDate(r) : clientOutput_xPick(r, ['Datum emise', 'emissionDate']);
 }
+function clientOutput_xRowTaxStart(r, area) {
+  if (area === 'FKI') return typeof liquidity_fkiTaxStart === 'function' ? liquidity_fkiTaxStart(r) : clientOutput_xRowEmission(r) || clientOutput_xRowDate(r) || clientOutput_xPick(r, ['purchaseDate']);
+  const explicit = clientOutput_xPick(r, ['purchaseDate']) || r?.snapshot?.purchaseDate || r?.source?.purchaseDate || r?.source?.startDate || r?.source?.dealDate;
+  if (explicit) return explicit;
+  return ['deal', 'record'].includes(r?.sourceType) ? r?.source?.date || (!r?.snapshot ? clientOutput_xRowDate(r) : '') : '';
+}
 function clientOutput_xRowInvested(r) {
   const direct = typeof invDeposit === 'function' ? Math.abs(clientOutput_xN(invDeposit(r))) : 0;
   return direct || Math.abs(clientOutput_xN(clientOutput_xPick(r, ['Čistá investice', 'Cista investice', 'investment', 'invested', 'amount'])));
@@ -9070,6 +9121,8 @@ function clientOutput_xFundRows(f) {
       current = direct > 0 ? direct : clientOutput_xN(f.amount) * share,
       realized = typeof investmentRealizedAmount === 'function' ? clientOutput_xN(investmentRealizedAmount(r)) : clientOutput_xN(r?.realized || r?.redemptionAmount || 0),
       date = clientOutput_xRowDate(r) || clientOutput_xRowEmission(r) || f.date,
+      taxStart = clientOutput_xRowTaxStart(r, f.area),
+      taxInfo = liquidity_liquidityInfo(f.area === 'FKI' ? 'fki' : 'investice', f.key, f.isin, taxStart),
       valueDate = clientOutput_xValueDate(f.area === 'FKI' ? 'fki' : 'investice', f.key, f.isin, f.valueDate || date),
       perf = clientOutput_xPerf(current, invested, realized),
       pa = clientOutput_xAnnualized(invested, current, realized, date, valueDate || f.valueDate);
@@ -9083,6 +9136,8 @@ function clientOutput_xFundRows(f) {
       valueDate,
       perf,
       pa,
+      taxStart,
+      taxInfo,
       cp: clientOutput_xRowCp(r),
       cpValue: clientOutput_xRowCpValue(r),
       emission: clientOutput_xRowEmission(r)
@@ -9100,8 +9155,9 @@ function clientOutput_xFundDetail(f, i, scenario = false) {
     const years = Math.max(1, clientOutput_xN(document.getElementById('scenarioYears')?.value) || 10);
     return `<article class="report-fund-detail scenario-simple-fund"><div class="report-fund-head"><div><h3>${clientOutput_xEsc(title)}</h3><div class="fund-tags">${[f.company, f.area, f.isin && 'ISIN ' + f.isin].filter(Boolean).map(x => `<span>${clientOutput_xEsc(x)}</span>`).join('')}</div></div></div><div class="metrics"><div><small>Investováno</small><b>${clientOutput_xMoney(f.invested)}</b></div><div><small>Období modelace</small><b>${clientOutput_xNum(years)} let</b></div><div><small>Modelovaná hodnota</small><b>${clientOutput_xMoney(f.amount)}</b></div><div><small>Čistý výnos za období</small><b class="${perf.gain >= 0 ? 'green' : 'red'}">${clientOutput_xMoney(perf.gain)}</b></div></div><p class="fund-note">${clientOutput_xEsc(comment || 'Popis fondu zatím není doplněný v CRM.')}</p></article>`;
   }
-  const rowHtml = rows.map(x => `<tr><td><b>${clientOutput_xEsc(clientOutput_xRowTitle(x.r, x.i))}</b><br><small>${clientOutput_xEsc([x.date && 'připsání ' + clientOutput_xDate(x.date), x.emission && 'emise ' + clientOutput_xDate(x.emission)].filter(Boolean).join(' · '))}</small></td><td class="money">${clientOutput_xMoney(x.invested)}</td><td class="money">${x.cp ? clientOutput_xNum(Math.round(x.cp)) : '-'}</td><td>${x.cpValue ? clientOutput_xNum(x.cpValue) : '-'}</td><td class="money"><b>${clientOutput_xMoney(x.current)}</b><br><small>${x.valueDate ? 'k ' + clientOutput_xDate(x.valueDate) : ''}</small></td><td class="money"><b class="${x.perf.gain >= 0 ? 'green' : 'red'}">${clientOutput_xPct(x.perf.pct)}</b><br><small>${clientOutput_xMoney(x.perf.gain)}</small></td><td><b class="${(x.pa || 0) >= 0 ? 'green' : 'red'}">${clientOutput_xPctPlain(x.pa)}</b></td></tr>`).join('');
-  return `<article class="report-fund-detail"><div class="report-fund-head"><div><h3>${clientOutput_xEsc(title)}</h3><div class="fund-tags">${[f.company, f.area, f.isin && 'ISIN ' + f.isin, valueDate && 'hodnota k ' + clientOutput_xDate(valueDate)].filter(Boolean).map(x => `<span>${clientOutput_xEsc(x)}</span>`).join('')}</div></div><div class="fund-return ${perf.gain >= 0 ? 'green' : 'red'}">${clientOutput_xPct(perf.pct)}</div></div><div class="metrics"><div><small>Investováno</small><b>${clientOutput_xMoney(f.invested)}</b></div><div><small>${scenario ? 'Modelovaná hodnota' : 'Aktuální hodnota'}</small><b>${clientOutput_xMoney(f.amount)}</b></div><div><small>Čistý výnos</small><b class="${perf.gain >= 0 ? 'green' : 'red'}">${clientOutput_xMoney(perf.gain)}</b></div><div><small>Celkový výnos</small><b class="${perf.gain >= 0 ? 'green' : 'red'}">${clientOutput_xPct(perf.pct)}</b></div><div><small>Časový test</small><b>${rows.length > 1 ? clientOutput_xNum(rows.length) + ' transakcí' : valueDate ? 'k ' + clientOutput_xDate(valueDate) : '-'}</b></div></div><p class="fund-note">${clientOutput_xEsc(comment || 'Popis fondu zatím není doplněný v CRM.')}</p><table class="fund-transactions"><thead><tr><th>Transakce</th><th>Investice</th><th>Počet CP</th><th>Hodnota CP</th><th>${scenario ? 'Modelovaná hodnota' : 'Aktuální hodnota'}</th><th>Celkové zhodnocení</th><th>Výnos p.a.</th></tr></thead><tbody>${rowHtml || `<tr><td colspan="7" class="muted">Bez samostatných transakcí.</td></tr>`}</tbody></table></article>`;
+  const tax = liquidity_taxSummary(rows.map(x => x.taxInfo));
+  const rowHtml = rows.map(x => `<tr><td><b>${clientOutput_xEsc(clientOutput_xRowTitle(x.r, x.i))}</b><br><small>${clientOutput_xEsc([x.date && 'připsání ' + clientOutput_xDate(x.date), x.emission && 'emise ' + clientOutput_xDate(x.emission)].filter(Boolean).join(' · '))}</small></td><td class="money">${clientOutput_xMoney(x.invested)}</td><td class="money">${x.cp ? clientOutput_xNum(Math.round(x.cp)) : '-'}</td><td>${x.cpValue ? clientOutput_xNum(x.cpValue) : '-'}</td><td class="money"><b>${clientOutput_xMoney(x.current)}</b><br><small>${x.valueDate ? 'k ' + clientOutput_xDate(x.valueDate) : ''}</small></td><td class="money"><b class="${x.perf.gain >= 0 ? 'green' : 'red'}">${clientOutput_xPct(x.perf.pct)}</b><br><small>${clientOutput_xMoney(x.perf.gain)}</small></td><td><b>${x.taxInfo ? clientOutput_xDate(x.taxInfo.taxReady) : 'Datum nákupu chybí'}</b><br><small>${x.taxInfo ? clientOutput_xNum(x.taxInfo.rules.taxMonths) + ' měsíců od ' + clientOutput_xDate(x.taxStart) : 'Bez odhadu'}</small></td><td><b class="${(x.pa || 0) >= 0 ? 'green' : 'red'}">${clientOutput_xPctPlain(x.pa)}</b></td></tr>`).join('');
+  return `<article class="report-fund-detail"><div class="report-fund-head"><div><h3>${clientOutput_xEsc(title)}</h3><div class="fund-tags">${[f.company, f.area, f.isin && 'ISIN ' + f.isin, valueDate && 'hodnota k ' + clientOutput_xDate(valueDate)].filter(Boolean).map(x => `<span>${clientOutput_xEsc(x)}</span>`).join('')}</div></div><div class="fund-return ${perf.gain >= 0 ? 'green' : 'red'}">${clientOutput_xPct(perf.pct)}</div></div><div class="metrics"><div><small>Investováno</small><b>${clientOutput_xMoney(f.invested)}</b></div><div><small>${scenario ? 'Modelovaná hodnota' : 'Aktuální hodnota'}</small><b>${clientOutput_xMoney(f.amount)}</b></div><div><small>Čistý výnos</small><b class="${perf.gain >= 0 ? 'green' : 'red'}">${clientOutput_xMoney(perf.gain)}</b></div><div><small>Celkový výnos</small><b class="${perf.gain >= 0 ? 'green' : 'red'}">${clientOutput_xPct(perf.pct)}</b></div><div><small>Časový test všech pozic</small><b>${tax ? clientOutput_xDate(tax.latest.taxReady) : 'Datum nákupu chybí'}</b></div></div><p class="fund-note">${clientOutput_xEsc(comment || 'Popis fondu zatím není doplněný v CRM.')}</p><table class="fund-transactions"><thead><tr><th>Transakce</th><th>Investice</th><th>Počet CP</th><th>Hodnota CP</th><th>${scenario ? 'Modelovaná hodnota' : 'Aktuální hodnota'}</th><th>Celkové zhodnocení</th><th>Časový test</th><th>Výnos p.a.</th></tr></thead><tbody>${rowHtml || `<tr><td colspan="8" class="muted">Bez samostatných transakcí.</td></tr>`}</tbody></table></article>`;
 }
 function clientOutput_xCompactReportCss() {
   return `.allocation-note{margin:10px 0 0;color:#64748b;font-size:13px;line-height:1.45}.report-fund-detail{background:rgba(255,255,255,.82);border:1px solid var(--line);border-radius:22px;padding:18px;margin:14px 0;break-inside:avoid;box-shadow:0 14px 34px rgba(15,39,68,.06)}.report-fund-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:14px}.report-fund-head h3{margin:0 0 7px;font-size:24px;line-height:1.12}.fund-tags{display:flex;flex-wrap:wrap;gap:7px}.fund-tags span{background:#eaf6fb;color:#0f4168;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:850}.fund-return{font-size:24px;font-weight:950;white-space:nowrap}.fund-note{margin:14px 0 16px;color:#274563;font-size:15px;line-height:1.55}.fund-transactions th,.fund-transactions td{padding:10px 12px}.fund-transactions small{color:#64748b;font-weight:750}@media(max-width:760px){.report-fund-head{display:block}.fund-return{margin-top:10px}.fund-transactions{font-size:12px}}@media print{.report-fund-detail{box-shadow:none;page-break-inside:avoid}.allocation-note{font-size:12px}}`;
@@ -11434,8 +11490,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.09.21-1';
-const VERSION_NOTE = 'Prognózy portfolia, majetek mimo správu a přesné prokliky na investiční detail klienta.';
+const VERSION = '2026.09.21-2';
+const VERSION_NOTE = 'Opravený 36měsíční časový test podle data nákupu a jeho termín u každé investiční pozice.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
