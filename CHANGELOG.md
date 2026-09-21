@@ -1,5 +1,14 @@
 # Historie verzí
 
+## 2026.09.21-5
+
+- Prognóza umí libovolný počet pojmenovaných variant, které lze kopírovat, upravovat, uložit a znovu otevřít.
+- U každé současné investice i fondu mimo správu lze ve variantě zvolit ponechání, částečný nebo úplný odprodej a přesun do jiného fondu.
+- Přesunutá částka se nepočítá jako nové peníze klienta a návrh nijak nemění AUM, provize ani skutečnou evidenci.
+- Každá varianta může obsahovat vlastní nové nákupy klasických investic i FKI.
+- Průměrné očekávané zhodnocení se počítá váženě přes celé výsledné portfolio varianty.
+- Nový jednostránkový výstup A4 na šířku ukazuje současné fondy, společný graf a přehled kroků i výsledků všech variant.
+
 ## 2026.09.21-4
 
 - Investiční prognóza začíná v bodu „Dnes“ celou částkou, kterou klient investuje, místo nulou.

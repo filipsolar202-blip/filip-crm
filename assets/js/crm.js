@@ -3216,7 +3216,7 @@ function clientForecastPanel(c) {
     managed = clientInvestmentSummary(c.id).total,
     outside = externalInvestmentTotal(c.id),
     extRows = external.map(x => `<div class="forecast-position-row external-investment-row"><div><b>${esc(x.product)}</b><small>${esc([x.company, x.asset, x.liquidity].filter(Boolean).join(' · ') || 'mimo správu')}</small></div><div class="money"><small>Vloženo</small>${money(x.invested)}</div><div class="money"><small>Aktuálně</small><b>${money(x.current)}</b></div><div class="money"><small>Měsíčně</small>${money(x.monthly)}</div><div class="actions"><button class="btn slim" onclick="openExternalInvestmentModal(${c.id},${x.id})">Upravit</button></div></div>`).join('') || '<p class="note">Zatím nejsou uložené žádné investice mimo vaši správu.</p>',
-    forecastRows = forecasts.map(x => `<div class="forecast-card"><div><b>${esc(x.name || 'Prognóza portfolia')}</b><small>${esc((x.createdAt || '').slice(0,10))} · horizont ${num(x.years || 10)} let</small></div><div class="money"><small>Majetek dnes</small><b>${money(x.projection?.current || 0)}</b></div><div class="money"><small>Po návrhu</small><b>${money(x.projection?.final || 0)}</b></div><div class="actions"><button class="btn slim" onclick="openSavedInvestmentForecast(${x.id})">Otevřít</button><button class="btn slim" onclick="downloadSavedInvestmentForecast(${x.id})">HTML</button></div></div>`).join('') || '<p class="note">Zatím není uložena žádná prognóza.</p>';
+    forecastRows = forecasts.map(x => { const variants=x.variants || [], best=variants.length ? Math.max(...variants.map(v=>scenario_n(v.projection?.final))) : scenario_n(x.projection?.final); return `<div class="forecast-card"><div><b>${esc(x.name || 'Prognóza portfolia')}</b><small>${esc((x.createdAt || '').slice(0,10))} · horizont ${num(x.years || 10)} let · ${num(variants.length || 1)} ${variants.length === 1 ? 'varianta' : 'varianty'}</small></div><div class="money"><small>Současné portfolio</small><b>${money(x.projection?.current || 0)}</b></div><div class="money"><small>Nejvyšší modelová hodnota</small><b>${money(best)}</b></div><div class="actions"><button class="btn slim" onclick="openSavedInvestmentForecast(${x.id})">Otevřít</button><button class="btn slim" onclick="downloadSavedInvestmentForecast(${x.id})">Jedna stránka</button></div></div>`; }).join('') || '<p class="note">Zatím není uložena žádná prognóza.</p>';
   return `<div class="forecast-client-panel"><div class="mini-card"><div class="forecast-client-head"><div><div class="eyebrow">Celkový investiční majetek</div><h3>Ve správě a mimo správu</h3></div><div class="actions"><button class="btn slim" onclick="openExternalInvestmentModal(${c.id})">+ Mimo správu</button><button class="btn slim primary" onclick="openInvestmentScenarioModal(${c.id},'Investice')">+ Prognóza</button></div></div><div class="investment-summary" style="margin:12px 0"><div class="metric"><span class="note">AUM v mé správě</span><b>${money(managed)}</b></div><div class="metric"><span class="note">Mimo mou správu</span><b>${money(outside)}</b></div><div class="metric"><span class="note">Majetek pro prognózu</span><b>${money(managed + outside)}</b></div></div><div class="forecast-position-list">${extRows}</div></div><div class="mini-card"><div class="forecast-client-head"><div><div class="eyebrow">Uložené varianty</div><h3>Prognózy portfolia</h3></div></div><div class="forecast-list">${forecastRows}</div></div></div>`;
 }
 function clientOverview(c, contracts, deals, acts, year) {
@@ -4374,7 +4374,11 @@ function investmentScenarioCatalog() {
 }
 function scenario_originalOpen(clientId = null, area = 'Investice') {
   investmentScenario = {
-    rows: []
+    rows: [],
+    externalRows: [],
+    dispositions: {},
+    variants: [],
+    activeVariantId: ''
   };
   const id = clientId || selectedClientId || state.clients[0]?.id;
   fillClientSelect('scenarioClient', id);
@@ -7170,8 +7174,127 @@ function removeScenarioExternalInvestment(i) {
 function scenarioManagedRows(clientId) {
   return clientDisplayInvestmentItems(clientId).map(x => {
     const area = investmentAreaOfItem(x), key = area === 'fki' ? invPositionKey(x.source || x) : investmentFundKey(x), fv = state.fundValues?.[key] || {}, defs = typeof window.defaultFundExpectedRate === 'function' ? window.defaultFundExpectedRate(area, key, x.isin, fv) : {};
-    return {product:x.product || x.kind || 'Investice', company:x.company || '', current:scenario_amount(x), invested:scenario_invested(x), monthly:scenario_n(x.regularAmount || x.snapshot?.regularAmount), expectedRate:scenario_n(defs.expectedRate || fv.expectedRate) || 5, area, managed:true};
+    return {product:x.product || x.kind || 'Investice', company:x.company || '', current:scenario_amount(x), invested:scenario_invested(x), monthly:scenario_n(x.regularAmount || x.snapshot?.regularAmount), expectedRate:scenario_n(defs.expectedRate || fv.expectedRate) || 5, area, key, isin:x.isin || fv.isin || '', managed:true};
   });
+}
+function scenario_positionId(row, source, index) {
+  return `${source}|${row.id || row.key || row.isin || [row.company,row.product,index].join('|')}`;
+}
+function scenario_currentPositions(model = investmentScenario) {
+  const c = scenario_selected(), managed = model.managedRowsOverride || (c ? scenarioManagedRows(c.id) : []), external = model.externalRows || [];
+  return [...managed.map((x,i) => ({...x, sourceType:'managed', positionId:scenario_positionId(x,'managed',i)})), ...external.map((x,i) => ({...x, sourceType:'external', positionId:scenario_positionId(x,'external',i)}))];
+}
+function scenario_transferRows(model = investmentScenario) {
+  const catalog = scenario_catalog(), dispositions = model.dispositions || {};
+  return scenario_currentPositions(model).flatMap(position => {
+    const d = dispositions[position.positionId] || {}, amount = Math.min(scenario_n(position.current), scenario_n(d.amount));
+    if (d.action !== 'transfer' || !d.targetKey || amount <= 0) return [];
+    const target = catalog.find(x => x.key === d.targetKey);
+    if (!target) return [];
+    return [scenario_applyApprovedRate({...target, amount, monthly:0, funding:'transfer', transferFrom:position.product, source:'Přesun z ' + (position.product || 'původní investice')})];
+  });
+}
+function scenario_variantLabel(index) {
+  let n = index + 1, out = '';
+  while (n > 0) { n--; out = String.fromCharCode(65 + n % 26) + out; n = Math.floor(n / 26); }
+  return `Varianta ${out}`;
+}
+function scenario_variantSnapshot(name, id) {
+  return {id:id || uid(), name:name || scenario_variantLabel((investmentScenario.variants || []).length), rows:(investmentScenario.rows || []).map(x => ({...x})), dispositions:JSON.parse(JSON.stringify(investmentScenario.dispositions || {}))};
+}
+function scenario_ensureVariants(force = false) {
+  investmentScenario.variants = investmentScenario.variants || [];
+  if (!investmentScenario.variants.length || force) {
+    const first = scenario_variantSnapshot('Varianta A');
+    investmentScenario.variants = [first];
+    investmentScenario.activeVariantId = first.id;
+  }
+  if (!investmentScenario.activeVariantId || !investmentScenario.variants.some(x => String(x.id) === String(investmentScenario.activeVariantId))) investmentScenario.activeVariantId = investmentScenario.variants[0]?.id || '';
+}
+function scenario_syncActiveVariant() {
+  scenario_ensureVariants();
+  const active = investmentScenario.variants.find(x => String(x.id) === String(investmentScenario.activeVariantId));
+  if (!active) return;
+  active.rows = (investmentScenario.rows || []).map(x => ({...x}));
+  active.dispositions = JSON.parse(JSON.stringify(investmentScenario.dispositions || {}));
+}
+function scenario_switchVariant(id) {
+  scenario_syncActiveVariant();
+  const target = (investmentScenario.variants || []).find(x => String(x.id) === String(id));
+  if (!target) return;
+  investmentScenario.activeVariantId = target.id;
+  investmentScenario.rows = (target.rows || []).map(x => ({...x}));
+  investmentScenario.dispositions = JSON.parse(JSON.stringify(target.dispositions || {}));
+  renderInvestmentScenario();
+}
+function scenario_addVariant() {
+  scenario_syncActiveVariant();
+  const v = scenario_variantSnapshot(scenario_variantLabel(investmentScenario.variants.length));
+  investmentScenario.variants.push(v);
+  investmentScenario.activeVariantId = v.id;
+  investmentScenario.rows = v.rows.map(x => ({...x}));
+  investmentScenario.dispositions = JSON.parse(JSON.stringify(v.dispositions));
+  renderInvestmentScenario();
+  saveToast(`${v.name} vytvořena jako kopie pro další úpravy`);
+}
+function scenario_deleteVariant() {
+  scenario_ensureVariants();
+  if (investmentScenario.variants.length <= 1) return alert('Alespoň jedna varianta musí zůstat.');
+  const active = investmentScenario.variants.find(x => String(x.id) === String(investmentScenario.activeVariantId));
+  if (!confirm(`Smazat ${active?.name || 'tuto variantu'}?`)) return;
+  investmentScenario.variants = investmentScenario.variants.filter(x => String(x.id) !== String(investmentScenario.activeVariantId));
+  const next = investmentScenario.variants[0];
+  investmentScenario.activeVariantId = next.id;
+  investmentScenario.rows = (next.rows || []).map(x => ({...x}));
+  investmentScenario.dispositions = JSON.parse(JSON.stringify(next.dispositions || {}));
+  renderInvestmentScenario();
+}
+function scenario_renameVariant(value) {
+  const active = (investmentScenario.variants || []).find(x => String(x.id) === String(investmentScenario.activeVariantId));
+  if (active) active.name = String(value || '').trim() || active.name;
+  scenario_renderVariantBar();
+}
+function scenario_renderVariantBar() {
+  const box = byId('scenarioVariantBar');
+  if (!box) return;
+  scenario_ensureVariants();
+  const active = investmentScenario.variants.find(x => String(x.id) === String(investmentScenario.activeVariantId));
+  box.innerHTML = `${investmentScenario.variants.map(v => `<button class="scenario-variant-tab ${String(v.id) === String(investmentScenario.activeVariantId) ? 'active' : ''}" onclick="scenario_switchVariant('${esc(v.id)}')">${esc(v.name)}</button>`).join('')}<div class="scenario-variant-tools actions"><input class="search" aria-label="Název varianty" value="${esc(active?.name || '')}" onchange="scenario_renameVariant(this.value)" placeholder="Název varianty"><button class="btn" onclick="scenario_addVariant()">+ Varianta</button><button class="btn red" onclick="scenario_deleteVariant()">Smazat</button></div>`;
+}
+function scenario_positionTargetOptions(selected) {
+  return '<option value="">Vyber cílový fond</option>' + scenario_catalog().map(x => `<option value="${esc(x.key)}" ${x.key === selected ? 'selected' : ''}>${esc([x.area,x.company,x.product].filter(Boolean).join(' · '))}</option>`).join('');
+}
+function scenario_bindCurrentPlan() {
+  const box = byId('scenarioCurrentPortfolio');
+  if (!box || box.dataset.planBound) return;
+  box.dataset.planBound = '1';
+  const update = e => {
+    const el = e.target.closest('[data-plan-position]');
+    if (!el) return;
+    const id = decodeURIComponent(el.dataset.planPosition), positions = scenario_currentPositions(), position = positions.find(x => x.positionId === id);
+    if (!position) return;
+    investmentScenario.dispositions = investmentScenario.dispositions || {};
+    const d = investmentScenario.dispositions[id] || {action:'keep',amount:scenario_n(position.current),targetKey:''};
+    d[el.dataset.planField] = el.dataset.planField === 'amount' ? scenario_n(el.value) : el.value;
+    if (d.action === 'keep') delete investmentScenario.dispositions[id];
+    else {
+      d.amount = Math.min(scenario_n(position.current), scenario_n(d.amount) || scenario_n(position.current));
+      if (d.action === 'transfer' && !d.targetKey) d.targetKey = scenario_catalog()[0]?.key || '';
+      investmentScenario.dispositions[id] = d;
+    }
+    scenario_syncActiveVariant();
+    scenario_renderCurrentPlan();
+    scenario_renderAdvanced();
+  };
+  box.addEventListener('change', update);
+  box.addEventListener('input', e => { if (e.target.dataset.planField === 'amount') update(e); });
+}
+function scenario_renderCurrentPlan() {
+  const box = byId('scenarioCurrentPortfolio');
+  if (!box) return;
+  scenario_bindCurrentPlan();
+  const c = scenario_selected(), rows = scenario_currentPositions(), total = rows.reduce((s,x) => s + scenario_n(x.current), 0), dispositions = investmentScenario.dispositions || {};
+  box.innerHTML = `<div class="toolbar"><div><h3>Současné portfolio${c ? ' · ' + esc(clientName(c)) : ''}</h3><div class="note">U každé pozice zvol, co se s ní má v této variantě stát. Evidence klienta se tím nemění.</div></div><b>${money(total)}</b></div>${rows.length ? `<div class="table-wrap"><table class="compact-table scenario-position-plan"><thead><tr><th>Fond / produkt</th><th>Správa</th><th>Aktuální hodnota</th><th>V této variantě</th><th>Částka</th><th>Cíl přesunu</th></tr></thead><tbody>${rows.map(x => { const d = dispositions[x.positionId] || {action:'keep',amount:x.current,targetKey:''}, enc = encodeURIComponent(x.positionId); return `<tr><td class="position-name"><b>${esc(x.product || 'Investice')}</b><br><span class="note">${esc(x.company || '')}</span></td><td>${x.sourceType === 'external' ? '<span class="badge orange">mimo správu</span>' : `<span class="badge ${x.area === 'fki' ? 'purple' : 'blue'}">${x.area === 'fki' ? 'FKI' : 'Investice'}</span>`}</td><td class="money"><b>${money(x.current)}</b></td><td><select data-plan-position="${esc(enc)}" data-plan-field="action"><option value="keep" ${d.action === 'keep' ? 'selected' : ''}>Ponechat</option><option value="sell" ${d.action === 'sell' ? 'selected' : ''}>Odprodat</option><option value="transfer" ${d.action === 'transfer' ? 'selected' : ''}>Přesunout</option></select></td><td><input data-plan-position="${esc(enc)}" data-plan-field="amount" type="number" min="0" max="${esc(x.current)}" value="${esc(d.action === 'keep' ? x.current : d.amount)}" ${d.action === 'keep' ? 'disabled' : ''}></td><td class="position-target"><select data-plan-position="${esc(enc)}" data-plan-field="targetKey" ${d.action === 'transfer' ? '' : 'disabled'}>${scenario_positionTargetOptions(d.targetKey)}</select></td></tr>`; }).join('')}</tbody></table></div>` : '<p class="note">Klient zatím nemá evidované žádné současné investice.</p>'}`;
 }
 function scenarioAdvance(value, monthly, rate) {
   return value * (1 + rate / 100) + monthly * 12;
@@ -7186,46 +7309,57 @@ function scenario_ensure() {
   byId('scenarioFund')?.addEventListener('change', loadInvestmentScenarioFundDefaults);
   return el;
 }
-function scenario_projection() {
-  scenario_normalizeScenarioRows();
-  const years = Math.max(1, scenario_n(val('scenarioYears')) || 10),
+function scenario_projection(model = investmentScenario) {
+  (model.rows || []).forEach(scenario_applyApprovedRate);
+  const years = Math.max(1, scenario_n(model.years) || scenario_n(val('scenarioYears')) || 10),
     c = scenario_selected(),
-    managedRows = investmentScenario.managedRowsOverride || (c ? scenarioManagedRows(c.id) : []),
-    externalRows = investmentScenario.externalRows || [],
-    portfolio = [...managedRows, ...externalRows],
+    managedRows = model.managedRowsOverride || (c ? scenarioManagedRows(c.id) : []),
+    externalRows = model.externalRows || [],
+    originalPortfolio = [...managedRows.map((x,i) => ({...x,sourceType:'managed',positionId:scenario_positionId(x,'managed',i)})), ...externalRows.map((x,i) => ({...x,sourceType:'external',positionId:scenario_positionId(x,'external',i)}))],
+    dispositions = model.dispositions || {},
+    transferRows = scenario_transferRows({...model, managedRowsOverride:managedRows, externalRows}),
+    portfolio = originalPortfolio.map(x => {
+      const d = dispositions[x.positionId] || {}, validTransfer = d.action === 'transfer' && d.targetKey, change = (d.action === 'sell' || validTransfer) ? Math.min(scenario_n(x.current), scenario_n(d.amount)) : 0, ratio = scenario_n(x.current) ? Math.max(0, scenario_n(x.current) - change) / scenario_n(x.current) : 0;
+      return {...x,current:Math.max(0,scenario_n(x.current)-change),monthly:scenario_n(x.monthly)*ratio};
+    }).filter(x => scenario_n(x.current) || scenario_n(x.monthly)),
     managedAum = managedRows.reduce((s, x) => s + scenario_n(x.current), 0),
     externalAum = externalRows.reduce((s, x) => s + scenario_n(x.current), 0),
     current = managedAum + externalAum,
-    currentInvested = portfolio.reduce((s, x) => s + scenario_n(x.invested), 0),
-    rows = investmentScenario?.rows || [],
-    newMoney = rows.reduce((s, x) => s + scenario_n(x.amount), 0),
+    soldTotal = originalPortfolio.reduce((s,x) => { const d=dispositions[x.positionId]||{}; return s + (d.action === 'sell' ? Math.min(scenario_n(x.current),scenario_n(d.amount)) : 0); },0),
+    transferTotal = transferRows.reduce((s,x) => s + scenario_n(x.amount),0),
+    currentInvested = originalPortfolio.reduce((s, x) => s + scenario_n(x.invested), 0),
+    rows = [...(model.rows || []), ...transferRows],
+    newMoney = rows.filter(x => x.funding !== 'transfer').reduce((s, x) => s + scenario_n(x.amount), 0),
     topups = rows.reduce((s, x) => s + scenario_n(x.topupAmount), 0),
     existingMonthly = portfolio.reduce((s, x) => s + scenario_n(x.monthly), 0),
     newMonthly = rows.reduce((s, x) => s + scenario_n(x.monthly), 0),
-    insertedTotal = current + newMoney + topups + (existingMonthly + newMonthly) * 12 * years,
+    remainingCurrent = portfolio.reduce((s,x) => s + scenario_n(x.current),0),
+    startingValue = remainingCurrent + rows.reduce((s,x) => s + scenario_n(x.amount),0),
+    insertedTotal = startingValue + topups + (existingMonthly + newMonthly) * 12 * years,
+    plannedExistingCapital = portfolio.reduce((s,x) => s + scenario_n(x.current) + scenario_n(x.monthly) * 12 * years,0),
     plannedNewCapital = rows.reduce((s, x) => s + scenario_n(x.amount) + scenario_n(x.topupAmount) + scenario_n(x.monthly) * 12 * years, 0),
-    weighted = rows.reduce((s, x) => {
+    weightedCapital = plannedExistingCapital + plannedNewCapital,
+    weighted = (portfolio.reduce((s,x) => s + (scenario_n(x.current) + scenario_n(x.monthly) * 12 * years) * scenario_n(x.expectedRate),0) + rows.reduce((s, x) => {
       const plannedCapital = scenario_n(x.amount) + scenario_n(x.topupAmount) + scenario_n(x.monthly) * 12 * years;
       return s + plannedCapital * scenario_n(x.rate);
-    }, 0) / (plannedNewCapital || 1),
-    curRate = current ? portfolio.reduce((s, x) => s + scenario_n(x.current) * scenario_n(x.expectedRate), 0) / current : 0;
+    }, 0)) / (weightedCapital || 1),
+    curRate = current ? originalPortfolio.reduce((s, x) => s + scenario_n(x.current) * scenario_n(x.expectedRate), 0) / current : 0;
   let existingBase = portfolio.map(x => scenario_n(x.current)),
     existingMin = [...existingBase],
     existingMax = [...existingBase],
     values = rows.map(x => scenario_n(x.amount)),
     minValues = [...values],
     maxValues = [...values],
-    startingValue = current + newMoney,
     labels = ['Dnes'],
-    currentSeries = [current],
-    newSeries = [newMoney],
+    currentSeries = [remainingCurrent],
+    newSeries = [rows.reduce((s,x) => s + scenario_n(x.amount),0)],
     totalSeries = [startingValue],
     minSeries = [startingValue],
     maxSeries = [startingValue],
     yearRows = [{
       label: 'Dnes',
-      current,
-      newValue: newMoney,
+      current: remainingCurrent,
+      newValue: rows.reduce((s,x) => s + scenario_n(x.amount),0),
       total: startingValue,
       min: startingValue,
       max: startingValue
@@ -7284,11 +7418,17 @@ function scenario_projection() {
     externalAum,
     currentInvested,
     newMoney,
+    soldTotal,
+    transferTotal,
+    remainingCurrent,
+    transferRows,
     existingMonthly,
     newMonthly,
     topups,
     startingValue,
+    plannedExistingCapital,
     plannedNewCapital,
+    weightedCapital,
     insertedTotal,
     weighted,
     curRate,
@@ -7347,9 +7487,9 @@ function scenario_renderAdvanced() {
   scenario_ensure();
   const p = scenario_projection(),
     k = byId('scenarioKpis');
-  if (k) k.innerHTML = `<div class="scenario-kpi"><small>AUM v mé správě</small><strong>${money(p.managedAum)}</strong></div><div class="scenario-kpi"><small>Mimo mou správu</small><strong>${money(p.externalAum)}</strong></div><div class="scenario-kpi"><small>Počáteční hodnota</small><strong>${money(p.startingValue)}</strong></div><div class="scenario-kpi"><small>Nově jednorázově</small><strong>${money(p.newMoney)}</strong></div><div class="scenario-kpi"><small>Průměrné očekávané zhodnocení</small><strong>${scenario_fmtPct(p.weighted)} % p.a.</strong></div><div class="scenario-kpi"><small>Očekávaná hodnota za ${num(p.years)} let</small><strong>${money(p.final)}</strong></div>`;
+  if (k) k.innerHTML = `<div class="scenario-kpi"><small>Současné portfolio</small><strong>${money(p.current)}</strong></div><div class="scenario-kpi"><small>Odprodej</small><strong>${money(p.soldTotal)}</strong></div><div class="scenario-kpi"><small>Přesun mezi fondy</small><strong>${money(p.transferTotal)}</strong></div><div class="scenario-kpi"><small>Nové peníze</small><strong>${money(p.newMoney)}</strong></div><div class="scenario-kpi"><small>Průměrné očekávané zhodnocení</small><strong>${scenario_fmtPct(p.weighted)} % p.a.</strong></div><div class="scenario-kpi"><small>Očekávaná hodnota za ${num(p.years)} let</small><strong>${money(p.final)}</strong></div>`;
   const nar = byId('scenarioNarrative');
-  if (nar) nar.textContent = `Model začíná částkou ${money(p.startingValue)} a používá vážené průměrné očekávané zhodnocení ${scenario_fmtPct(p.weighted)} % p.a. za všechny navrhované investice. Majetek mimo správu je zahrnut jen do prognózy, nikoli do AUM nebo provizí.`;
+  if (nar) nar.textContent = `Varianta začíná investovanou částkou ${money(p.startingValue)}. Odprodej ${money(p.soldTotal)}, přesuny ${money(p.transferTotal)}, nové peníze ${money(p.newMoney)}. Vážené průměrné očekávané zhodnocení je ${scenario_fmtPct(p.weighted)} % p.a. Majetek mimo správu zůstává mimo AUM a provize.`;
   const tbl = byId('scenarioYearTable');
   if (tbl) tbl.innerHTML = `<div class="table-wrap"><table class="compact-table"><thead><tr><th>Rok</th><th>Očekávaná hodnota</th></tr></thead><tbody>${p.yearRows.map(r => `<tr><td>${esc(r.label)}</td><td class="money"><b>${money(r.total)}</b></td></tr>`).join('')}</tbody></table></div>`;
   scenario_renderChart(p);
@@ -9794,10 +9934,16 @@ function fundPerformance_oldRenderScenario() {
   if (scope !== scenario_editableScope) {
     scenario_editableScope = scope;
     investmentScenario.rows = [];
+    investmentScenario.dispositions = {};
+    investmentScenario.variants = [];
+    investmentScenario.activeVariantId = '';
     scenario_loadClientOpenProposalRows(true);
   } else scenario_loadClientOpenProposalRows(false);
+  scenario_ensureVariants();
   scenario_normalizeScenarioRows();
   if (typeof scenario_originalRender === 'function') scenario_originalRender();
+  scenario_renderVariantBar();
+  scenario_renderCurrentPlan();
   scenario_renderEditableSelectedFunds();
   scenario_renderAdvanced();
 }
@@ -9840,7 +9986,7 @@ function updateInvestmentScenarioSaveMode() {
     if (signed && !date.value) date.value = today();
     date.parentElement.style.opacity = signed ? '1' : '.58';
   }
-  if (btn) btn.textContent = signed ? 'Uložit jako sjednáno' : mode === 'proposal' ? 'Uložit prognózu a příležitosti' : 'Uložit prognózu';
+  if (btn) btn.textContent = signed ? 'Uložit aktivní variantu jako sjednáno' : mode === 'proposal' ? 'Uložit aktivní variantu a příležitosti' : 'Uložit všechny varianty';
 }
 function openInvestmentScenarioModal(clientId = null, area = 'Investice') {
   if (typeof scenario_originalOpen === 'function') scenario_originalOpen(clientId, area);
@@ -9852,6 +9998,7 @@ function openInvestmentScenarioModal(clientId = null, area = 'Investice') {
   setTimeout(() => {
     scenario_ensure();
     scenario_loadClientOpenProposalRows(true);
+    scenario_ensureVariants(true);
     loadInvestmentScenarioFundDefaults();
     renderInvestmentScenario();
     updateInvestmentScenarioSaveMode();
@@ -9866,6 +10013,15 @@ function fillInvestmentScenarioFunds() {
   }, 0);
 }
 function investmentForecastRecord(c, p, status = 'forecast') {
+  scenario_syncActiveVariant();
+  const managedRows = (investmentScenario.managedRowsOverride || scenarioManagedRows(c.id)).map(x => ({...x})),
+    externalRows = (investmentScenario.externalRows || []).map(x => ({...x})),
+    variants = (investmentScenario.variants || []).map(v => {
+      const model = {years:p.years,rows:(v.rows || []).map(x => ({...x})), dispositions:JSON.parse(JSON.stringify(v.dispositions || {})), managedRowsOverride:managedRows, externalRows};
+      return {id:v.id,name:v.name || 'Varianta',rows:model.rows,dispositions:model.dispositions,projection:JSON.parse(JSON.stringify(scenario_projection(model)))};
+    }),
+    active = variants.find(v => String(v.id) === String(investmentScenario.activeVariantId)) || variants[0],
+    baselineProjection = JSON.parse(JSON.stringify(scenario_projection({years:p.years,rows:[],dispositions:{},managedRowsOverride:managedRows,externalRows})));
   return {
     id: uid(),
     clientId: c.id,
@@ -9873,10 +10029,14 @@ function investmentForecastRecord(c, p, status = 'forecast') {
     createdAt: new Date().toISOString(),
     years: p.years,
     status,
-    managedRows: (investmentScenario.managedRowsOverride || scenarioManagedRows(c.id)).map(x => ({...x})),
-    externalRows: (investmentScenario.externalRows || []).map(x => ({...x})),
-    proposalRows: (investmentScenario.rows || []).map(x => ({...x})),
-    projection: JSON.parse(JSON.stringify(p))
+    type: 'comparison',
+    managedRows,
+    externalRows,
+    proposalRows: (active?.rows || investmentScenario.rows || []).map(x => ({...x})),
+    dispositions: JSON.parse(JSON.stringify(active?.dispositions || investmentScenario.dispositions || {})),
+    projection: JSON.parse(JSON.stringify(active?.projection || p)),
+    baselineProjection,
+    variants
   };
 }
 function storeInvestmentForecast(c, p, status = 'forecast') {
@@ -9889,9 +10049,19 @@ function openSavedInvestmentForecast(id) {
   if (!record) return alert('Prognóza nebyla nalezena.');
   openInvestmentScenarioModal(record.clientId, record.proposalRows?.[0]?.area || 'Investice');
   setTimeout(() => {
-    investmentScenario.rows = (record.proposalRows || []).map(x => ({...x}));
     investmentScenario.externalRows = (record.externalRows || []).map(x => ({...x}));
     investmentScenario.managedRowsOverride = (record.managedRows || []).map(x => ({...x}));
+    if (record.variants?.length) {
+      investmentScenario.variants = record.variants.map(v => ({id:v.id || uid(),name:v.name || 'Varianta',rows:(v.rows || []).map(x => ({...x})),dispositions:JSON.parse(JSON.stringify(v.dispositions || {}))}));
+      const first = investmentScenario.variants[0];
+      investmentScenario.activeVariantId = first.id;
+      investmentScenario.rows = first.rows.map(x => ({...x}));
+      investmentScenario.dispositions = JSON.parse(JSON.stringify(first.dispositions || {}));
+    } else {
+      investmentScenario.rows = (record.proposalRows || []).map(x => ({...x}));
+      investmentScenario.dispositions = JSON.parse(JSON.stringify(record.dispositions || {}));
+      scenario_ensureVariants(true);
+    }
     setVal('scenarioForecastName', record.name || 'Prognóza');
     setVal('scenarioYears', record.years || 10);
     setVal('scenarioSaveMode', 'forecast');
@@ -9902,6 +10072,7 @@ function openSavedInvestmentForecast(id) {
 }
 function saveInvestmentScenario() {
   const mode = scenario_scenarioSaveMode();
+  scenario_syncActiveVariant();
   if (mode !== 'forecast' && !investmentScenario.rows.length) return alert('Nejdřív přidej alespoň jeden fond.');
   const c = ensureInvestmentScenarioClient();
   if (!c) return;
@@ -9913,7 +10084,7 @@ function saveInvestmentScenario() {
     total = investmentScenario.rows.reduce((s, x) => s + scenario_n(x.amount), 0);
   if (mode === 'forecast') {
     const saved = storeInvestmentForecast(c, p, 'forecast');
-    addActivity(c.id, 'Investiční prognóza', `Uložena prognóza: ${saved.name} · majetek dnes ${money(p.current)} · po návrhu ${money(p.final)}`, true);
+    addActivity(c.id, 'Investiční prognóza', `Uloženo srovnání: ${saved.name} · ${num(saved.variants?.length || 1)} variant · současný majetek ${money(p.current)}`, true);
     selectedClientId = c.id;
     clientSection = 'portfolio';
     persist();
@@ -10938,16 +11109,27 @@ function downloadFkClientReport(clientId) {
   toast('Klientský report připraven ke stažení');
 }
 function investmentScenarioReportHtml(c) {
-  const p = scenario_projection(), record = {
-    name: val('scenarioForecastName').trim() || `Prognóza ${today()}`,
-    createdAt: new Date().toISOString(),
-    years: p.years,
-    managedRows: (investmentScenario.managedRowsOverride || (c ? scenarioManagedRows(c.id) : [])).map(x => ({...x})),
-    externalRows: (investmentScenario.externalRows || []).map(x => ({...x})),
-    proposalRows: (investmentScenario.rows || []).map(x => ({...x})),
-    projection: p
-  };
-  return investmentForecastReportHtml(c, record);
+  scenario_syncActiveVariant();
+  const p = scenario_projection(), managedRows = (investmentScenario.managedRowsOverride || (c ? scenarioManagedRows(c.id) : [])).map(x => ({...x})), externalRows = (investmentScenario.externalRows || []).map(x => ({...x})), variants = (investmentScenario.variants || []).map(v => {
+    const model = {years:p.years,rows:(v.rows || []).map(x => ({...x})),dispositions:JSON.parse(JSON.stringify(v.dispositions || {})),managedRowsOverride:managedRows,externalRows};
+    return {id:v.id,name:v.name,rows:model.rows,dispositions:model.dispositions,projection:scenario_projection(model)};
+  }), record = {name:val('scenarioForecastName').trim() || `Prognóza ${today()}`,createdAt:new Date().toISOString(),years:p.years,type:'comparison',managedRows,externalRows,variants,projection:variants[0]?.projection || p,baselineProjection:scenario_projection({years:p.years,rows:[],dispositions:{},managedRowsOverride:managedRows,externalRows})};
+  return investmentComparisonReportHtml(c, record);
+}
+function forecastComparisonSvg(record) {
+  const baseline = record.baselineProjection || record.projection || {}, variants = record.variants || [], series = [{name:'Současný stav',values:baseline.totalSeries || [],color:'#8392a8',dash:'6 5'}, ...variants.map((v,i) => ({name:v.name || scenario_variantLabel(i),values:v.projection?.totalSeries || [],color:['#2563eb','#0f9f84','#8b5cf6','#e87927','#d94670','#0891b2'][i%6],dash:''}))], width=1040,height=245,left=58,right=18,top=18,bottom=38, all=series.flatMap(x=>x.values), max=Math.max(1,...all), spanX=width-left-right,spanY=height-top-bottom, points=values=>values.map((v,i)=>`${left+spanX*i/Math.max(1,values.length-1)},${top+spanY*(1-v/max)}`).join(' '), grid=[0,.25,.5,.75,1].map(f=>`<line x1="${left}" y1="${top+spanY*f}" x2="${width-right}" y2="${top+spanY*f}" stroke="#dce6f1"/><text x="${left-8}" y="${top+spanY*f+4}" text-anchor="end" font-size="9" fill="#64748b">${esc(Math.round(max*(1-f)/1000))} tis.</text>`).join(''), labels=(baseline.labels || variants[0]?.projection?.labels || []).map((x,i,a)=>i%Math.max(1,Math.ceil(a.length/7))===0||i===a.length-1?`<text x="${left+spanX*i/Math.max(1,a.length-1)}" y="${height-10}" text-anchor="middle" font-size="9" fill="#64748b">${esc(x)}</text>`:'').join('');
+  return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Porovnání variant portfolia">${grid}${labels}${series.map(x=>`<polyline points="${points(x.values)}" fill="none" stroke="${x.color}" stroke-width="${x.dash ? 2.5 : 4}" ${x.dash ? `stroke-dasharray="${x.dash}"` : ''}/>`).join('')}</svg>`;
+}
+function investmentComparisonChanges(record, variant) {
+  const managed=(record.managedRows || []).map((x,i)=>({...x,positionId:scenario_positionId(x,'managed',i)})), external=(record.externalRows || []).map((x,i)=>({...x,positionId:scenario_positionId(x,'external',i)})), positions=[...managed,...external], dispositions=variant.dispositions || {}, catalog=scenario_catalog(), changes=[];
+  positions.forEach(x=>{const d=dispositions[x.positionId]||{}, amount=Math.min(scenario_n(x.current),scenario_n(d.amount)); if(!amount)return; if(d.action==='sell')changes.push({kind:'sell',text:`Odprodat ${x.product || 'investici'}`,amount}); if(d.action==='transfer'&&d.targetKey){const t=catalog.find(y=>y.key===d.targetKey);changes.push({kind:'transfer',text:`${x.product || 'Investice'} → ${t?.product || 'nový fond'}`,amount});}});
+  (variant.rows || []).forEach(x=>changes.push({kind:'buy',text:`Koupit ${x.product || x.area || 'investici'}`,amount:scenario_n(x.amount),monthly:scenario_n(x.monthly)}));
+  return changes;
+}
+function investmentComparisonReportHtml(c, record) {
+  const name=c?clientName(c):scenarioClientDraft().name||'Klient', variants=record.variants || [{name:record.name||'Varianta A',rows:record.proposalRows||[],dispositions:record.dispositions||{},projection:record.projection||{}}], baseline=record.baselineProjection || record.projection || {}, managed=(record.managedRows||[]).reduce((s,x)=>s+scenario_n(x.current),0), outside=(record.externalRows||[]).reduce((s,x)=>s+scenario_n(x.current),0), colors=['#2563eb','#0f9f84','#8b5cf6','#e87927','#d94670','#0891b2'], font=Math.max(8,11-Math.max(0,variants.length-4)*.55), legend=[`<span><i style="--c:#8392a8"></i>Současný stav</span>`,...variants.map((v,i)=>`<span><i style="--c:${colors[i%colors.length]}"></i>${esc(v.name||scenario_variantLabel(i))}</span>`)].join(''), cards=variants.map((v,i)=>{const p=v.projection||{}, changes=investmentComparisonChanges(record,v), shown=changes.slice(0,5);return `<article class="variant" style="--accent:${colors[i%colors.length]}"><div class="variant-head"><span>${esc(v.name||scenario_variantLabel(i))}</span><b>${scenario_fmtPct(p.weighted)} % p.a.</b></div><div class="result"><small>Očekávaná hodnota za ${num(record.years||p.years)} let</small><strong>${clientOutput_xMoney(p.final)}</strong><em>${p.final>=(baseline.final||0)?'+':''}${clientOutput_xMoney((p.final||0)-(baseline.final||0))} proti současnému stavu</em></div><div class="flow"><div><small>Odprodat</small><b>${clientOutput_xMoney(p.soldTotal)}</b></div><span>→</span><div><small>Přesunout</small><b>${clientOutput_xMoney(p.transferTotal)}</b></div><span>→</span><div><small>Nové peníze</small><b>${clientOutput_xMoney(p.newMoney)}</b></div></div><ul>${shown.map(x=>`<li class="${x.kind}"><span>${x.kind==='sell'?'−':x.kind==='transfer'?'↔':'+'}</span><b>${esc(x.text)}</b><em>${clientOutput_xMoney(x.amount)}${x.monthly?` + ${clientOutput_xMoney(x.monthly)}/měs.`:''}</em></li>`).join('') || '<li class="keep"><span>✓</span><b>Portfolio ponechat beze změny</b></li>'}${changes.length>shown.length?`<li class="more">+ ${num(changes.length-shown.length)} dalších změn</li>`:''}</ul></article>`;}).join(''), css=`*{box-sizing:border-box}body{margin:0;background:#e9eef5;color:#14243a;font:12px -apple-system,BlinkMacSystemFont,"SF Pro Display",Arial,sans-serif}.print{position:fixed;right:14px;top:14px;z-index:3;padding:8px 12px;border:0;border-radius:10px;background:#173d6b;color:white;font-weight:800}.sheet{width:1120px;min-height:760px;margin:18px auto;padding:24px;border:1px solid #d8e2ed;border-radius:28px;background:linear-gradient(145deg,#fbfcfd,#f3f6f9);box-shadow:0 24px 70px #1f3b5d24;overflow:hidden}.head{display:flex;justify-content:space-between;align-items:flex-start;gap:20px}.ey{color:#647b98;font-size:10px;font-weight:900;letter-spacing:.12em;text-transform:uppercase}h1{margin:4px 0 2px;font-size:28px}.sub{color:#61738b}.today{min-width:310px;padding:12px 14px;border:1px solid #d8e4ef;border-radius:18px;background:#f8fafc}.today-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:8px}.today small,.result small,.flow small{display:block;color:#708199;font-size:8px;font-weight:900;text-transform:uppercase}.today b{display:block;margin-top:2px;font-size:15px}.chart{margin-top:14px;padding:9px 12px 4px;border:1px solid #dce6f0;border-radius:18px;background:#fff}.chart svg{display:block;width:100%;height:215px}.legend{display:flex;justify-content:center;gap:15px;flex-wrap:wrap;margin-top:3px;font-size:9px;font-weight:800}.legend i{display:inline-block;width:18px;height:3px;margin-right:5px;border-radius:3px;background:var(--c);vertical-align:middle}.variants{display:grid;grid-template-columns:repeat(${Math.max(1,variants.length)},minmax(0,1fr));gap:9px;margin-top:12px;font-size:${font}px}.variant{min-width:0;padding:11px;border:1px solid #d9e4ef;border-top:4px solid var(--accent);border-radius:17px;background:#fff;box-shadow:0 9px 24px #29476610}.variant-head{display:flex;justify-content:space-between;gap:7px;font-size:1.15em;font-weight:900}.variant-head b{color:var(--accent);white-space:nowrap}.result{margin-top:9px;padding:8px;border-radius:12px;background:#f3f7fb}.result strong{display:block;margin-top:2px;font-size:1.65em}.result em{display:block;color:#58708f;font-size:.82em;font-style:normal}.flow{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:4px;align-items:center;margin:8px 0}.flow div{padding:5px;border-radius:9px;background:#f6f8fb;text-align:center}.flow b{font-size:.9em}.flow>span{color:#8aa0ba}ul{display:grid;gap:4px;margin:0;padding:0;list-style:none}li{display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:4px;align-items:center;padding:4px 5px;border-radius:8px;background:#f7f9fb}li>span{display:grid;place-items:center;width:16px;height:16px;border-radius:50%;background:#e7eef7;font-weight:900}li b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}li em{font-style:normal;font-weight:800;white-space:nowrap}.sell span{background:#fee2e2;color:#b42318}.transfer span{background:#dbeafe;color:#1d4ed8}.buy span{background:#dcfce7;color:#087a3e}.foot{display:flex;justify-content:space-between;gap:16px;margin-top:10px;color:#718096;font-size:8px}.foot b{color:#42556d}@page{size:A4 landscape;margin:7mm}@media print{body{background:#fff}.print{display:none}.sheet{width:100%;min-height:0;margin:0;padding:0;border:0;border-radius:0;box-shadow:none}.chart svg{height:190px}}`;
+  const holdingsRows=[...(record.managedRows||[]).map(x=>({...x,scope:'Ve správě'})),...(record.externalRows||[]).map(x=>({...x,scope:'Mimo správu'}))], holdings=holdingsRows.slice(0,7).map(x=>`<span><b>${esc(x.product||'Investice')}</b><em>${clientOutput_xMoney(x.current)} · ${esc(x.scope)}</em></span>`).join('')+(holdingsRows.length>7?`<span><b>+ ${num(holdingsRows.length-7)} dalších</b><em>v úplné evidenci CRM</em></span>`:'');
+  return `<!doctype html><html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(record.name||'Srovnání variant')} – ${esc(name)}</title><style>${css}.holdings{display:flex;gap:6px;margin-top:9px;overflow:hidden}.holdings span{min-width:0;flex:1;padding:6px 8px;border:1px solid #dce6f0;border-radius:10px;background:#fff}.holdings b,.holdings em{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.holdings b{font-size:9px}.holdings em{margin-top:2px;color:#6c7d94;font-size:7px;font-style:normal}</style></head><body><button class="print" onclick="window.print()">Tisk / PDF</button><main class="sheet"><header class="head"><div><div class="ey">Investiční plán</div><h1>${esc(name)}</h1><div class="sub">${esc(record.name||'Srovnání variant')} · ${esc((record.createdAt||today()).slice(0,10))} · horizont ${num(record.years||10)} let</div></div><div class="today"><div class="ey">Současný stav</div><div class="today-grid"><div><small>Celkem</small><b>${clientOutput_xMoney(managed+outside)}</b></div><div><small>V mé správě</small><b>${clientOutput_xMoney(managed)}</b></div><div><small>Mimo správu</small><b>${clientOutput_xMoney(outside)}</b></div></div></div></header><section class="holdings">${holdings}</section><section class="chart">${forecastComparisonSvg(record)}<div class="legend">${legend}</div></section><section class="variants">${cards}</section><footer class="foot"><span><b>Jak číst výstup:</b> každá karta ukazuje samostatnou cestu od dnešního portfolia k cílovému stavu.</span><span>Modelový výpočet podle zadaných očekávaných výnosů. Skutečný vývoj není garantován.</span></footer></main></body></html>`;
 }
 function forecastReportSvg(p) {
   const width = 900, height = 300, left = 55, right = 18, top = 22, bottom = 38,
@@ -10978,8 +11160,8 @@ function downloadInvestmentScenario() {
 function downloadSavedInvestmentForecast(id) {
   const record = (state.investmentForecasts || []).find(x => String(x.id) === String(id)), c = record ? findClient(record.clientId) : null;
   if (!record || !c) return alert('Uložená prognóza nebyla nalezena.');
-  downloadHtmlFile(investmentForecastReportHtml(c, record), 'prognoza-' + (normId(clientName(c)) || 'klient') + '-' + String(record.createdAt || today()).slice(0,10) + '.html');
-  toast('HTML prognóza připravena ke stažení');
+  downloadHtmlFile(record.variants?.length ? investmentComparisonReportHtml(c, record) : investmentForecastReportHtml(c, record), 'varianty-portfolia-' + (normId(clientName(c)) || 'klient') + '-' + String(record.createdAt || today()).slice(0,10) + '.html');
+  toast('Jednostránkové srovnání připraveno ke stažení');
 }
 function crmActivityAnalysisType(a) {
   return activities_aDefaultAnalysisType(a);
@@ -11521,8 +11703,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.09.21-4';
-const VERSION_NOTE = 'Prognóza investic začíná vloženou částkou a ukazuje jeden očekávaný vývoj s váženým průměrným zhodnocením.';
+const VERSION = '2026.09.21-5';
+const VERSION_NOTE = 'Investiční plán umí varianty A/B/C, odprodeje a přesuny současných investic i jednostránkové klientské srovnání.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
@@ -11602,7 +11784,10 @@ let campaignSelectedClientIds = new Set(),
   campaignRecipientsInitialized = false;
 let investmentScenario = {
   rows: [],
-  externalRows: []
+  externalRows: [],
+  dispositions: {},
+  variants: [],
+  activeVariantId: ''
 };
 let editingExternalInvestmentId = null,
   editingExternalInvestmentClientId = null;
