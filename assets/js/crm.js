@@ -7203,7 +7203,11 @@ function scenario_projection() {
     existingMonthly = portfolio.reduce((s, x) => s + scenario_n(x.monthly), 0),
     newMonthly = rows.reduce((s, x) => s + scenario_n(x.monthly), 0),
     insertedTotal = current + newMoney + topups + (existingMonthly + newMonthly) * 12 * years,
-    weighted = rows.reduce((s, x) => s + scenario_n(x.amount) * scenario_n(x.rate), 0) / (newMoney || 1),
+    plannedNewCapital = rows.reduce((s, x) => s + scenario_n(x.amount) + scenario_n(x.topupAmount) + scenario_n(x.monthly) * 12 * years, 0),
+    weighted = rows.reduce((s, x) => {
+      const plannedCapital = scenario_n(x.amount) + scenario_n(x.topupAmount) + scenario_n(x.monthly) * 12 * years;
+      return s + plannedCapital * scenario_n(x.rate);
+    }, 0) / (plannedNewCapital || 1),
     curRate = current ? portfolio.reduce((s, x) => s + scenario_n(x.current) * scenario_n(x.expectedRate), 0) / current : 0;
   let existingBase = portfolio.map(x => scenario_n(x.current)),
     existingMin = [...existingBase],
@@ -7211,19 +7215,20 @@ function scenario_projection() {
     values = rows.map(x => scenario_n(x.amount)),
     minValues = [...values],
     maxValues = [...values],
-    labels = ['0'],
+    startingValue = current + newMoney,
+    labels = ['Dnes'],
     currentSeries = [current],
-    newSeries = [0],
-    totalSeries = [current],
-    minSeries = [current],
-    maxSeries = [current],
+    newSeries = [newMoney],
+    totalSeries = [startingValue],
+    minSeries = [startingValue],
+    maxSeries = [startingValue],
     yearRows = [{
       label: 'Dnes',
       current,
-      newValue: 0,
-      total: current,
-      min: current,
-      max: current
+      newValue: newMoney,
+      total: startingValue,
+      min: startingValue,
+      max: startingValue
     }];
   for (let y = 1; y <= years; y++) {
     existingBase = existingBase.map((v, i) => scenarioAdvance(v, scenario_n(portfolio[i].monthly), scenario_n(portfolio[i].expectedRate)));
@@ -7282,6 +7287,8 @@ function scenario_projection() {
     existingMonthly,
     newMonthly,
     topups,
+    startingValue,
+    plannedNewCapital,
     insertedTotal,
     weighted,
     curRate,
@@ -7308,30 +7315,13 @@ function scenario_renderChart(p) {
     data: {
       labels: p.labels,
       datasets: [{
-        label: 'Bez nové investice',
-        data: p.currentSeries,
-        borderColor: '#7d8ca5',
-        backgroundColor: 'rgba(125,140,165,.12)',
-        tension: .25
-      }, {
-        label: 'Po navrhované změně',
+        label: 'Očekávaný vývoj',
         data: p.totalSeries,
         borderColor: '#1d8cf2',
         backgroundColor: 'rgba(29,140,242,.12)',
-        tension: .25
-      }, {
-        label: 'Opatrná varianta',
-        data: p.minSeries,
-        borderColor: '#d18a24',
-        backgroundColor: 'rgba(209,138,36,.08)',
-        borderDash: [5,4],
-        tension: .25
-      }, {
-        label: 'Optimistická varianta',
-        data: p.maxSeries,
-        borderColor: '#1f9d55',
-        backgroundColor: 'rgba(31,157,85,.08)',
-        borderDash: [5,4],
+        borderWidth: 4,
+        pointRadius: 3,
+        fill: true,
         tension: .25
       }]
     },
@@ -7357,11 +7347,11 @@ function scenario_renderAdvanced() {
   scenario_ensure();
   const p = scenario_projection(),
     k = byId('scenarioKpis');
-  if (k) k.innerHTML = `<div class="scenario-kpi"><small>AUM v mé správě</small><strong>${money(p.managedAum)}</strong></div><div class="scenario-kpi"><small>Mimo mou správu</small><strong>${money(p.externalAum)}</strong></div><div class="scenario-kpi"><small>Majetek dnes</small><strong>${money(p.current)}</strong></div><div class="scenario-kpi"><small>Nově jednorázově</small><strong>${money(p.newMoney)}</strong></div><div class="scenario-kpi"><small>Bez změny za ${num(p.years)} let</small><strong>${money(p.baselineFinal)}</strong></div><div class="scenario-kpi"><small>Po návrhu</small><strong>${money(p.final)}</strong><em class="${p.improvement >= 0 ? 'green' : 'red'}">rozdíl ${money(p.improvement)}</em></div>`;
+  if (k) k.innerHTML = `<div class="scenario-kpi"><small>AUM v mé správě</small><strong>${money(p.managedAum)}</strong></div><div class="scenario-kpi"><small>Mimo mou správu</small><strong>${money(p.externalAum)}</strong></div><div class="scenario-kpi"><small>Počáteční hodnota</small><strong>${money(p.startingValue)}</strong></div><div class="scenario-kpi"><small>Nově jednorázově</small><strong>${money(p.newMoney)}</strong></div><div class="scenario-kpi"><small>Průměrné očekávané zhodnocení</small><strong>${scenario_fmtPct(p.weighted)} % p.a.</strong></div><div class="scenario-kpi"><small>Očekávaná hodnota za ${num(p.years)} let</small><strong>${money(p.final)}</strong></div>`;
   const nar = byId('scenarioNarrative');
-  if (nar) nar.textContent = `Horizont ${p.years} let. Výpočet používá očekávané roční sazby jednotlivých pozic a pravidelné vklady. Majetek mimo správu je zahrnut jen do prognózy, nikoli do AUM nebo provizí.`;
+  if (nar) nar.textContent = `Model začíná částkou ${money(p.startingValue)} a používá vážené průměrné očekávané zhodnocení ${scenario_fmtPct(p.weighted)} % p.a. za všechny navrhované investice. Majetek mimo správu je zahrnut jen do prognózy, nikoli do AUM nebo provizí.`;
   const tbl = byId('scenarioYearTable');
-  if (tbl) tbl.innerHTML = `<div class="table-wrap"><table class="compact-table"><thead><tr><th>Rok</th><th>Bez změny</th><th>Opatrně</th><th>Po návrhu</th><th>Optimisticky</th></tr></thead><tbody>${p.yearRows.map(r => `<tr><td>${esc(r.label)}</td><td class="money">${money(r.current)}</td><td class="money">${money(r.min)}</td><td class="money"><b>${money(r.total)}</b></td><td class="money">${money(r.max)}</td></tr>`).join('')}</tbody></table></div>`;
+  if (tbl) tbl.innerHTML = `<div class="table-wrap"><table class="compact-table"><thead><tr><th>Rok</th><th>Očekávaná hodnota</th></tr></thead><tbody>${p.yearRows.map(r => `<tr><td>${esc(r.label)}</td><td class="money"><b>${money(r.total)}</b></td></tr>`).join('')}</tbody></table></div>`;
   scenario_renderChart(p);
 }
 function scenario_scenarioSaveMode() {
@@ -8718,6 +8708,13 @@ function fundPerformance_scenarioSeries(rateKind) {
 }
 function fundPerformance_renderScenarioRange() {
   let host = byId('scenarioRangeBlock');
+  if (window.scenarioRangeChartInstance) {
+    window.scenarioRangeChartInstance.destroy();
+    window.scenarioRangeChartInstance = null;
+  }
+  if (host) host.remove();
+  return;
+  /* Starší tříscénářový výstup zůstává níže jen kvůli kompatibilitě uložených dat. */
   const anchor = byId('scenarioAdvancedControls') || byId('scenarioSelectedFunds');
   if (!anchor) return;
   if (!host) {
@@ -10954,12 +10951,12 @@ function investmentScenarioReportHtml(c) {
 }
 function forecastReportSvg(p) {
   const width = 900, height = 300, left = 55, right = 18, top = 22, bottom = 38,
-    all = [...(p.currentSeries || []), ...(p.totalSeries || []), ...(p.minSeries || []), ...(p.maxSeries || [])],
+    all = [...(p.totalSeries || [])],
     max = Math.max(1, ...all), spanX = width-left-right, spanY = height-top-bottom,
     points = values => values.map((v,i) => `${left + spanX * i / Math.max(1, values.length-1)},${top + spanY * (1-v/max)}`).join(' '),
     lines = [0,.25,.5,.75,1].map(f => `<line x1="${left}" y1="${top+spanY*f}" x2="${width-right}" y2="${top+spanY*f}" stroke="#dfe6ef"/><text x="${left-8}" y="${top+spanY*f+4}" text-anchor="end" font-size="10" fill="#64748b">${esc(Math.round(max*(1-f)/1000))} tis.</text>`).join(''),
     labels = (p.labels || []).map((x,i,a) => i % Math.max(1,Math.ceil(a.length/8)) === 0 || i === a.length-1 ? `<text x="${left+spanX*i/Math.max(1,a.length-1)}" y="${height-12}" text-anchor="middle" font-size="10" fill="#64748b">${esc(x)}</text>` : '').join('');
-  return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Vývoj portfolia">${lines}${labels}<polyline points="${points(p.currentSeries||[])}" fill="none" stroke="#7d8ca5" stroke-width="3"/><polyline points="${points(p.minSeries||[])}" fill="none" stroke="#d18a24" stroke-width="2" stroke-dasharray="6 5"/><polyline points="${points(p.totalSeries||[])}" fill="none" stroke="#2563eb" stroke-width="4"/><polyline points="${points(p.maxSeries||[])}" fill="none" stroke="#1f9d55" stroke-width="2" stroke-dasharray="6 5"/></svg>`;
+  return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Očekávaný vývoj portfolia">${lines}${labels}<polyline points="${points(p.totalSeries||[])}" fill="none" stroke="#2563eb" stroke-width="4"/></svg>`;
 }
 function forecastReportTableRows(rows, kind) {
   return rows.map(x => `<tr><td><b>${esc(x.product || 'Investice')}</b><br><span class="muted">${esc(x.company || '')}</span></td><td>${esc(x.asset || x.area || '')}</td><td class="num">${clientOutput_xMoney(x.current ?? x.amount)}</td><td class="num">${clientOutput_xMoney(x.monthly)}</td><td class="num">${scenario_fmtPct(x.expectedRate ?? x.rate)} %</td><td>${kind === 'external' ? '<span class="tag outside">Mimo správu</span>' : kind === 'proposal' ? '<span class="tag proposal">Nový návrh</span>' : '<span class="tag managed">V mé správě</span>'}</td></tr>`).join('');
@@ -10969,7 +10966,7 @@ function investmentForecastReportHtml(c, record) {
     managedRows = record.managedRows || [], externalRows = record.externalRows || [], proposalRows = record.proposalRows || [],
     tableHead = '<thead><tr><th>Produkt</th><th>Typ</th><th class="num">Hodnota / vklad</th><th class="num">Měsíčně</th><th class="num">Předpoklad p.a.</th><th>Zařazení</th></tr></thead>',
     reportCss = `${clientOutput_xCss()}${clientOutput_xCompactReportCss()} .chart{padding:16px;border:1px solid #dce5ef;border-radius:16px;background:#fff}.chart svg{width:100%;height:auto}.legendline{display:flex;gap:16px;flex-wrap:wrap;margin:10px 0}.legendline span:before{content:'';display:inline-block;width:22px;height:3px;margin-right:6px;vertical-align:middle;background:var(--c)}.tag{display:inline-block;padding:4px 8px;border-radius:8px;font-size:11px;font-weight:700}.managed{background:#dcfce7;color:#166534}.outside{background:#fff1d6;color:#9a5b00}.proposal{background:#dbeafe;color:#1d4ed8}.num{text-align:right}.assumption{font-size:12px;color:#64748b}.report-table{width:100%;border-collapse:collapse}.report-table td,.report-table th{padding:9px;border-bottom:1px solid #e2e8f0}.report-table th{text-align:left;font-size:11px;color:#64748b}`;
-  return `<!doctype html><html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(record.name || 'Prognóza')} – ${esc(name)}</title><style>${reportCss}</style></head><body><button class="print" onclick="window.print()">Tisk / PDF</button><div class="wrap"><section class="hero"><div class="eyebrow">Prognóza portfolia</div><h1>${esc(name)}</h1><p class="lead">${esc(record.name || 'Prognóza portfolia')} · ${esc((record.createdAt || today()).slice(0,10))} · horizont ${num(record.years || p.years || 10)} let</p><div class="kpis"><div class="kpi"><small>AUM v mé správě</small><b>${clientOutput_xMoney(p.managedAum)}</b></div><div class="kpi"><small>Mimo mou správu</small><b>${clientOutput_xMoney(p.externalAum)}</b></div><div class="kpi"><small>Majetek dnes</small><b>${clientOutput_xMoney(p.current)}</b></div><div class="kpi"><small>Nový jednorázový vklad</small><b>${clientOutput_xMoney(p.newMoney)}</b></div><div class="kpi"><small>Bez změny</small><b>${clientOutput_xMoney(p.baselineFinal)}</b></div><div class="kpi"><small>Po návrhu</small><b>${clientOutput_xMoney(p.final)}</b></div></div></section><section class="card"><h2>Vývoj majetku v čase</h2><div class="chart">${forecastReportSvg(p)}</div><div class="legendline"><span style="--c:#7d8ca5">Bez nové investice</span><span style="--c:#d18a24">Opatrná varianta</span><span style="--c:#2563eb">Očekávaná varianta</span><span style="--c:#1f9d55">Optimistická varianta</span></div><p>Navrhovaná změna zvyšuje modelovanou hodnotu za ${num(p.years)} let o <b>${clientOutput_xMoney(p.improvement)}</b> oproti pokračování bez nové investice.</p></section>${managedRows.length ? `<section class="card"><h2>Investice v mé správě</h2><table class="report-table">${tableHead}<tbody>${forecastReportTableRows(managedRows,'managed')}</tbody></table></section>` : ''}${externalRows.length ? `<section class="card"><h2>Majetek mimo mou správu</h2><p class="assumption">Tyto položky jsou součástí celkového pohledu a prognózy, ale nejsou započítány do AUM, produkce ani provizí.</p><table class="report-table">${tableHead}<tbody>${forecastReportTableRows(externalRows,'external')}</tbody></table></section>` : ''}${proposalRows.length ? `<section class="card"><h2>Navrhovaná investice</h2><table class="report-table">${tableHead}<tbody>${forecastReportTableRows(proposalRows,'proposal')}</tbody></table></section>` : ''}<section class="card"><h2>Vývoj po jednotlivých letech</h2><table class="report-table"><thead><tr><th>Rok</th><th class="num">Bez změny</th><th class="num">Opatrně</th><th class="num">Očekávaně</th><th class="num">Optimisticky</th></tr></thead><tbody>${(p.yearRows||[]).map(r => `<tr><td>${esc(r.label)}</td><td class="num">${clientOutput_xMoney(r.current)}</td><td class="num">${clientOutput_xMoney(r.min)}</td><td class="num"><b>${clientOutput_xMoney(r.total)}</b></td><td class="num">${clientOutput_xMoney(r.max)}</td></tr>`).join('')}</tbody></table></section><section class="card assumption">Výpočet je modelová prognóza založená na zadaných očekávaných výnosech a pravidelných vkladech. Nejde o garanci budoucího výnosu. Skutečný vývoj ovlivní trh, poplatky, daně a načasování vkladů.</section></div></body></html>`;
+  return `<!doctype html><html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(record.name || 'Prognóza')} – ${esc(name)}</title><style>${reportCss}</style></head><body><button class="print" onclick="window.print()">Tisk / PDF</button><div class="wrap"><section class="hero"><div class="eyebrow">Prognóza portfolia</div><h1>${esc(name)}</h1><p class="lead">${esc(record.name || 'Prognóza portfolia')} · ${esc((record.createdAt || today()).slice(0,10))} · horizont ${num(record.years || p.years || 10)} let</p><div class="kpis"><div class="kpi"><small>AUM v mé správě</small><b>${clientOutput_xMoney(p.managedAum)}</b></div><div class="kpi"><small>Mimo mou správu</small><b>${clientOutput_xMoney(p.externalAum)}</b></div><div class="kpi"><small>Počáteční hodnota</small><b>${clientOutput_xMoney(p.startingValue ?? ((p.current || 0) + (p.newMoney || 0)))}</b></div><div class="kpi"><small>Nový jednorázový vklad</small><b>${clientOutput_xMoney(p.newMoney)}</b></div><div class="kpi"><small>Průměrné očekávané zhodnocení</small><b>${scenario_fmtPct(p.weighted)} % p.a.</b></div><div class="kpi"><small>Očekávaná hodnota za ${num(p.years)} let</small><b>${clientOutput_xMoney(p.final)}</b></div></div></section><section class="card"><h2>Vývoj majetku v čase</h2><div class="chart">${forecastReportSvg(p)}</div><div class="legendline"><span style="--c:#2563eb">Očekávaný vývoj</span></div><p>Model začíná částkou <b>${clientOutput_xMoney(p.startingValue ?? ((p.current || 0) + (p.newMoney || 0)))}</b> a pracuje s váženým průměrným očekávaným zhodnocením <b>${scenario_fmtPct(p.weighted)} % p.a.</b> za všechny navrhované investice.</p></section>${managedRows.length ? `<section class="card"><h2>Investice v mé správě</h2><table class="report-table">${tableHead}<tbody>${forecastReportTableRows(managedRows,'managed')}</tbody></table></section>` : ''}${externalRows.length ? `<section class="card"><h2>Majetek mimo mou správu</h2><p class="assumption">Tyto položky jsou součástí celkového pohledu a prognózy, ale nejsou započítány do AUM, produkce ani provizí.</p><table class="report-table">${tableHead}<tbody>${forecastReportTableRows(externalRows,'external')}</tbody></table></section>` : ''}${proposalRows.length ? `<section class="card"><h2>Navrhovaná investice</h2><table class="report-table">${tableHead}<tbody>${forecastReportTableRows(proposalRows,'proposal')}</tbody></table></section>` : ''}<section class="card"><h2>Vývoj po jednotlivých letech</h2><table class="report-table"><thead><tr><th>Rok</th><th class="num">Očekávaná hodnota</th></tr></thead><tbody>${(p.yearRows||[]).map(r => `<tr><td>${esc(r.label)}</td><td class="num"><b>${clientOutput_xMoney(r.total)}</b></td></tr>`).join('')}</tbody></table></section><section class="card assumption">Výpočet je modelová prognóza založená na zadaných očekávaných výnosech a pravidelných vkladech. Nejde o garanci budoucího výnosu. Skutečný vývoj ovlivní trh, poplatky, daně a načasování vkladů.</section></div></body></html>`;
 }
 function downloadInvestmentScenario() {
   if (!investmentScenario?.rows?.length && !investmentScenario?.externalRows?.length) return alert('Nejdřív přidej návrh nebo majetek do prognózy.');
@@ -11524,8 +11521,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.09.21-3';
-const VERSION_NOTE = 'Jmenný a prokliknutelný přehled tipů a doporučení přímo na kartě klienta.';
+const VERSION = '2026.09.21-4';
+const VERSION_NOTE = 'Prognóza investic začíná vloženou částkou a ukazuje jeden očekávaný vývoj s váženým průměrným zhodnocením.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';

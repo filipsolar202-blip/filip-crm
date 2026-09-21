@@ -1,5 +1,12 @@
 # Historie verzí
 
+## 2026.09.21-4
+
+- Investiční prognóza začíná v bodu „Dnes“ celou částkou, kterou klient investuje, místo nulou.
+- Graf i roční tabulka zobrazují jediný očekávaný vývoj bez opatrné a optimistické varianty.
+- Prognóza ukazuje vážené průměrné očekávané zhodnocení všech navrhovaných investic dohromady.
+- Stejné údaje a stejné zjednodušení obsahuje i stažený klientský HTML report.
+
 ## 2026.09.21-3
 
 - Karta klienta zobrazuje konkrétní jména lidí, které klient natipoval nebo doporučil.
