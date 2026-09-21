@@ -4349,6 +4349,8 @@ function investmentScenarioCatalog() {
         product: f.product || f.label || 'Investice',
         isin: f.isin || '',
         typ: f.typ || '',
+        asset: f.asset || f.typ || fv.asset || fv.typ || 'Investiční fondy',
+        liquidity: f.liquidity || fv.liquidity || (fv.redemptionFrequency ? `Odkup ${liquidity_freqLabel(fv.redemptionFrequency)}` : 'Neuvedeno'),
         ...rates
       };
     }), ...fkFundItems().map(f => {
@@ -4361,6 +4363,8 @@ function investmentScenarioCatalog() {
         product: f.product || 'FKI',
         isin: f.isin || '',
         typ: f.typ || '',
+        asset: f.asset || f.typ || fv.asset || fv.typ || 'Alternativní investice',
+        liquidity: f.liquidity || fv.liquidity || (fv.redemptionFrequency ? `Odkup ${liquidity_freqLabel(fv.redemptionFrequency)}` : 'Neuvedeno'),
         ...rates
       };
     })],
@@ -7028,6 +7032,8 @@ function scenario_syncFund(row, key) {
   row.product = it.product;
   row.isin = it.isin;
   row.typ = it.typ;
+  row.asset = it.asset || it.typ || '';
+  row.liquidity = it.liquidity || 'Neuvedeno';
   scenario_applyApprovedRate(row);
   return row;
 }
@@ -7094,7 +7100,16 @@ function scenario_bindEditableRows() {
     const row = investmentScenario.rows[+el.dataset.scenarioRow];
     if (!row) return;
     const k = el.dataset.k;
-    if (['amount', 'monthly', 'rate', 'topupYear', 'topupAmount', 'dropYear', 'dropPct'].includes(k)) row[k] = scenario_n(el.value);
+    if (['amount', 'monthly', 'rate', 'topupYear', 'topupAmount', 'dropYear', 'dropPct'].includes(k)) {
+      let value = scenario_n(el.value);
+      if (k === 'amount' && row.funding === 'reinvest' && row.salePositionId) {
+        const position = scenario_currentPositions().find(x => x.positionId === row.salePositionId), available = Math.max(0, scenario_n(position?.current) - scenario_reinvestedByPosition(row.salePositionId, +el.dataset.scenarioRow));
+        value = Math.min(value, available);
+        if (value !== scenario_n(el.value)) el.value = value;
+      }
+      row[k] = value;
+      scenario_reconcileReinvestments();
+    }
     scenario_renderAdvanced();
   });
   box.addEventListener('change', e => {
@@ -7174,7 +7189,8 @@ function removeScenarioExternalInvestment(i) {
 function scenarioManagedRows(clientId) {
   return clientDisplayInvestmentItems(clientId).map(x => {
     const area = investmentAreaOfItem(x), key = area === 'fki' ? invPositionKey(x.source || x) : investmentFundKey(x), fv = state.fundValues?.[key] || {}, defs = typeof window.defaultFundExpectedRate === 'function' ? window.defaultFundExpectedRate(area, key, x.isin, fv) : {};
-    return {product:x.product || x.kind || 'Investice', company:x.company || '', current:scenario_amount(x), invested:scenario_invested(x), monthly:scenario_n(x.regularAmount || x.snapshot?.regularAmount), expectedRate:scenario_n(defs.expectedRate || fv.expectedRate) || 5, area, key, isin:x.isin || fv.isin || '', managed:true};
+    const frequency = fv.redemptionFrequency ? `Odkup ${liquidity_freqLabel(fv.redemptionFrequency)}` : '';
+    return {product:x.product || x.kind || 'Investice', company:x.company || '', current:scenario_amount(x), invested:scenario_invested(x), monthly:scenario_n(x.regularAmount || x.snapshot?.regularAmount), expectedRate:scenario_n(defs.expectedRate || fv.expectedRate) || 5, area, key, isin:x.isin || fv.isin || '', asset:x.asset || x.typ || fv.asset || fv.typ || (area === 'fki' ? 'Alternativní investice' : 'Investiční fondy'), liquidity:x.liquidity || fv.liquidity || frequency || 'Neuvedeno', managed:true};
   });
 }
 function scenario_positionId(row, source, index) {
@@ -7195,7 +7211,7 @@ function scenario_transferRows(model = investmentScenario) {
   });
 }
 function scenario_variantLabel(index) {
-  return index === 0 ? 'Hlavní varianta' : `Alternativa ${index}`;
+  return `Alternativa ${String.fromCharCode(65 + Math.min(index, 25))}`;
 }
 function scenario_variantSnapshot(name, id) {
   return {id:id || uid(), name:name || scenario_variantLabel((investmentScenario.variants || []).length), rows:(investmentScenario.rows || []).map(x => ({...x})), dispositions:JSON.parse(JSON.stringify(investmentScenario.dispositions || {}))};
@@ -7203,7 +7219,7 @@ function scenario_variantSnapshot(name, id) {
 function scenario_ensureVariants(force = false) {
   investmentScenario.variants = investmentScenario.variants || [];
   if (!investmentScenario.variants.length || force) {
-    const first = scenario_variantSnapshot('Hlavní varianta');
+    const first = scenario_variantSnapshot('Alternativa A');
     investmentScenario.variants = [first];
     investmentScenario.activeVariantId = first.id;
   }
@@ -7227,7 +7243,7 @@ function scenario_switchVariant(id) {
 }
 function scenario_addVariant() {
   scenario_syncActiveVariant();
-  if (investmentScenario.variants.length >= 3) return alert('Pro přehledný jednostránkový výstup lze vytvořit jednu hlavní variantu a nejvýše dvě alternativy.');
+  if (investmentScenario.variants.length >= 2) return alert('K aktuálnímu portfoliu lze vytvořit nejvýše dvě navrhované alternativy A a B.');
   const v = scenario_variantSnapshot(scenario_variantLabel(investmentScenario.variants.length));
   investmentScenario.variants.push(v);
   investmentScenario.activeVariantId = v.id;
@@ -7263,6 +7279,27 @@ function scenario_renderVariantBar() {
 function scenario_positionTargetOptions(selected) {
   return '<option value="">Vyber cílový fond</option>' + scenario_catalog().map(x => `<option value="${esc(x.key)}" ${x.key === selected ? 'selected' : ''}>${esc([x.area,x.company,x.product].filter(Boolean).join(' · '))}</option>`).join('');
 }
+function scenario_reinvestedByPosition(positionId, excludeIndex = -1) {
+  return (investmentScenario.rows || []).reduce((sum, row, index) => sum + (index !== excludeIndex && row.funding === 'reinvest' && row.salePositionId === positionId ? scenario_n(row.amount) : 0), 0);
+}
+function scenario_reconcileReinvestments() {
+  investmentScenario.dispositions = investmentScenario.dispositions || {};
+  const positions = scenario_currentPositions(), ids = new Set(positions.map(x => x.positionId));
+  Object.entries(investmentScenario.dispositions).forEach(([id,d]) => { if (d?.autoReinvest && (!ids.has(id) || !scenario_reinvestedByPosition(id))) delete investmentScenario.dispositions[id]; });
+  positions.forEach(position => {
+    const amount = Math.min(scenario_n(position.current), scenario_reinvestedByPosition(position.positionId));
+    if (amount > 0) investmentScenario.dispositions[position.positionId] = {action:'sell',amount,targetKey:'',autoReinvest:true};
+  });
+}
+function scenario_updateFundingOptions() {
+  const el = byId('scenarioFunding');
+  if (!el) return;
+  const selected = el.value || 'new', options = scenario_currentPositions().map(position => {
+    const used = scenario_reinvestedByPosition(position.positionId), available = Math.max(0, scenario_n(position.current) - used);
+    return `<option value="${esc(encodeURIComponent(position.positionId))}" ${selected === encodeURIComponent(position.positionId) ? 'selected' : ''} ${available <= 0 ? 'disabled' : ''}>Odprodej: ${esc(position.product || 'investice')} · zbývá ${money(available)}</option>`;
+  }).join('');
+  el.innerHTML = `<option value="new" ${selected === 'new' ? 'selected' : ''}>Nové peníze klienta</option>${options}`;
+}
 function scenario_bindCurrentPlan() {
   const box = byId('scenarioCurrentPortfolio');
   if (!box || box.dataset.planBound) return;
@@ -7293,7 +7330,8 @@ function scenario_renderCurrentPlan() {
   if (!box) return;
   scenario_bindCurrentPlan();
   const c = scenario_selected(), rows = scenario_currentPositions(), total = rows.reduce((s,x) => s + scenario_n(x.current), 0), dispositions = investmentScenario.dispositions || {};
-  box.innerHTML = `<div class="toolbar"><div><h3>Současné portfolio${c ? ' · ' + esc(clientName(c)) : ''}</h3><div class="note">U každé pozice zvol, co se s ní má v této variantě stát. Evidence klienta se tím nemění.</div></div><b>${money(total)}</b></div>${rows.length ? `<div class="table-wrap"><table class="compact-table scenario-position-plan"><thead><tr><th>Fond / produkt</th><th>Správa</th><th>Aktuální hodnota</th><th>V této variantě</th><th>Částka</th><th>Cíl přesunu</th></tr></thead><tbody>${rows.map(x => { const d = dispositions[x.positionId] || {action:'keep',amount:x.current,targetKey:''}, enc = encodeURIComponent(x.positionId); return `<tr><td class="position-name"><b>${esc(x.product || 'Investice')}</b><br><span class="note">${esc(x.company || '')}</span></td><td>${x.sourceType === 'external' ? '<span class="badge orange">mimo správu</span>' : `<span class="badge ${x.area === 'fki' ? 'purple' : 'blue'}">${x.area === 'fki' ? 'FKI' : 'Investice'}</span>`}</td><td class="money"><b>${money(x.current)}</b></td><td><select data-plan-position="${esc(enc)}" data-plan-field="action"><option value="keep" ${d.action === 'keep' ? 'selected' : ''}>Ponechat</option><option value="sell" ${d.action === 'sell' ? 'selected' : ''}>Odprodat</option><option value="transfer" ${d.action === 'transfer' ? 'selected' : ''}>Přesunout</option></select></td><td><input data-plan-position="${esc(enc)}" data-plan-field="amount" type="number" min="0" max="${esc(x.current)}" value="${esc(d.action === 'keep' ? x.current : d.amount)}" ${d.action === 'keep' ? 'disabled' : ''}></td><td class="position-target"><select data-plan-position="${esc(enc)}" data-plan-field="targetKey" ${d.action === 'transfer' ? '' : 'disabled'}>${scenario_positionTargetOptions(d.targetKey)}</select></td></tr>`; }).join('')}</tbody></table></div>` : '<p class="note">Klient zatím nemá evidované žádné současné investice.</p>'}`;
+  box.innerHTML = `<div class="toolbar"><div><h3>Současné portfolio${c ? ' · ' + esc(clientName(c)) : ''}</h3><div class="note">Jednoduchý přesun použij pro jeden cílový fond. Pro rozdělení odprodeje do více fondů vyber původní investici jako zdroj peněz u každého nového nákupu.</div></div><b>${money(total)}</b></div>${rows.length ? `<div class="table-wrap"><table class="compact-table scenario-position-plan"><thead><tr><th>Fond / produkt</th><th>Správa</th><th>Aktuální hodnota</th><th>V této variantě</th><th>Částka</th><th>Cíl přesunu</th></tr></thead><tbody>${rows.map(x => { const d = dispositions[x.positionId] || {action:'keep',amount:x.current,targetKey:''}, enc = encodeURIComponent(x.positionId); return `<tr><td class="position-name"><b>${esc(x.product || 'Investice')}</b><br><span class="note">${esc(x.company || '')}</span></td><td>${x.sourceType === 'external' ? '<span class="badge orange">mimo správu</span>' : `<span class="badge ${x.area === 'fki' ? 'purple' : 'blue'}">${x.area === 'fki' ? 'FKI' : 'Investice'}</span>`}</td><td class="money"><b>${money(x.current)}</b></td><td><select data-plan-position="${esc(enc)}" data-plan-field="action" ${d.autoReinvest ? 'disabled title="Řídí se cílovými novými nákupy"' : ''}><option value="keep" ${d.action === 'keep' ? 'selected' : ''}>Ponechat</option><option value="sell" ${d.action === 'sell' ? 'selected' : ''}>Odprodat</option><option value="transfer" ${d.action === 'transfer' ? 'selected' : ''}>Přesunout</option></select>${d.autoReinvest ? '<br><span class="note">rozděleno do nových nákupů</span>' : ''}</td><td><input data-plan-position="${esc(enc)}" data-plan-field="amount" type="number" min="0" max="${esc(x.current)}" value="${esc(d.action === 'keep' ? x.current : d.amount)}" ${d.action === 'keep' || d.autoReinvest ? 'disabled' : ''}></td><td class="position-target"><select data-plan-position="${esc(enc)}" data-plan-field="targetKey" ${d.action === 'transfer' && !d.autoReinvest ? '' : 'disabled'}>${scenario_positionTargetOptions(d.targetKey)}</select></td></tr>`; }).join('')}</tbody></table></div>` : '<p class="note">Klient zatím nemá evidované žádné současné investice.</p>'}`;
+  scenario_updateFundingOptions();
 }
 function scenarioAdvance(value, monthly, rate) {
   return value * (1 + rate / 100) + monthly * 12;
@@ -7329,6 +7367,7 @@ function scenario_projection(model = investmentScenario) {
     currentInvested = originalPortfolio.reduce((s, x) => s + scenario_n(x.invested), 0),
     rows = [...(model.rows || []), ...transferRows],
     newMoney = rows.filter(x => x.funding !== 'transfer').reduce((s, x) => s + scenario_n(x.amount), 0),
+    reinvestedTotal = rows.filter(x => x.funding === 'reinvest').reduce((s, x) => s + scenario_n(x.amount), 0),
     topups = rows.reduce((s, x) => s + scenario_n(x.topupAmount), 0),
     existingMonthly = portfolio.reduce((s, x) => s + scenario_n(x.monthly), 0),
     newMonthly = rows.reduce((s, x) => s + scenario_n(x.monthly), 0),
@@ -7417,6 +7456,7 @@ function scenario_projection(model = investmentScenario) {
     externalAum,
     currentInvested,
     newMoney,
+    reinvestedTotal,
     soldTotal,
     transferTotal,
     remainingCurrent,
@@ -7486,9 +7526,9 @@ function scenario_renderAdvanced() {
   scenario_ensure();
   const p = scenario_projection(),
     k = byId('scenarioKpis');
-  if (k) k.innerHTML = `<div class="scenario-kpi"><small>Současné portfolio</small><strong>${money(p.current)}</strong></div><div class="scenario-kpi"><small>Odprodej</small><strong>${money(p.soldTotal)}</strong></div><div class="scenario-kpi"><small>Přesun mezi fondy</small><strong>${money(p.transferTotal)}</strong></div><div class="scenario-kpi"><small>Nové peníze</small><strong>${money(p.newMoney)}</strong></div><div class="scenario-kpi"><small>Průměrné očekávané zhodnocení</small><strong>${scenario_fmtPct(p.weighted)} % p.a.</strong></div><div class="scenario-kpi"><small>Očekávaná hodnota za ${num(p.years)} let</small><strong>${money(p.final)}</strong></div>`;
+  if (k) k.innerHTML = `<div class="scenario-kpi"><small>Současné portfolio</small><strong>${money(p.current)}</strong></div><div class="scenario-kpi"><small>Odprodej</small><strong>${money(p.soldTotal)}</strong></div><div class="scenario-kpi"><small>Znovu investováno</small><strong>${money(p.reinvestedTotal)}</strong></div><div class="scenario-kpi"><small>Nové investice celkem</small><strong>${money(p.newMoney)}</strong></div><div class="scenario-kpi"><small>Průměrné očekávané zhodnocení</small><strong>${scenario_fmtPct(p.weighted)} % p.a.</strong></div><div class="scenario-kpi"><small>Očekávaná hodnota za ${num(p.years)} let</small><strong>${money(p.final)}</strong></div>`;
   const nar = byId('scenarioNarrative');
-  if (nar) nar.textContent = `Varianta začíná investovanou částkou ${money(p.startingValue)}. Odprodej ${money(p.soldTotal)}, přesuny ${money(p.transferTotal)}, nové peníze ${money(p.newMoney)}. Vážené průměrné očekávané zhodnocení je ${scenario_fmtPct(p.weighted)} % p.a. Majetek mimo správu zůstává mimo AUM a provize.`;
+  if (nar) nar.textContent = `Varianta začíná investovanou částkou ${money(p.startingValue)}. Odprodej ${money(p.soldTotal)}, znovu investováno jako nové nákupy ${money(p.reinvestedTotal)}, nové investice celkem ${money(p.newMoney)}. Každý nový nákup zakládá nový časový test. Vážené průměrné očekávané zhodnocení je ${scenario_fmtPct(p.weighted)} % p.a. Majetek mimo správu zůstává mimo AUM a provize.`;
   const tbl = byId('scenarioYearTable');
   if (tbl) tbl.innerHTML = `<div class="table-wrap"><table class="compact-table"><thead><tr><th>Rok</th><th>Očekávaná hodnota</th></tr></thead><tbody>${p.yearRows.map(r => `<tr><td>${esc(r.label)}</td><td class="money"><b>${money(r.total)}</b></td></tr>`).join('')}</tbody></table></div>`;
   scenario_renderChart(p);
@@ -9973,6 +10013,7 @@ function fundPerformance_oldAddScenario() {
 }
 function removeInvestmentScenarioFund(i) {
   investmentScenario.rows.splice(i, 1);
+  scenario_reconcileReinvestments();
   renderInvestmentScenario();
 }
 function updateInvestmentScenarioSaveMode() {
@@ -10051,7 +10092,7 @@ function openSavedInvestmentForecast(id) {
     investmentScenario.externalRows = (record.externalRows || []).map(x => ({...x}));
     investmentScenario.managedRowsOverride = (record.managedRows || []).map(x => ({...x}));
     if (record.variants?.length) {
-      investmentScenario.variants = record.variants.map(v => ({id:v.id || uid(),name:v.name || 'Varianta',rows:(v.rows || []).map(x => ({...x})),dispositions:JSON.parse(JSON.stringify(v.dispositions || {}))}));
+      investmentScenario.variants = record.variants.slice(0,2).map((v,i) => ({id:v.id || uid(),name:v.name || scenario_variantLabel(i),rows:(v.rows || []).map(x => ({...x})),dispositions:JSON.parse(JSON.stringify(v.dispositions || {}))}));
       const first = investmentScenario.variants[0];
       investmentScenario.activeVariantId = first.id;
       investmentScenario.rows = first.rows.map(x => ({...x}));
@@ -10982,16 +11023,33 @@ function renderFkClientDetail(row) {
 }
 function addInvestmentScenarioFund() {
   const before = (investmentScenario?.rows || []).length,
+    fundingValue = val('scenarioFunding') || 'new',
+    salePositionId = fundingValue === 'new' ? '' : decodeURIComponent(fundingValue),
+    salePosition = salePositionId ? scenario_currentPositions().find(x => x.positionId === salePositionId) : null,
+    requested = fundPerformance_n(val('scenarioAmount')),
     minRate = fundPerformance_n(val('scenarioMinRate')),
     maxRate = fundPerformance_n(val('scenarioMaxRate'));
+  if (salePosition) {
+    const available = Math.max(0, scenario_n(salePosition.current) - scenario_reinvestedByPosition(salePositionId));
+    if (requested > available) return alert(`Z této investice lze ještě odprodat a znovu investovat nejvýše ${money(available)}.`);
+  }
   if (typeof fundPerformance_oldAddScenario === 'function') fundPerformance_oldAddScenario.apply(this, arguments);
   const rows = investmentScenario?.rows || [];
   if (rows.length > before) {
     const row = rows[rows.length - 1];
     row.minRate = minRate || row.minRate || Math.max(0, fundPerformance_n(row.rate) - 2);
     row.maxRate = maxRate || row.maxRate || fundPerformance_n(row.rate) + 2;
+    if (salePosition) {
+      row.funding = 'reinvest';
+      row.salePositionId = salePositionId;
+      row.source = `Nový nákup z odprodeje ${salePosition.product || 'původní investice'}`;
+      row.newTaxTest = true;
+    } else row.funding = 'new';
+    scenario_reconcileReinvestments();
     setVal('scenarioMinRate', '');
     setVal('scenarioMaxRate', '');
+    setVal('scenarioFunding', 'new');
+    renderInvestmentScenario();
   }
   fundPerformance_renderScenarioRange();
 }
@@ -11122,7 +11180,7 @@ function forecastComparisonSvg(record) {
 function investmentComparisonChanges(record, variant) {
   const managed=(record.managedRows || []).map((x,i)=>({...x,positionId:scenario_positionId(x,'managed',i)})), external=(record.externalRows || []).map((x,i)=>({...x,positionId:scenario_positionId(x,'external',i)})), positions=[...managed,...external], dispositions=variant.dispositions || {}, catalog=scenario_catalog(), changes=[];
   positions.forEach(x=>{const d=dispositions[x.positionId]||{}, amount=Math.min(scenario_n(x.current),scenario_n(d.amount)); if(!amount)return; if(d.action==='sell')changes.push({kind:'sell',text:`Odprodat ${x.product || 'investici'}`,amount}); if(d.action==='transfer'&&d.targetKey){const t=catalog.find(y=>y.key===d.targetKey);changes.push({kind:'transfer',text:`${x.product || 'Investice'} → ${t?.product || 'nový fond'}`,amount});}});
-  (variant.rows || []).forEach(x=>changes.push({kind:'buy',text:`Koupit ${x.product || x.area || 'investici'}`,amount:scenario_n(x.amount),monthly:scenario_n(x.monthly)}));
+  (variant.rows || []).forEach(x=>changes.push({kind:'buy',text:`${x.funding==='reinvest'?'Znovu investovat':'Koupit'} ${x.product || x.area || 'investici'}`,amount:scenario_n(x.amount),monthly:scenario_n(x.monthly),newTaxTest:!!x.newTaxTest}));
   return changes;
 }
 function investmentComparisonReportHtml(c, record) {
@@ -11132,17 +11190,26 @@ function investmentComparisonReportHtml(c, record) {
 }
 function investmentComparisonPortfolioRows(record, variant) {
   const catalog=scenario_catalog(), dispositions=variant.dispositions||{}, current=[...(record.managedRows||[]).map((x,i)=>({...x,positionId:scenario_positionId(x,'managed',i),scope:'Ve správě'})),...(record.externalRows||[]).map((x,i)=>({...x,positionId:scenario_positionId(x,'external',i),scope:'Mimo správu'}))], rows=[];
-  current.forEach(x=>{const d=dispositions[x.positionId]||{}, validTransfer=d.action==='transfer'&&d.targetKey, change=(d.action==='sell'||validTransfer)?Math.min(scenario_n(x.current),scenario_n(d.amount)):0, remaining=Math.max(0,scenario_n(x.current)-change), ratio=scenario_n(x.current)?remaining/scenario_n(x.current):0;if(remaining)rows.push({product:x.product||'Investice',company:x.company||'',area:x.area||'',amount:remaining,monthly:scenario_n(x.monthly)*ratio,rate:scenario_n(x.expectedRate),scope:x.scope});if(validTransfer&&change){const t=catalog.find(y=>y.key===d.targetKey)||{};rows.push({product:t.product||'Cílový fond',company:t.company||'',area:t.area||'',amount:change,monthly:0,rate:scenario_approvedRateFor(t),scope:'Přesun'});}});
-  (variant.rows||[]).forEach(x=>rows.push({product:x.product||x.area||'Nová investice',company:x.company||'',area:x.area||'',amount:scenario_n(x.amount),monthly:scenario_n(x.monthly),rate:scenario_n(x.rate),scope:'Nový nákup'}));
+  current.forEach(x=>{const d=dispositions[x.positionId]||{}, validTransfer=d.action==='transfer'&&d.targetKey, change=(d.action==='sell'||validTransfer)?Math.min(scenario_n(x.current),scenario_n(d.amount)):0, remaining=Math.max(0,scenario_n(x.current)-change), ratio=scenario_n(x.current)?remaining/scenario_n(x.current):0;if(remaining)rows.push({product:x.product||'Investice',company:x.company||'',area:x.area||'',asset:x.asset||x.typ||x.area||'Ostatní',liquidity:x.liquidity||'Neuvedeno',amount:remaining,monthly:scenario_n(x.monthly)*ratio,rate:scenario_n(x.expectedRate),scope:x.scope});if(validTransfer&&change){const t=catalog.find(y=>y.key===d.targetKey)||{};rows.push({product:t.product||'Cílový fond',company:t.company||'',area:t.area||'',asset:t.asset||t.typ||t.area||'Ostatní',liquidity:t.liquidity||'Neuvedeno',amount:change,monthly:0,rate:scenario_approvedRateFor(t),scope:'Přesun'});}});
+  (variant.rows||[]).forEach(x=>rows.push({product:x.product||x.area||'Nová investice',company:x.company||'',area:x.area||'',asset:x.asset||x.typ||x.area||'Ostatní',liquidity:x.liquidity||'Neuvedeno',amount:scenario_n(x.amount),monthly:scenario_n(x.monthly),rate:scenario_n(x.rate),scope:x.funding==='reinvest'?'Reinvestice':'Nový nákup'}));
   const grouped={};rows.forEach(x=>{const k=[x.product,x.company,x.area].join('|');if(!grouped[k])grouped[k]={...x};else{grouped[k].amount+=x.amount;grouped[k].monthly+=x.monthly;}});return Object.values(grouped).sort((a,b)=>b.amount-a.amount);
 }
 function investmentComparisonDonut(rows) {
   const colors=['#176f69','#287fce','#f05b4f','#f4ad35','#7c68d9','#3aa86f','#4ea4d7','#aab7c8'], total=rows.reduce((s,x)=>s+scenario_n(x.amount),0)||1;let at=0;const stops=rows.map((x,i)=>{const from=at,to=at+scenario_n(x.amount)/total*100;at=to;return `${colors[i%colors.length]} ${from.toFixed(2)}% ${to.toFixed(2)}%`;}).join(','), legend=rows.slice(0,7).map((x,i)=>`<div class="holding"><i style="--c:${colors[i%colors.length]}"></i><span><b>${esc(x.product)}</b><small>${clientOutput_xMoney(x.amount)}${x.monthly?` · ${clientOutput_xMoney(x.monthly)}/měs.`:''}</small></span><strong>${Math.round(x.amount/total*100)} %</strong></div>`).join('');
   return {html:`<div class="donut" style="--donut:conic-gradient(${stops||'#dce6ef 0 100%'})"><div><b>${clientOutput_xMoney(total)}</b><small>po změnách</small></div></div>`,legend,total};
 }
+function investmentDistribution(rows, labelFor) {
+  const grouped={};
+  rows.forEach(row=>{const label=String(labelFor(row)||'Neuvedeno').trim()||'Neuvedeno';grouped[label]=(grouped[label]||0)+scenario_n(row.amount);});
+  return Object.entries(grouped).map(([label,amount])=>({label,amount})).sort((a,b)=>b.amount-a.amount);
+}
+function investmentDistributionPanel(title, groups, total, accent) {
+  const shown=groups.slice(0,6), rest=groups.slice(6).reduce((sum,x)=>sum+x.amount,0);if(rest)shown.push({label:'Ostatní',amount:rest});
+  return `<section class="distribution"><h3>${esc(title)}</h3>${shown.map(x=>`<div class="dist-row"><div><b>${esc(x.label)}</b><strong>${Math.round(x.amount/(total||1)*100)} %</strong></div><i><span style="width:${Math.max(3,x.amount/(total||1)*100)}%;background:${accent}"></span></i><small>${clientOutput_xMoney(x.amount)}</small></div>`).join('')||'<p>Bez evidovaných hodnot</p>'}</section>`;
+}
 function investmentComparisonPortraitHtml(c, record) {
-  const name=c?clientName(c):scenarioClientDraft().name||'Klient', variants=(record.variants?.length?record.variants:[{name:'Hlavní varianta',rows:record.proposalRows||[],dispositions:record.dispositions||{},projection:record.projection||{}}]).slice(0,3), main=variants[0], alternatives=variants.slice(1), p=main.projection||{}, portfolio=investmentComparisonPortfolioRows(record,main), donut=investmentComparisonDonut(portfolio), changes=investmentComparisonChanges(record,main), managed=(record.managedRows||[]).reduce((s,x)=>s+scenario_n(x.current),0), outside=(record.externalRows||[]).reduce((s,x)=>s+scenario_n(x.current),0), current=managed+outside, currentMonthly=[...(record.managedRows||[]),...(record.externalRows||[])].reduce((s,x)=>s+scenario_n(x.monthly),0), mainChanges=changes.slice(0,6).map(x=>`<li class="${x.kind}"><i>${x.kind==='sell'?'−':x.kind==='transfer'?'↔':'+'}</i><span><b>${esc(x.text)}</b><small>${clientOutput_xMoney(x.amount)}${x.monthly?` · ${clientOutput_xMoney(x.monthly)}/měs.`:''}</small></span></li>`).join('')||'<li class="keep"><i>✓</i><span><b>Portfolio ponechat beze změny</b><small>Bez plánovaného přesunu</small></span></li>', altHtml=alternatives.map((v,i)=>{const ap=v.projection||{}, rows=investmentComparisonPortfolioRows(record,v), top=rows.slice(0,4), ch=investmentComparisonChanges(record,v);return `<article class="alternative a${i+1}"><header><div><small>Alternativní řešení ${i+1}</small><h3>${esc(v.name||`Alternativa ${i+1}`)}</h3></div><b>${scenario_fmtPct(ap.weighted)} % p.a.</b></header><div class="alt-result"><div><small>Počáteční hodnota</small><b>${clientOutput_xMoney(ap.startingValue)}</b></div><div><small>Za ${num(record.years||ap.years)} let</small><b>${clientOutput_xMoney(ap.final)}</b></div><div><small>Nové peníze</small><b>${clientOutput_xMoney(ap.newMoney)}</b></div></div><div class="mini-allocation">${top.map((x,j)=>`<span style="--w:${Math.max(5,Math.round(x.amount/(rows.reduce((s,y)=>s+y.amount,0)||1)*100))}%;--c:${['#287fce','#176f69','#f4ad35','#7c68d9'][j%4]}"><b>${esc(x.product)}</b><i></i></span>`).join('')}</div><p>${ch.slice(0,3).map(x=>`${x.kind==='sell'?'Odprodat':x.kind==='transfer'?'Přesunout':'Koupit'} ${clientOutput_xMoney(x.amount)}`).join(' · ')||'Bez změn současných pozic'}</p></article>`;}).join(''), alternativesSection=alternatives.length?`<h2 class="alternatives-title">Možné alternativy</h2><section class="alternatives ${alternatives.length===1?'single':''}">${altHtml}</section>`:'', css=`*{box-sizing:border-box}body{margin:0;background:#e8eef5;color:#102b50;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display",Arial,sans-serif}.print{position:fixed;right:16px;top:16px;z-index:5;border:0;border-radius:11px;padding:9px 14px;background:#143e70;color:white;font-weight:850}.page{width:794px;min-height:1123px;margin:16px auto;padding:28px 28px 20px;overflow:hidden;border:1px solid #d8e6f3;border-radius:28px;background:radial-gradient(circle at 83px 105px,#e5f6ff 0,transparent 190px),radial-gradient(circle at 670px 280px,#eaf5ff 0,transparent 230px),linear-gradient(155deg,#fff,#f8fbfd 58%,#eef5fa);box-shadow:0 28px 80px #23486d25}.hero{display:flex;justify-content:space-between;gap:22px;align-items:flex-start}.kicker{font-size:9px;font-weight:900;letter-spacing:.3em;text-transform:uppercase}.hero h1{margin:7px 0 4px;font:700 31px Georgia,serif;color:#0d2d58}.subtitle{font:17px Georgia,serif;color:#5d789a}.hero-art{width:240px;height:92px;padding:17px 21px;border-radius:52px 20px 52px 20px;background:linear-gradient(130deg,#275f94,#83b8d5 56%,#eaf5fb);box-shadow:inset 0 0 0 3px #ffffff80,0 12px 28px #24517b24;color:#fff}.hero-art b{display:block;font:20px Georgia,serif;line-height:1.18}.hero-art small{display:block;margin-top:7px;letter-spacing:.16em}.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:18px 0 12px}.summary>div{min-height:76px;padding:11px;border:1px solid #d8e7f5;border-radius:17px;background:#f7fbfecc;box-shadow:inset 0 1px 0 #fff}.summary i{font-style:normal;font-size:20px}.summary small,.metric small,.alt-result small{display:block;color:#66809f;font-size:8px;font-weight:900;text-transform:uppercase}.summary b{display:block;margin-top:5px;font-size:16px}.main{padding:14px;border:1px solid #d3e5f4;border-radius:23px;background:#ffffffc9;box-shadow:0 14px 36px #335f8514}.main-head{display:flex;justify-content:space-between;align-items:flex-end}.main-head small{color:#4d7299;font-size:9px;font-weight:900;letter-spacing:.14em;text-transform:uppercase}.main-head h2{margin:2px 0 0;font:700 24px Georgia,serif}.main-rate{text-align:right}.main-rate b{display:block;font-size:22px;color:#176f69}.main-rate small{color:#66809f}.main-grid{display:grid;grid-template-columns:260px minmax(0,1fr);gap:15px;margin-top:9px}.donut-area{position:relative;display:grid;place-items:center;min-height:270px}.donut{position:relative;width:220px;height:220px;border-radius:50%;background:var(--donut);display:grid;place-items:center;box-shadow:inset 0 0 0 2px #ffffffb8,0 12px 28px #224e771f}.donut:before{content:"";position:absolute;width:126px;height:126px;border-radius:50%;background:linear-gradient(145deg,#f9fcff,#dfeaf3);box-shadow:0 0 0 7px #ffffff88,inset 0 4px 14px #5d7c9b23}.donut>div{position:relative;z-index:1;text-align:center}.donut b{display:block;font-size:18px}.donut small{color:#69809a;font-size:9px}.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.metric{padding:9px;border-radius:13px;background:#edf5fb}.metric b{display:block;margin-top:3px;font-size:14px}.section-label{margin:9px 0 5px;color:#66809f;font-size:8px;font-weight:900;letter-spacing:.12em;text-transform:uppercase}.changes{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin:0;padding:0;list-style:none}.changes li{display:flex;gap:7px;align-items:center;padding:6px;border-radius:11px;background:#f5f8fb}.changes i{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#dbeafe;color:#1d4ed8;font-style:normal;font-weight:900}.changes .sell i{background:#fee2e2;color:#b42318}.changes .buy i{background:#dcfce7;color:#087a3e}.changes b,.changes small{display:block}.changes b{font-size:9px}.changes small{margin-top:1px;color:#6f8095;font-size:8px}.holdings{display:grid;gap:4px;margin-top:8px}.holding{display:grid;grid-template-columns:8px minmax(0,1fr) auto;gap:6px;align-items:center}.holding i{width:7px;height:24px;border-radius:5px;background:var(--c)}.holding span b,.holding span small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.holding span b{font-size:9px}.holding span small{color:#6f8095;font-size:7px}.holding strong{font-size:9px}.alternatives-title{margin:13px 0 7px;font:700 18px Georgia,serif}.alternatives{display:grid;grid-template-columns:1fr 1fr;gap:10px}.alternatives.single{grid-template-columns:1fr}.alternative{min-height:185px;padding:12px;border:1px solid #d6e6f3;border-top:4px solid #287fce;border-radius:18px;background:#ffffffc9}.alternative.a2{border-top-color:#7c68d9}.alternative header{display:flex;justify-content:space-between;gap:10px}.alternative header small{color:#6c82a0;font-size:8px;font-weight:900;text-transform:uppercase}.alternative h3{margin:2px 0 0;font:700 17px Georgia,serif}.alternative header>b{color:#287fce}.alt-result{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:9px}.alt-result>div{padding:7px;border-radius:10px;background:#eff6fb}.alt-result b{display:block;margin-top:2px;font-size:11px}.mini-allocation{display:grid;gap:4px;margin-top:8px}.mini-allocation span{display:grid;grid-template-columns:120px 1fr;gap:6px;align-items:center;font-size:8px}.mini-allocation i{display:block;width:var(--w);height:6px;border-radius:8px;background:var(--c)}.alternative p{margin:8px 0 0;color:#607590;font-size:8px}.footer{display:flex;justify-content:space-between;gap:16px;margin-top:13px;padding-top:9px;border-top:1px solid #d9e4ef;color:#71839a;font-size:7px}.footer b{color:#345879}@page{size:A4 portrait;margin:0}@media print{body{background:#fff}.print{display:none}.page{width:210mm;min-height:297mm;margin:0;padding:8mm;border:0;border-radius:0;box-shadow:none}}`;
-  return `<!doctype html><html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(record.name||'Investiční plán')} – ${esc(name)}</title><style>${css}</style></head><body><button class="print" onclick="window.print()">Tisk / PDF</button><main class="page"><header class="hero"><div><div class="kicker">Investiční portfolio</div><h1>Plán investic pro ${esc(name)}</h1><div class="subtitle">Současný stav, hlavní řešení a možné alternativy</div></div><div class="hero-art"><b>Dlouhodobě.<br>Smysluplně.<br>Pro váš klid.</b><small>MAJETEK · STRATEGIE</small></div></header><section class="summary"><div><i>◉</i><small>Současné portfolio</small><b>${clientOutput_xMoney(current)}</b></div><div><i>↗</i><small>Pravidelně měsíčně</small><b>${clientOutput_xMoney(currentMonthly)}</b></div><div><i>◔</i><small>Počet investic</small><b>${num((record.managedRows||[]).length+(record.externalRows||[]).length)}</b></div><div><i>◎</i><small>Horizont plánu</small><b>${num(record.years||p.years||10)} let</b></div></section><section class="main"><div class="main-head"><div><small>Doporučené řešení</small><h2>${esc(main.name||'Hlavní varianta')}</h2></div><div class="main-rate"><b>${scenario_fmtPct(p.weighted)} % p.a.</b><small>průměrné očekávané zhodnocení</small></div></div><div class="main-grid"><div><div class="donut-area">${donut.html}</div><div class="holdings">${donut.legend}</div></div><div><div class="metrics"><div class="metric"><small>Odprodat</small><b>${clientOutput_xMoney(p.soldTotal)}</b></div><div class="metric"><small>Přesunout</small><b>${clientOutput_xMoney(p.transferTotal)}</b></div><div class="metric"><small>Nové peníze</small><b>${clientOutput_xMoney(p.newMoney)}</b></div><div class="metric"><small>Počáteční hodnota</small><b>${clientOutput_xMoney(p.startingValue)}</b></div><div class="metric"><small>Za ${num(record.years||p.years)} let</small><b>${clientOutput_xMoney(p.final)}</b></div><div class="metric"><small>Modelový výnos</small><b>${clientOutput_xMoney(p.gain)}</b></div></div><div class="section-label">Co se v hlavní variantě změní</div><ul class="changes">${mainChanges}</ul></div></div></section>${alternativesSection}<footer class="footer"><span><b>${esc(record.name||'Investiční plán')}</b> · ${esc((record.createdAt||today()).slice(0,10))}</span><span>Modelový výpočet podle zadaných očekávaných výnosů. Nejde o garanci budoucího zhodnocení.</span></footer></main></body></html>`;
+  const name=c?clientName(c):scenarioClientDraft().name||'Klient', variants=(record.variants||[]).slice(0,2), baseline=record.baselineProjection||record.projection||{}, currentRows=investmentComparisonPortfolioRows(record,{rows:[],dispositions:{}}), total=currentRows.reduce((sum,x)=>sum+scenario_n(x.amount),0), monthly=currentRows.reduce((sum,x)=>sum+scenario_n(x.monthly),0), funds=investmentDistribution(currentRows,x=>x.product), segments=investmentDistribution(currentRows,x=>x.asset||x.area), liquidity=investmentDistribution(currentRows,x=>x.liquidity), charts=[investmentDistributionPanel('Fondy',funds,total,'linear-gradient(90deg,#287fce,#68b9e8)'),investmentDistributionPanel('Segmenty',segments,total,'linear-gradient(90deg,#176f69,#55b99c)'),investmentDistributionPanel('Likvidita',liquidity,total,'linear-gradient(90deg,#7c68d9,#b29be8)')].join(''), alternatives=variants.map((v,i)=>{const p=v.projection||{},rows=investmentComparisonPortfolioRows(record,v),groups=investmentDistribution(rows,x=>x.product).slice(0,4),changes=investmentComparisonChanges(record,v).slice(0,4),reinvest=scenario_n(p.reinvestedTotal);return `<article class="alternative a${i+1}"><header><div><small>Návrh ${String.fromCharCode(65+i)}</small><h2>${esc(v.name||scenario_variantLabel(i))}</h2></div><b>${scenario_fmtPct(p.weighted)} % p.a.</b></header><div class="alt-kpis"><div><small>Počáteční hodnota</small><strong>${clientOutput_xMoney(p.startingValue)}</strong></div><div><small>Za ${num(record.years||p.years||10)} let</small><strong>${clientOutput_xMoney(p.final)}</strong></div><div><small>Nové investice</small><strong>${clientOutput_xMoney(p.newMoney)}</strong></div></div><div class="alt-body"><div class="alt-bars">${groups.map((x,j)=>`<span><b>${esc(x.label)}</b><i><em style="width:${Math.max(4,x.amount/(rows.reduce((sum,y)=>sum+y.amount,0)||1)*100)}%;background:${['#287fce','#176f69','#f4ad35','#7c68d9'][j]}"></em></i><small>${Math.round(x.amount/(rows.reduce((sum,y)=>sum+y.amount,0)||1)*100)} %</small></span>`).join('')}</div><ul>${changes.map(x=>`<li class="${x.kind}"><i>${x.kind==='sell'?'−':x.kind==='transfer'?'↔':'+'}</i><span><b>${esc(x.text)}</b><small>${clientOutput_xMoney(x.amount)}${x.newTaxTest?' · nový časový test':''}</small></span></li>`).join('')||'<li><i>✓</i><span><b>Beze změn</b></span></li>'}</ul></div>${reinvest?`<p class="tax-note">Z odprodeje se znovu investuje ${clientOutput_xMoney(reinvest)} jako nové nákupy s novými časovými testy.</p>`:''}</article>`;}).join(''), alternativesSection=variants.length?`<div class="alternatives-title"><span>Navrhované alternativy</span><small>Nejvýše dvě varianty pro společné rozhodnutí</small></div><section class="alternatives ${variants.length===1?'single':''}">${alternatives}</section>`:'', css=`*{box-sizing:border-box}body{margin:0;background:#e8eef5;color:#102b50;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display",Arial,sans-serif}.print{position:fixed;right:14px;top:14px;z-index:5;border:0;border-radius:10px;padding:8px 13px;background:#143e70;color:#fff;font-weight:850}.page{width:794px;min-height:1123px;margin:16px auto;padding:24px 27px 18px;overflow:hidden;border:1px solid #d8e6f3;border-radius:26px;background:radial-gradient(circle at 90% 0,#deeffa 0,transparent 200px),linear-gradient(155deg,#fff,#f7fbfe 62%,#eef5fa);box-shadow:0 28px 80px #23486d25}.top{display:flex;justify-content:space-between;align-items:center;gap:16px;padding-bottom:9px;border-bottom:1px solid #d8e5ef}.top .kicker{font-size:8px;font-weight:900;letter-spacing:.25em;text-transform:uppercase}.top h1{margin:3px 0 0;font:700 22px Georgia,serif}.top-meta{text-align:right;color:#66809f;font-size:8px}.top-meta b{display:block;color:#21486f;font-size:11px}.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin:10px 0}.summary>div{padding:8px 10px;border:1px solid #d8e7f5;border-radius:13px;background:#f7fbfecc}.summary small,.current-head small,.alt-kpis small{display:block;color:#66809f;font-size:7px;font-weight:900;text-transform:uppercase}.summary b{display:block;margin-top:3px;font-size:14px}.current{padding:12px;border:1px solid #d3e5f4;border-radius:19px;background:#ffffffd4;box-shadow:0 11px 28px #335f8510}.current-head{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:9px}.current-head h2{margin:2px 0 0;font:700 21px Georgia,serif}.current-head>div:last-child{text-align:right}.current-head strong{font-size:19px;color:#176f69}.charts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.distribution{min-height:250px;padding:10px;border-radius:14px;background:#f2f7fb}.distribution h3{margin:0 0 8px;font:700 14px Georgia,serif}.dist-row{margin-bottom:7px}.dist-row>div{display:flex;justify-content:space-between;gap:6px}.dist-row b,.dist-row strong{font-size:8px}.dist-row b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dist-row i{display:block;height:6px;margin:3px 0;border-radius:8px;background:#dfe8f0;overflow:hidden}.dist-row i span{display:block;height:100%;border-radius:8px}.dist-row small{display:block;color:#71839a;font-size:7px}.alternatives-title{display:flex;justify-content:space-between;align-items:end;margin:11px 0 6px}.alternatives-title span{font:700 17px Georgia,serif}.alternatives-title small{color:#6c82a0;font-size:7px}.alternatives{display:grid;grid-template-columns:1fr 1fr;gap:9px}.alternatives.single{grid-template-columns:1fr}.alternative{min-height:235px;padding:11px;border:1px solid #d6e6f3;border-top:4px solid #287fce;border-radius:17px;background:#ffffffd8}.alternative.a2{border-top-color:#7c68d9}.alternative header{display:flex;justify-content:space-between;gap:8px}.alternative header small{color:#6c82a0;font-size:7px;font-weight:900;text-transform:uppercase}.alternative h2{margin:2px 0 0;font:700 16px Georgia,serif}.alternative header>b{color:#287fce;font-size:15px}.alt-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-top:7px}.alt-kpis>div{padding:6px;border-radius:9px;background:#edf5fb}.alt-kpis strong{display:block;margin-top:2px;font-size:9px}.alt-body{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:7px}.alt-bars{display:grid;gap:4px}.alt-bars span{display:grid;grid-template-columns:70px 1fr 25px;gap:4px;align-items:center}.alt-bars b,.alt-bars small{font-size:7px}.alt-bars b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.alt-bars i{display:block;height:5px;border-radius:6px;background:#e2e9f0;overflow:hidden}.alt-bars em{display:block;height:100%;border-radius:6px}ul{display:grid;gap:3px;margin:0;padding:0;list-style:none}li{display:flex;align-items:center;gap:5px;padding:4px;border-radius:7px;background:#f5f8fb}li>i{display:grid;place-items:center;width:15px;height:15px;border-radius:50%;background:#dbeafe;color:#1d4ed8;font-style:normal;font-size:8px;font-weight:900}li.sell>i{background:#fee2e2;color:#b42318}li.buy>i{background:#dcfce7;color:#087a3e}li b,li small{display:block;font-size:7px}.tax-note{margin:6px 0 0;padding:5px 7px;border-radius:8px;background:#fff7df;color:#795b0b;font-size:7px}.footer{display:flex;justify-content:space-between;gap:15px;margin-top:10px;padding-top:7px;border-top:1px solid #d9e4ef;color:#71839a;font-size:6px}.footer b{color:#345879}@page{size:A4 portrait;margin:0}@media print{body{background:#fff}.print{display:none}.page{width:210mm;min-height:297mm;margin:0;padding:7mm;border:0;border-radius:0;box-shadow:none}}`;
+  return `<!doctype html><html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(record.name||'Investiční plán')} – ${esc(name)}</title><style>${css}</style></head><body><button class="print" onclick="window.print()">Tisk / PDF</button><main class="page"><header class="top"><div><div class="kicker">Investiční portfolio</div><h1>${esc(name)}</h1></div><div class="top-meta"><b>${esc(record.name||'Investiční plán')}</b>${esc((record.createdAt||today()).slice(0,10))} · horizont ${num(record.years||baseline.years||10)} let</div></header><section class="summary"><div><small>Portfolio celkem</small><b>${clientOutput_xMoney(total)}</b></div><div><small>Pravidelně měsíčně</small><b>${clientOutput_xMoney(monthly)}</b></div><div><small>Počet fondů</small><b>${num(funds.length)}</b></div><div><small>Průměrný výnos</small><b>${scenario_fmtPct(baseline.curRate)} % p.a.</b></div></section><section class="current"><div class="current-head"><div><small>Výchozí stav</small><h2>Aktuální portfolio</h2></div><div><small>Známá hodnota</small><strong>${clientOutput_xMoney(total)}</strong></div></div><div class="charts">${charts}</div></section>${alternativesSection}<footer class="footer"><span><b>${esc(record.name||'Investiční plán')}</b> · přehled aktuálního stavu a modelových návrhů</span><span>Modelový výpočet podle zadaných očekávaných výnosů. Nejde o garanci budoucího zhodnocení.</span></footer></main></body></html>`;
 }
 function forecastReportSvg(p) {
   const width = 900, height = 300, left = 55, right = 18, top = 22, bottom = 38,
@@ -11716,8 +11783,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.09.21-6';
-const VERSION_NOTE = 'Investiční plán má hlavní řešení, nejvýše dvě alternativy a nový jednostránkový klientský výstup A4.';
+const VERSION = '2026.09.21-7';
+const VERSION_NOTE = 'Investiční plán ukazuje aktuální portfolio, dvě alternativy A/B a umí rozdělit odprodej do více nových nákupů.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';

@@ -1,5 +1,13 @@
 # Historie verzí
 
+## 2026.09.21-7
+
+- Jednostránkový investiční výstup má kompaktní záhlaví bez velkého sloganu a začíná přehledem „Aktuální portfolio“.
+- Aktuální portfolio obsahuje samostatné grafické rozdělení podle fondů, segmentů a likvidity.
+- Pod aktuálním stavem lze zobrazit nejvýše dvě navrhované alternativy A a B.
+- Odprodej jedné současné investice lze rozdělit do několika cílových fondů přes zdroj peněz u nových nákupů.
+- Reinvestované částky se počítají jako nové nákupy a report výslovně upozorňuje na nový časový test.
+
 ## 2026.09.21-6
 
 - Klientský investiční plán má nový jednostránkový výstup A4 na výšku ve světlém modrostříbrném stylu.
