@@ -2873,17 +2873,15 @@ function confirmCampaignEmail() {
   campaignLaunchMailto(`mailto:${encodeURIComponent(sender)}?${query.toString()}`);
 }
 function clientGivenRecommendations(c) {
-  const name = norm(clientName(c));
-  return (state.referrals || []).filter(r => norm(r.from) === name).length + state.clients.filter(x => String(x.id) !== String(c.id) && x.leadType === 'referral' && norm(x.leadSource) === name).length;
+  return sourceReferralRecords(c).filter(r => r.type === 'referral').length;
 }
 function clientTiparLeads(c) {
-  const name = norm(clientName(c));
-  return state.clients.filter(x => String(x.id) !== String(c.id) && x.leadType === 'tipar' && norm(x.leadSource) === name).length;
+  return sourceReferralRecords(c).filter(r => r.type === 'tipar').length;
 }
 function clientSourceSummary(c) {
   const rec = clientGivenRecommendations(c),
     tip = clientTiparLeads(c);
-  return `${leadSourceBadge(c)}${referrerBadge(c)}${tip ? `<span class="badge purple">Natipoval: ${num(tip)}</span>` : ''}${rec ? `<span class="badge green">Doporučil: ${num(rec)}</span>` : ''}`;
+  return `${leadSourceBadge(c)}${referrerBadge(c)}${tip ? `<button class="badge purple" onclick="clientSection='recommendations';renderClientDetail()">Natipoval: ${num(tip)} · zobrazit jména</button>` : ''}${rec ? `<button class="badge green" onclick="clientSection='recommendations';renderClientDetail()">Doporučil: ${num(rec)} · zobrazit jména</button>` : ''}`;
 }
 function findClientByName(name) {
   return state.clients.find(c => norm(clientName(c)) === norm(name));
@@ -2953,8 +2951,20 @@ function recommendationsMini(c) {
     year = new Date().getFullYear();
   return `<div class="toolbar"><div><div class="eyebrow">Doporučení</div><h2>Koho klient doporučil nebo natipoval</h2></div><button class="btn primary" onclick="openClientReferralModal(${c.id})">+ Doporučení</button></div><div class="table-wrap"><table class="compact-table"><thead><tr><th>Typ</th><th>Koho</th><th>Datum</th><th>Obchodů</th><th>BJ</th><th>Oček. provize</th><th>Investice</th><th>Hypotéky</th><th>Akce</th></tr></thead><tbody>${rows.map(r => {
     const s = referralRecordStats(r, year);
-    return `<tr><td>${r.type === 'tipar' ? '<span class="badge purple">Tipař</span>' : '<span class="badge green">Doporučení</span>'}</td><td><b>${esc(r.to)}</b>${s.target ? '<br><span class="note">spárováno s klientem</span>' : '<br><span class="note">zatím bez karty klienta</span>'}</td><td>${esc(r.date || '')}</td><td class="num">${num(s.count)}</td><td class="num">${num(s.bj)}</td><td class="money">${money(s.cash)}</td><td class="money">${money(s.inv)}</td><td class="money">${money(s.mort)}</td><td>${s.target ? `<button class="btn slim" onclick="selectedClientId=${s.target.id};showView('clients')">Otevřít</button>` : `<button class="btn slim" onclick="openClientReferralModal(${c.id},'${encodeURIComponent(r.to)}',true)">Založit</button>`}</td></tr>`;
+    return `<tr><td>${r.type === 'tipar' ? '<span class="badge purple">Tip</span>' : '<span class="badge green">Doporučení</span>'}</td><td><b>${esc(r.to)}</b>${s.target ? '<br><span class="note">spárováno s klientem</span>' : '<br><span class="note">zatím bez karty klienta</span>'}</td><td>${esc(r.date || '')}</td><td class="num">${num(s.count)}</td><td class="num">${num(s.bj)}</td><td class="money">${money(s.cash)}</td><td class="money">${money(s.inv)}</td><td class="money">${money(s.mort)}</td><td>${s.target ? `<button class="btn slim" onclick="selectedClientId=${s.target.id};showView('clients')">Otevřít</button>` : `<button class="btn slim" onclick="openClientReferralModal(${c.id},'${encodeURIComponent(r.to)}',true)">Založit</button>`}</td></tr>`;
   }).join('') || '<tr><td colspan="9" class="note">Zatím tu není žádné doporučení ani tip od tohoto klienta.</td></tr>'}</tbody></table></div>`;
+}
+function clientReferralOverview(c) {
+  const rows = sourceReferralRecords(c),
+    tips = rows.filter(r => r.type === 'tipar'),
+    recommendations = rows.filter(r => r.type !== 'tipar'),
+    sourceClient = c.leadSource ? findClientByName(c.leadSource) : null;
+  if (!rows.length && !c.leadSource) return '';
+  const group = (title, items, cls) => `<div class="mini-card"><div class="toolbar"><h3>${title}</h3><span class="badge ${cls}">${num(items.length)}</span></div>${items.map(r => {
+    const target = r.clientId ? findClient(r.clientId) : findClientByName(r.to);
+    return `<div class="product-row"><div><b>${esc(r.to)}</b><span class="note">${esc([r.topic, r.date].filter(Boolean).join(' · ') || 'bez doplněných podrobností')}</span></div>${target ? `<button class="btn slim" onclick="selectedClientId=${target.id};clientSection='overview';renderClients()">Otevřít klienta</button>` : '<span class="badge orange">bez karty klienta</span>'}</div>`;
+  }).join('') || '<p class="note">Žádná jména.</p>'}</div>`;
+  return `<div class="mini-card referral-overview" style="margin-top:12px"><div class="toolbar"><div><div class="eyebrow">Vazby klienta</div><h3>Tipy a doporučení</h3></div><button class="btn slim" onclick="clientSection='recommendations';renderClientDetail()">Úplný přehled</button></div>${c.leadSource ? `<div class="product-row referral-source-row"><div><b>${c.leadType === 'tipar' ? 'Klienta přivedl typař' : c.leadType === 'referral' ? 'Klient přišel na doporučení' : 'Zdroj klienta'}</b><span class="note">${esc(c.leadSource)}${c.leadDate ? ' · ' + esc(c.leadDate) : ''}</span></div>${sourceClient ? `<button class="btn slim" onclick="selectedClientId=${sourceClient.id};clientSection='overview';renderClients()">Otevřít zdroj</button>` : '<span class="badge orange">bez karty</span>'}</div>` : ''}<div class="split" style="margin-top:10px">${group('Koho natipoval', tips, 'purple')}${group('Koho doporučil', recommendations, 'green')}</div></div>`;
 }
 function fillReferralTargetSelect(selected = '') {
   const el = byId('crExistingClient');
@@ -3117,6 +3127,7 @@ function renderClientDetail() {
   };
   el.querySelector('.subnav').innerHTML = Object.entries(labels).map(([k, l]) => `<button class="subtab ${clientSection === k ? 'active' : ''}" onclick="clientSection='${k}';renderClientDetail()">${l}</button>`).join('');
   el.insertAdjacentHTML('beforeend', clientSection === 'overview' ? clientOverview(c, contracts, deals, acts, year) : clientSection === 'portfolio' ? clientPortfolio(c, contracts, deals) : clientSection === 'opportunities' ? opportunitiesMini(opps) : clientSection === 'contracts' ? contractsMini(contracts) : clientSection === 'deals' ? dealsMini(deals, year) : clientSection === 'recommendations' ? recommendationsMini(c) : clientSection === 'notes' ? notesMini(notes) : historyMini(c, acts, contracts, deals));
+  if (clientSection === 'overview') el.insertAdjacentHTML('beforeend', clientReferralOverview(c));
 }
 function clientInvestmentSummary(clientId) {
   const items = clientDisplayInvestmentItems(clientId),
@@ -11513,8 +11524,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.09.21-2';
-const VERSION_NOTE = 'Opravený 36měsíční časový test a soukromý přechod z klienta do Investic nebo FKI.';
+const VERSION = '2026.09.21-3';
+const VERSION_NOTE = 'Jmenný a prokliknutelný přehled tipů a doporučení přímo na kartě klienta.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';

@@ -1,5 +1,12 @@
 # Historie verzí
 
+## 2026.09.21-3
+
+- Karta klienta zobrazuje konkrétní jména lidí, které klient natipoval nebo doporučil.
+- Spárovaná jména lze otevřít přímo do jejich klientské karty.
+- Počty „Natipoval“ a „Doporučil“ jsou prokliknutelné do úplného přehledu a nepřičítají duplicitně stejnou vazbu.
+- Na kartě je vidět také jméno typaře nebo doporučitele, přes kterého klient přišel.
+
 ## 2026.09.21-2
 
 - Opraven klientský report, který zaměňoval datum ocenění fondu za termín časového testu.

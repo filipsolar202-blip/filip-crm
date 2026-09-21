@@ -243,6 +243,10 @@ a.contact-value:hover { color:var(--blue); text-decoration:underline; }
 .investment-shell .client-list-toggle { grid-column:1/-1; justify-self:end; }
 .investment-shell.clients-hidden { grid-template-columns:minmax(0,1fr)!important; }
 .investment-shell.clients-hidden .investment-side { display:none!important; }
+.chips button.badge { cursor:pointer; }
+.referral-overview>.split>.mini-card { padding:0; overflow:hidden; }
+.referral-overview>.split>.mini-card>.toolbar { padding:10px 12px 0; }
+.referral-overview .product-row { background:rgba(247,249,251,.5); }
 @media(max-width:1100px){.dash-work-row{grid-template-columns:190px minmax(220px,1fr) 100px 88px auto;gap:7px}.dash-work-actions{gap:3px}.dash-work-actions .btn{padding-left:6px;padding-right:6px}}
 @media(max-width:900px){.forecast-position-row,.forecast-card{grid-template-columns:1fr 1fr}.forecast-position-row>:first-child,.forecast-card>:first-child{grid-column:1/-1}.forecast-position-row .actions,.forecast-card .actions{grid-column:1/-1;justify-content:flex-start}}
 @media(max-width:850px){.campaign-recipient-row{grid-template-columns:18px 34px minmax(0,1fr)}.campaign-recipient-tags{grid-column:2/-1;justify-content:flex-start}}

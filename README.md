@@ -2,9 +2,9 @@
 
 Lokální CRM pro klienty, smlouvy, obchody, investice, FKI, poznámky, reporty a zálohu.
 
-## Verze 2026.09.21-2
+## Verze 2026.09.21-3
 
-Hlavní CRM má jednu aplikační logiku a společný modrý glass vzhled. Verze opravuje časový test fondů na přesný počet měsíců od nákupu nebo emise, ukazuje termín u každé pozice i v klientském reportu a při přechodu z karty klienta skryje seznam ostatních klientů. Přehled změn je v `CHANGELOG.md`, výsledky ověření v `QA-2026-09-16.md`.
+Hlavní CRM má jednu aplikační logiku a společný modrý glass vzhled. Karta klienta zobrazuje konkrétní jména natipovaných a doporučených lidí a umožňuje otevřít jejich klientské karty. Přehled změn je v `CHANGELOG.md`, výsledky ověření v `QA-2026-09-16.md`.
 
 ## Soubory aplikace
 
