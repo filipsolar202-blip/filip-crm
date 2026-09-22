@@ -1,5 +1,10 @@
 # Historie verzí
 
+## 2026.09.22-3
+
+- Výraznější modrostříbrné rámečky karet, polí a tlačítek.
+- Tmavě modré nadpisy a hlavní text, jemně tónované portfolio a kontakty při zachování světlého skleněného vzhledu.
+
 ## 2026.09.22-2
 
 - Přehled výplat jednotlivých obchodů tipařů napříč roky, filtry stavu, datum výplaty, poznámka a historie oprav.

@@ -2,7 +2,7 @@
 
 Lokální CRM pro klienty, smlouvy, obchody, investice, FKI, poznámky, reporty a zálohu.
 
-## Verze 2026.09.22-2
+## Verze 2026.09.22-3
 
 Hlavní CRM má jednu aplikační logiku a společný modrý glass vzhled. Investiční plán porovnává aktuální portfolio s nejvýše dvěma alternativami A a B. Odprodej lze rozdělit do více nových nákupů. Pro klienta lze stáhnout podrobný investiční návrh ve stylu původní kalkulačky nebo stručné srovnání variant. Přehled změn je v `CHANGELOG.md`, výsledky ověření v `QA-2026-09-16.md`.
 
