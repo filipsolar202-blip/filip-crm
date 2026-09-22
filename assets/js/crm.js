@@ -11234,8 +11234,15 @@ function downloadInvestmentScenario() {
   if (!investmentScenario?.rows?.length && !investmentScenario?.externalRows?.length) return alert('Nejdřív přidej návrh nebo majetek do prognózy.');
   const c = scenarioSelectedClient();
   const name = c ? clientName(c) : scenarioClientDraft().name || 'novy-klient';
-  downloadHtmlFile(investmentScenarioReportHtml(c), 'investicni-navrh-' + (normId(name) || 'klient') + '.html');
+  downloadHtmlFile(clientOutput_xScenarioHtml(c), 'investicni-navrh-' + (normId(name) || 'klient') + '.html');
   toast('HTML návrh připraven ke stažení');
+}
+function downloadInvestmentComparison() {
+  if (!investmentScenario?.rows?.length && !investmentScenario?.externalRows?.length) return alert('Nejdřív přidej návrh nebo majetek do prognózy.');
+  const c = scenarioSelectedClient();
+  const name = c ? clientName(c) : scenarioClientDraft().name || 'novy-klient';
+  downloadHtmlFile(investmentScenarioReportHtml(c), 'srovnani-portfolia-' + (normId(name) || 'klient') + '.html');
+  toast('Srovnání aktuálního portfolia a variant připraveno ke stažení');
 }
 function downloadSavedInvestmentForecast(id) {
   const record = (state.investmentForecasts || []).find(x => String(x.id) === String(id)), c = record ? findClient(record.clientId) : null;
@@ -11783,8 +11790,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.09.21-7';
-const VERSION_NOTE = 'Investiční plán ukazuje aktuální portfolio, dvě alternativy A/B a umí rozdělit odprodej do více nových nákupů.';
+const VERSION = '2026.09.22-1';
+const VERSION_NOTE = 'Investiční plán nabízí podrobný návrh ve stylu původní kalkulačky i samostatné srovnání variant A/B.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';

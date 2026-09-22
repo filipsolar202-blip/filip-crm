@@ -1,5 +1,11 @@
 # Historie verzí
 
+## 2026.09.22-1
+
+- Stažení investičního návrhu znovu používá podrobný klientský výstup z původní kalkulačky.
+- Návrh obsahuje souhrn scénáře, koláč skladby nového nákupu, graf modelového vývoje a samostatný detail každého fondu.
+- Stručné srovnání aktuálního portfolia s alternativami A/B zůstává dostupné samostatným tlačítkem.
+
 ## 2026.09.21-7
 
 - Jednostránkový investiční výstup má kompaktní záhlaví bez velkého sloganu a začíná přehledem „Aktuální portfolio“.
