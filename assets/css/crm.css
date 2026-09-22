@@ -273,3 +273,19 @@ h1,h2,h3,h4,.detail-title,.client-row b,.portfolio-card b,.contact-value{color:#
 .subtab.active,.tab.active{border-color:#6592c7;color:#23588e;background:#e1ecfa}
 .field input,.field select,.field textarea,.search{border:1.5px solid #a0b7d1;color:#234366;background:rgba(247,250,254,.9)}
 .contact-grid .contact-link{border-color:rgba(119,154,195,.55)}
+
+/* Kompaktní souhrny a společné přehledy investičních společností. */
+.contract-summary{display:flex;gap:8px;align-items:stretch;margin:8px 0}
+#mortgageRatePanel:empty{display:none}
+#mortgageRatePanel{flex:0 0 275px}
+#contracts #contractMetrics{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));flex:1;margin:0}
+#contracts .contract-summary:has(#marketMortgageRate) #contractMetrics{grid-template-columns:repeat(6,minmax(0,1fr))}
+#mortgageRatePanel .mortgage-rate-banner{height:100%;margin:0;display:flex;flex-wrap:wrap;gap:4px;padding:6px 8px}
+#mortgageRatePanel .mortgage-rate-banner b{font-size:11px}
+#marketMortgageRate{width:58px;border:1px solid #a0b7d1;border-radius:5px;color:var(--text)}
+#mortgageRatePanel .note{flex:1}
+.company-portfolio{border:1.5px solid #b0c4de;border-radius:12px;margin:6px 0;background:rgba(244,248,253,.75)}
+.company-portfolio summary{cursor:pointer;display:flex;align-items:center;gap:10px;padding:10px}
+.company-portfolio summary b{flex:1}.company-clients{padding:0 10px;border-top:1px solid #c8d6e7}
+@media(max-width:1100px){.contract-summary{flex-wrap:wrap}#contracts #contractMetrics{flex-basis:100%}}
+@media(max-width:650px){#contracts #contractMetrics,#contracts .contract-summary:has(#marketMortgageRate) #contractMetrics{grid-template-columns:repeat(2,minmax(0,1fr))}.company-portfolio summary{flex-wrap:wrap}}

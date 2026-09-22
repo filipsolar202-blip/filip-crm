@@ -1,5 +1,11 @@
 # Historie verzí
 
+## 2026.09.22-4
+- Souhrny smluv a hypoték v jednom řádku na monitoru; tržní sazba jako kompaktní dlaždice.
+- Příležitosti řazené od schválených přes schvalování až k novým příležitostem.
+- Investice a penze: koláč rozložení podle společností a rozbalovací přehled jejich klientů, produktů a hodnot.
+- Klienti investičního fondu se zobrazují pod příslušnou společností.
+
 ## 2026.09.22-3
 
 - Výraznější modrostříbrné rámečky karet, polí a tlačítek.

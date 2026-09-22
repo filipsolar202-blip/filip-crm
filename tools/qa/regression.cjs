@@ -30,6 +30,30 @@ try{
  assert(b.report.includes('Testovací klient Alfa'));results.push('Client report retains released client data');
  console.log('baseline errors',old.errors);
  const {page,context,errors}=current;
+ const overviewUpdates=await page.evaluate(()=>{
+   const ordered=['Oportunita','Ve schvalování','Schváleno','Čekám na podklady'].map(status=>({o:{status},c:findClient(1)})).sort(compareOpportunities).map(x=>x.o.status);
+   showView('contracts');setContractSection('hypoteky');
+   const metrics=[...byId('contractMetrics').children].map(x=>Math.round(x.getBoundingClientRect().top));
+   const rateWidth=byId('mortgageRatePanel').getBoundingClientRect().width;
+   showView('pensions');setPensionMode('companies');
+   const company=byId('pensionDetail').querySelector('details.company-portfolio');
+   company.querySelector('summary').click();
+   const pensionExpanded=company.open, pensionClients=company.querySelector('.company-clients').innerText;
+   company.querySelector('.company-clients button').click();
+   const pensionSelected=pensions_selectedPensionClientId;
+   showView('investments');setInvestmentMode('aum');
+   const investmentCompanies=byId('investmentDetail').querySelectorAll('details.company-portfolio').length;
+   const fund=investmentFundItems()[0];selectedInvestmentFundKey=null;selectInvestmentFund(encodeURIComponent(fund.key));
+   const fundClients=byId('investmentDetail').textContent.includes('Klienti ve fondu');
+   return {ordered,metrics,rateWidth,pensionExpanded,pensionClients,pensionSelected,investmentCompanies,fundClients};
+ });
+ await page.screenshot({path:'/private/tmp/crm-company-overview.png'});
+ assert.deepEqual(overviewUpdates.ordered,['Schváleno','Ve schvalování','Čekám na podklady','Oportunita']);
+ assert.equal(new Set(overviewUpdates.metrics).size,1);assert(overviewUpdates.rateWidth<400);
+ assert(overviewUpdates.pensionExpanded);assert(overviewUpdates.pensionClients.includes('Testovací klient'));assert(overviewUpdates.pensionSelected);
+ assert(overviewUpdates.investmentCompanies>0);assert(overviewUpdates.fundClients,JSON.stringify({overviewUpdates,errors}));
+ results.push('Compact contract summary, priority opportunities and company/fund client drill-downs');
+
  for(const view of await page.locator('.tab[data-view]').evaluateAll(xs=>xs.map(x=>x.dataset.view))){await page.locator(`.tab[data-view="${view}"]`).click();assert(await page.locator('#'+view).isVisible());}
  results.push('14 populated views');
  await page.evaluate(()=>{showView('clients');selectClient(1);clientSection='overview';renderClientDetail()});

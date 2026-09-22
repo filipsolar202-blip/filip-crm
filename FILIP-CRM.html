@@ -7,7 +7,7 @@
 <script src="assets/vendor/chart.umd.min.js"></script>
 <script src="assets/vendor/xlsx.full.min.js"></script>
 
-<link rel="stylesheet" href="assets/css/crm.css?v=2026.09.22-3">
+<link rel="stylesheet" href="assets/css/crm.css?v=2026.09.22-4">
 </head>
 <body>
 <div class="app">
@@ -128,8 +128,8 @@
           <div class="filters"><input class="search" id="contractSearch" placeholder="Hledat smlouvu..." oninput="renderContracts()"><select id="contractSection" onchange="renderContracts()" style="display:none"><option value="">Všechny typy</option><option value="auta">Auta + majetek</option><option value="zivot">Životní</option><option value="hypoteky">Hypotéky</option><option value="uvery-only">Úvěry</option></select><select id="contractStatusFilter" onchange="renderContracts()"><option value="">Všechny stavy</option><option value="__active">Jen v řešení / urgentní</option><option value="kontakt">Ke kontaktu</option><option value="reseni">V řešení</option><option value="prepojistit">K přepojištění</option><option value="vypoved">Výpověď</option><option value="nabidka">Nabídka</option><option value="ceka_nabidka">Čekám na nabídku</option><option value="ceka_podklady">Čekám na podklady</option><option value="domluveno">Domluvena schůzka</option><option value="email">Email</option><option value="vyrizeno">Vyřízeno</option></select><button class="btn primary" onclick="openContractModal(selectedClientId||null)">+ Smlouva</button></div>
         </div>
         <div id="contractTabs" class="contract-tabs"></div>
-        <div id="mortgageRatePanel"></div>
-        <div id="contractMetrics" class="metric-strip"></div>
+        <div class="contract-summary"><div id="mortgageRatePanel"></div>
+        <div id="contractMetrics" class="metric-strip"></div></div>
         <div class="table-wrap"><table id="contractsTable"></table></div>
       </div>
     </section>
@@ -590,6 +590,6 @@
 
 
 
-<script src="assets/js/crm.js?v=2026.09.22-3"></script>
+<script src="assets/js/crm.js?v=2026.09.22-4"></script>
 </body>
 </html>

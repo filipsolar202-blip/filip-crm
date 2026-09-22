@@ -2600,7 +2600,7 @@ function opportunitySortValue(x, key) {
   if (key === 'area') return norm(x.o.category);
   if (key === 'volume') return +x.o.bj || 0;
   if (key === 'date') return String(x.o.statusDate || x.o.date || x.o.expectedDate || '');
-  return OPPORTUNITY_STATUSES.indexOf(x.o.status);
+  return ['Schváleno', 'Ve schvalování', 'Čekám na podklady', 'Oportunita', 'Podepsáno', 'Zamítnuto'].indexOf(x.o.status);
 }
 function compareOpportunities(a, b) {
   const sort = val('oppSort') || 'status';
@@ -3418,7 +3418,7 @@ function renderMortgageRatePanel(sec) {
     return;
   }
   const worse = state.contracts.filter(isWorseMortgageRate).length;
-  el.innerHTML = '<div class="mortgage-rate-banner"><b>Aktuální tržní sazba hypoték: <input id="marketMortgageRate" type="number" step="0.01" value="' + marketMortgageRate() + '"> %</b><span class="note">Horší sazba o 0,5 %+: ' + num(worse) + ' smluv</span><button class="btn slim" onclick="saveMortgageMarketRate()">Aktualizovat</button></div>';
+  el.innerHTML = '<div class="mortgage-rate-banner"><b>Tržní sazba hypoték: <input id="marketMortgageRate" type="number" step="0.01" value="' + marketMortgageRate() + '"> %</b><span class="note">Horší sazba o 0,5 %+: ' + num(worse) + ' smluv</span><button class="btn slim" onclick="saveMortgageMarketRate()">Aktualizovat</button></div>';
 }
 function contractDueSortDays(d) {
   return d >= 99999 ? 99999 : Math.max(0, d);
@@ -3903,7 +3903,8 @@ function setFkMode(mode) {
   renderFk();
 }
 function selectInvestmentFund(encodedKey) {
-  selectedInvestmentFundKey = decodeURIComponent(encodedKey);
+  const key = decodeURIComponent(encodedKey);
+  selectedInvestmentFundKey = selectedInvestmentFundKey === key ? null : key;
   investmentMode = 'funds';
   renderInvestments();
 }
@@ -3985,6 +3986,22 @@ function renderInvestmentFundClients(fund) {
     return `<tr><td><b>${esc(clientName(r.client))}</b></td><td class="money">${money(r.current)}</td><td class="money">${money(r.invested)}</td><td class="money ${gain >= 0 ? 'green' : 'red'}">${money(gain)}</td><td class="num">${num(r.items.length)}</td><td>${esc(r.last || '')}</td><td><button class="btn slim" onclick="selectInvestmentClient(${r.client?.id || 'null'})">Klient</button></td></tr>`;
   }).join('') || '<tr><td colspan="7" class="note">U tohoto fondu zatím není přiřazený žádný klient.</td></tr>'}</tbody></table></div></div>`;
 }
+function renderCompanyPortfolio(items, area) {
+  const groups = new Map(), palette = ['#356aa5','#42a8bb','#7286bd','#65a394','#cfab73','#9775ba'];
+  items.forEach(x => {
+    const name = reportProviderCleanName(x.company || 'Bez společnosti');
+    if (!groups.has(name)) groups.set(name, {name, amount:0, items:[]});
+    const g = groups.get(name); g.amount += +x.amount || 0; g.items.push(x);
+  });
+  const rows = [...groups.values()].sort((a,b)=>b.amount-a.amount), total = rows.reduce((sum,g)=>sum+Math.max(0,g.amount),0);
+  let start = 0;
+  const gradient = rows.map((g,i)=>{const end=start+(total?Math.max(0,g.amount)/total*100:0),part=`${palette[i%palette.length]} ${start}% ${end}%`;start=end;return part;}).join(',');
+  return `<div class="investment-allocation"><div class="allocation-donut" style="background:conic-gradient(${total?gradient:'#cbd5e1 0 100%'})"><div class="allocation-center"><span>AUM</span>${money(rows.reduce((sum,g)=>sum+g.amount,0))}</div></div><div><div class="eyebrow">Rozložení podle společností</div><p class="note">Rozkliknutím společnosti zobrazíte její klienty a produkty.</p>${rows.map((g,i)=>{
+    const clients = new Map();
+    g.items.forEach(x=>{const id=x.clientId || x.client?.id;if(!id)return;if(!clients.has(id))clients.set(id,{id,amount:0,products:new Set()});const c=clients.get(id);c.amount+=+x.amount||0;c.products.add(x.product||x.type||'Investice');});
+    return `<details class="company-portfolio"><summary><span class="allocation-dot" style="background:${palette[i%palette.length]}"></span><b>${esc(g.name)}</b><span>${clients.size} klientů</span><strong>${money(g.amount)}</strong><span>${total?(Math.max(0,g.amount)/total*100).toFixed(1):'0.0'} %</span></summary><div class="company-clients">${[...clients.values()].sort((a,b)=>b.amount-a.amount).map(c=>`<div class="product-row"><div><b>${esc(clientName(findClient(c.id)))}</b><div class="note">${esc([...c.products].join(' · '))}</div></div><div class="actions"><strong>${money(c.amount)}</strong><button class="btn slim" onclick="${area==='pensions'?'selectPensionClient':'selectInvestmentClient'}(${Number(c.id)})">Klient</button></div></div>`).join('')}</div></details>`;
+  }).join('') || '<p class="note">Zatím nejsou evidované investice.</p>'}</div></div>`;
+}
 function renderInvestmentAum(funds) {
   const groups = {};
   funds.forEach(f => {
@@ -4002,7 +4019,7 @@ function renderInvestmentAum(funds) {
     groups[k].funds++;
   });
   const total = Object.values(groups).reduce((s, x) => s + x.total, 0);
-  return `<div class="table-wrap"><table class="compact-table"><thead><tr><th>Společnost</th><th>AUM v reportu</th><th>Skutečná hodnota</th><th>Fondů</th><th>Klientů</th><th>Podíl</th></tr></thead><tbody>${Object.values(groups).sort((a, b) => b.raw - a.raw).map(g => `<tr><td><b>${esc(g.provider)}</b></td><td class="money">${money(g.total)}</td><td class="money">${money(g.raw)}</td><td class="num">${num(g.funds)}</td><td class="num">${num(g.clients.size)}</td><td class="num">${total ? (g.total / total * 100).toFixed(1) : '0.0'} %</td></tr>`).join('') || '<tr><td colspan="6" class="note">Zatím nejsou investiční data k AUM.</td></tr>'}</tbody></table></div>`;
+  return `${renderCompanyPortfolio(classicInvestmentItems().filter(x => funds.some(f => f.key === investmentFundKey(x))), 'investments')}<div class="table-wrap"><table class="compact-table"><thead><tr><th>Společnost</th><th>AUM v reportu</th><th>Skutečná hodnota</th><th>Fondů</th><th>Klientů</th><th>Podíl</th></tr></thead><tbody>${Object.values(groups).sort((a, b) => b.raw - a.raw).map(g => `<tr><td><b>${esc(g.provider)}</b></td><td class="money">${money(g.total)}</td><td class="money">${money(g.raw)}</td><td class="num">${num(g.funds)}</td><td class="num">${num(g.clients.size)}</td><td class="num">${total ? (g.total / total * 100).toFixed(1) : '0.0'} %</td></tr>`).join('') || '<tr><td colspan="6" class="note">Zatím nejsou investiční data k AUM.</td></tr>'}</tbody></table></div>`;
 }
 function fkItemKey(x) {
   return x.key || invPositionKey(x.source || {}) || investmentSnapshotKey(x.clientId, x.company, x.product);
@@ -9095,17 +9112,13 @@ function pensions_pOpenItem(x) {
 function pensions_pRenderClientDetail(row) {
   const c = pensions_pClient(row.clientId),
     items = row.items.sort((a, b) => b.amount - a.amount || a.product.localeCompare(b.product, 'cs'));
-  return `<div class="toolbar"><div><div class="eyebrow">Penze klienta</div><h2>${pensions_pEsc(row.name)}</h2><p class="note">${pensions_pEsc([...row.companies].join(' · ') || 'Bez společnosti')} · ${row.count} aktivních smluv/záznamů</p></div><div class="actions"><button class="btn" onclick="openClientModal(${row.clientId})">Klient</button><button class="btn primary" onclick="openPensionContractModal(${row.clientId})">+ Penze</button></div></div><div class="metric-strip"><div class="metric"><span class="note">AUM penzí</span><b>${pensions_pMoney(row.amount)}</b></div><div class="metric"><span class="note">Aktivních smluv</span><b>${row.count}</b></div><div class="metric"><span class="note">Společností</span><b>${row.companies.size}</b></div><div class="metric"><span class="note">Typy</span><b>${pensions_pEsc([...row.types].join(' / ') || 'Penze')}</b></div></div><div class="table-wrap" style="margin-top:12px"><table class="compact-table"><thead><tr><th>Produkt</th><th>Společnost</th><th>Typ</th><th>Číslo</th><th>AUM</th><th>Stav</th><th>Akce</th></tr></thead><tbody>${items.map(x => `<tr><td><b>${pensions_pEsc(x.product)}</b><br><span class="note">${pensions_pEsc(x.kind === 'contract' ? 'Smlouva' : 'Obchod')}${x.date ? ' · ' + pensions_pEsc(typeof dateCZ === 'function' ? dateCZ(x.date) : x.date) : ''}</span></td><td>${pensions_pEsc(x.company)}</td><td>${pensions_pEsc(x.type)}</td><td>${pensions_pEsc(x.number || '-')}</td><td class="money"><b>${pensions_pMoney(x.amount)}</b></td><td>${pensions_pItemStatusHtml(x)}</td><td><button class="btn" onclick="editPensionItem('${x.kind}',${x.id})">Upravit</button></td></tr>`).join('')}</tbody></table></div>`;
+  return `<div class="toolbar"><div><div class="eyebrow">Penze klienta</div><h2>${pensions_pEsc(row.name)}</h2><p class="note">${pensions_pEsc([...row.companies].join(' · ') || 'Bez společnosti')} · ${row.count} aktivních smluv/záznamů</p></div><div class="actions"><button class="btn" onclick="openClientModal(${row.clientId})">Klient</button><button class="btn primary" onclick="openPensionContractModal(${row.clientId})">+ Penze</button></div></div><div class="metric-strip"><div class="metric"><span class="note">AUM penzí</span><b>${pensions_pMoney(row.amount)}</b></div><div class="metric"><span class="note">Aktivních smluv</span><b>${row.count}</b></div><div class="metric"><span class="note">Společností</span><b>${row.companies.size}</b></div><div class="metric"><span class="note">Typy</span><b>${pensions_pEsc([...row.types].join(' / ') || 'Penze')}</b></div></div>${renderCompanyPortfolio(items, 'pensions')}<div class="table-wrap" style="margin-top:12px"><table class="compact-table"><thead><tr><th>Produkt</th><th>Společnost</th><th>Typ</th><th>Číslo</th><th>AUM</th><th>Stav</th><th>Akce</th></tr></thead><tbody>${items.map(x => `<tr><td><b>${pensions_pEsc(x.product)}</b><br><span class="note">${pensions_pEsc(x.kind === 'contract' ? 'Smlouva' : 'Obchod')}${x.date ? ' · ' + pensions_pEsc(typeof dateCZ === 'function' ? dateCZ(x.date) : x.date) : ''}</span></td><td>${pensions_pEsc(x.company)}</td><td>${pensions_pEsc(x.type)}</td><td>${pensions_pEsc(x.number || '-')}</td><td class="money"><b>${pensions_pMoney(x.amount)}</b></td><td>${pensions_pItemStatusHtml(x)}</td><td><button class="btn" onclick="editPensionItem('${x.kind}',${x.id})">Upravit</button></td></tr>`).join('')}</tbody></table></div>`;
 }
 function pensions_pRenderCompanies(companies) {
-  return `<div class="toolbar"><div><div class="eyebrow">Penze</div><h2>Společnosti</h2><p class="note">Souhrn aktivních DPS/DIP podle penzijních společností.</p></div><button class="btn primary" onclick="openPensionContractModal(selectedClientId||null)">+ Penze</button></div><div class="table-wrap"><table class="compact-table"><thead><tr><th>Společnost</th><th>Klientů</th><th>Smluv/záznamů</th><th>DPS</th><th>DIP</th><th>AUM</th></tr></thead><tbody>${companies.map(r => `<tr><td><b>${pensions_pEsc(r.company)}</b></td><td>${r.clients.size}</td><td>${r.count}</td><td>${r.types.DPS || 0}</td><td>${r.types.DIP || 0}</td><td class="money"><b>${pensions_pMoney(r.amount)}</b></td></tr>`).join('') || '<tr><td colspan="6" class="note">Zatím nemáš evidované aktivní penzijní smlouvy.</td></tr>'}</tbody></table></div>`;
+  return `<div class="toolbar"><div><div class="eyebrow">Penze</div><h2>Společnosti a klienti</h2></div><button class="btn primary" onclick="openPensionContractModal(selectedClientId||null)">+ Penze</button></div>${renderCompanyPortfolio(companies.flatMap(x=>x.items), 'pensions')}`;
 }
 function pensions_pRenderAum(companies) {
-  const total = companies.reduce((s, r) => s + r.amount, 0) || 1;
-  return `<div class="toolbar"><div><div class="eyebrow">Penze</div><h2>AUM podle společností</h2><p class="note">Rychlý přehled, kde je penzijní portfolio rozložené.</p></div></div><div class="stack">${companies.map(r => {
-    const pct = r.amount / total * 100;
-    return `<div class="mini-card"><div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><div><b>${pensions_pEsc(r.company)}</b><br><span class="note">${r.clients.size} klientů · ${r.count} položek</span></div><strong>${pensions_pMoney(r.amount)}</strong></div><div class="progress" style="margin-top:8px"><span style="width:${Math.max(2, pct)}%"></span></div><div class="note">${pct.toFixed(1).replace('.', ',')} % penzijního AUM</div></div>`;
-  }).join('') || '<p class="note">Zatím není co zobrazit.</p>'}</div>`;
+  return `<div class="toolbar"><h2>AUM podle společností</h2></div>${renderCompanyPortfolio(companies.flatMap(x=>x.items), 'pensions')}`;
 }
 function pensions_pListHtml(rows) {
   return rows.map(r => `<div class="investment-client ${String(pensions_selectedPensionClientId) === String(r.clientId) ? 'active' : ''}" onclick="selectPensionClient(${r.clientId})"><div><b>${pensions_pEsc(r.name)}</b><br><span class="note">${pensions_pEsc([...r.companies].join(' · ') || 'Bez společnosti')}</span></div><div style="text-align:right"><strong>${pensions_pMoney(r.amount)}</strong><br><span class="badge blue">${r.count}</span></div></div>`).join('') || '<p class="note">Zatím tu nejsou žádné penze.</p>';
@@ -10390,7 +10403,7 @@ function liquidity_oldRenderInvestmentDetail(row) {
   return `<div class="investment-detail-head"><div class="avatar">${esc(initials(c.name))}</div><div><div class="eyebrow">Investiční karta klienta</div><h2>${esc(clientName(c))}</h2><div class="chips"><span class="badge blue">${num(funds.length)} fondů</span><span class="chip">${row.providers.length ? esc(row.providers.join(' · ')) : 'bez společnosti'}</span>${last ? `<span class="badge green">ověřeno ${esc(last.date || '')}</span>` : '<span class="badge orange">čeká na aktualizaci</span>'}</div></div><div class="actions"><button class="btn slim" onclick="selectedClientId=${c.id};showView('clients');clientSection='portfolio';renderClients()">Klient</button><button class="btn slim" onclick="openInvestmentSnapshotModal(${c.id})">Aktualizovat hodnoty</button><button class="btn slim primary" onclick="openInvestmentScenarioModal(${c.id},'Investice')">+ Nová investice</button></div></div><div class="investment-summary"><div class="metric"><span class="note">AUM / hodnota</span><b>${money(current)}</b></div><div class="metric"><span class="note">Vloženo</span><b>${money(invested)}</b></div><div class="metric"><span class="note">Rozdíl</span><b class="${gain >= 0 ? 'green' : 'red'}">${money(gain)}</b></div><div class="metric"><span class="note">Zhodnocení</span><b class="${gain >= 0 ? 'green' : 'red'}">${gainPct.toFixed(1)} %</b></div></div>${renderInvestmentAllocation(items, current)}<div class="mini-card"><div class="toolbar"><div><div class="eyebrow">Detail investičních fondů</div><h3>Fondy klienta, pozice a hodnoty</h3></div><button class="btn" onclick="openInvestmentFundModal()">Fondy</button></div><div class="fki-work-list">${funds.map(f => investmentPosition_invCard(f, c.id)).join('') || '<p class="note">Klient zatím nemá evidované investice.</p>'}</div></div>${snaps.length ? `<div class="mini-card" style="margin-top:12px"><h3>Poslední ruční aktualizace</h3><div class="table-wrap"><table class="compact-table"><thead><tr><th>Datum</th><th>Produkt</th><th>Zdroj</th><th>Vloženo</th><th>AUM</th><th>Výnos</th><th>Pravidelně</th></tr></thead><tbody>${snaps.map(s => `<tr><td>${esc(s.date || '')}</td><td><b>${esc(s.product || 'Investice')}</b><br><span class="note">${esc(s.company || '')}</span></td><td>${esc(s.source || '')}${s.redemptionAmount ? `<br><span class="badge orange">${esc(investmentRedemptionText(s))}</span>` : ''}</td><td class="money">${money(s.invested)}</td><td class="money">${money(s.current)}</td><td class="money">${money(s.gainAmount)}${s.gainPct ? `<br><span class="${(+s.gainPct || 0) >= 0 ? 'green' : 'red'}">${num(s.gainPct)} %</span>` : ''}</td><td>${s.regularAmount ? `${money(s.regularAmount)}<br><span class="note">${esc(s.regularFrequency || '')}</span>` : '<span class="note">nezadáno</span>'}</td></tr>`).join('')}</tbody></table></div></div>` : ''}`;
 }
 function renderInvestmentFunds(funds) {
-  if (funds.length && !funds.some(f => f.key === selectedInvestmentFundKey)) selectedInvestmentFundKey = funds[0].key;
+  if (funds.length && !funds.some(f => f.key === selectedInvestmentFundKey)) selectedInvestmentFundKey = null;
   if (!funds.length) selectedInvestmentFundKey = null;
   const selected = funds.find(f => f.key === selectedInvestmentFundKey),
     groups = {};
@@ -10403,7 +10416,7 @@ function renderInvestmentFunds(funds) {
     const fv = investmentFundStoredValue(f),
       locked = isInvestmentFundLocked(f.key);
     return `<tr class="${locked ? 'row-soon' : ''}"><td><b>${esc(f.label || investmentFundLabel(f))}</b>${locked ? ' <span class="badge orange">zamčeno</span>' : ''}<br><span class="note">${esc([f.isin || 'ISIN chybí', f.mergeKey ? 'sloučeno: ' + f.mergeKey : '', f.typ || 'typ neuveden'].filter(Boolean).join(' · '))}</span></td><td class="money">${money(f.rawCurrent)}</td><td class="money">${money(f.amount)}</td><td>${fv.nav ? num(fv.nav) : '—'}<br><span class="note">${esc(fv.date || f.date || '')}</span></td><td><button class="btn slim" onclick="selectInvestmentFund('${esc(investmentPosition_enc(f.key))}')">${num(f.clients.size)} klientů</button></td><td><div class="actions"><button class="btn slim" onclick="openInvestmentFundModal('${esc(investmentPosition_enc(f.key))}')">Upravit</button><button class="btn slim" onclick="selectInvestmentFund('${esc(investmentPosition_enc(f.key))}')">Klienti</button><button class="icon-btn ${locked ? 'primary' : ''}" onclick="toggleInvestmentFundLock('${esc(investmentPosition_enc(f.key))}')">${locked ? '🔒' : '🔓'}</button></div></td></tr>`;
-  }).join('')}</tbody></table></div></div>`).join('') || '<div class="note">Zatím tu nejsou investiční fondy.</div>'}${renderInvestmentFundClients(selected)}`;
+  }).join('')}</tbody></table></div>${rows.some(f => f.key === selectedInvestmentFundKey) ? renderInvestmentFundClients(selected) : ''}</div>`).join('') || '<div class="note">Zatím tu nejsou investiční fondy.</div>'}`;
 }
 function renderInvestments() {
   const list = byId('investmentClientList'),
@@ -11791,8 +11804,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.09.22-3';
-const VERSION_NOTE = 'Výraznější modrostříbrné rámečky karet, polí a tlačítek a tmavě modré písmo ve světlém skleněném vzhledu.';
+const VERSION = '2026.09.22-4';
+const VERSION_NOTE = 'Kompaktní souhrny smluv, příležitosti podle rozpracovanosti a rozložení investic i penzí s přehledem klientů společností.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
