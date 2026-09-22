@@ -1,5 +1,12 @@
 # Historie verzí
 
+## 2026.09.22-2
+
+- Přehled výplat jednotlivých obchodů tipařů napříč roky, filtry stavu, datum výplaty, poznámka a historie oprav.
+- CRM využívá celou šířku monitoru.
+- Rodinné vazby na kartě klienta: děti, rodiče, partneři a sourozenci, obousměrné propojení i založení nového člena.
+- Volitelná evidence správy produktů rodičem do 18 let; vazby se ukládají v klientských datech a záloze.
+
 ## 2026.09.22-1
 
 - Stažení investičního návrhu znovu používá podrobný klientský výstup z původní kalkulačky.

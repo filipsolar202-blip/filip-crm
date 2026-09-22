@@ -3118,6 +3118,7 @@ function renderClientDetail() {
   const labels = {
     overview: 'Přehled',
     portfolio: 'Portfolio',
+    family: 'Rodina',
     opportunities: 'Příležitosti',
     contracts: 'Smlouvy',
     deals: 'Obchody',
@@ -3126,8 +3127,8 @@ function renderClientDetail() {
     history: 'Historie'
   };
   el.querySelector('.subnav').innerHTML = Object.entries(labels).map(([k, l]) => `<button class="subtab ${clientSection === k ? 'active' : ''}" onclick="clientSection='${k}';renderClientDetail()">${l}</button>`).join('');
-  el.insertAdjacentHTML('beforeend', clientSection === 'overview' ? clientOverview(c, contracts, deals, acts, year) : clientSection === 'portfolio' ? clientPortfolio(c, contracts, deals) : clientSection === 'opportunities' ? opportunitiesMini(opps) : clientSection === 'contracts' ? contractsMini(contracts) : clientSection === 'deals' ? dealsMini(deals, year) : clientSection === 'recommendations' ? recommendationsMini(c) : clientSection === 'notes' ? notesMini(notes) : historyMini(c, acts, contracts, deals));
-  if (clientSection === 'overview') el.insertAdjacentHTML('beforeend', clientReferralOverview(c));
+  el.insertAdjacentHTML('beforeend', clientSection === 'overview' ? clientOverview(c, contracts, deals, acts, year) : clientSection === 'family' ? clientFamilyHtml(c) : clientSection === 'portfolio' ? clientPortfolio(c, contracts, deals) : clientSection === 'opportunities' ? opportunitiesMini(opps) : clientSection === 'contracts' ? contractsMini(contracts) : clientSection === 'deals' ? dealsMini(deals, year) : clientSection === 'recommendations' ? recommendationsMini(c) : clientSection === 'notes' ? notesMini(notes) : historyMini(c, acts, contracts, deals));
+  if (clientSection === 'overview') el.insertAdjacentHTML('beforeend', clientFamilyHtml(c) + clientReferralOverview(c));
 }
 function clientInvestmentSummary(clientId) {
   const items = clientDisplayInvestmentItems(clientId),
@@ -4638,7 +4639,7 @@ function avgPct(x) {
 }
 function renderOwners(y) {
   const rows = ownerRows(y),
-    html = `<thead><tr><th>Typař</th><th>BJ celkem</th><th>Oček. provize z BJ</th><th>Domluveno</th><th>Typaři celkem</th><th>Čistá provize</th><th>Obchodů</th><th>Vyplaceno</th><th>Nevyplaceno</th></tr></thead><tbody>${rows.map(([name, x]) => `<tr><td><b>${esc(name)}</b></td><td class="num">${num(x.bj)}</td><td class="money">${money(x.cash)}</td><td class="num">${avgPct(x).toFixed(0)} %</td><td class="money">${money(x.payout)}</td><td class="money">${money(x.net)}</td><td class="num">${num(x.count)}</td><td class="money">${num(x.paid)} · ${money(x.paidAmount)}</td><td class="money">${num(x.unpaid)} · ${money(x.unpaidAmount)}</td></tr>`).join('') || `<tr><td colspan="9" class="note">Zatím nemáš žádného typaře s obchodem.</td></tr>`}</tbody>`;
+    html = `<thead><tr><th>Typař</th><th>BJ celkem</th><th>Oček. provize z BJ</th><th>Domluveno</th><th>Typaři celkem</th><th>Čistá provize</th><th>Obchodů</th><th>Vyplaceno</th><th>Nevyplaceno</th></tr></thead><tbody>${rows.map(([name, x]) => `<tr><td><button class="btn slim" onclick="openOwnerLedger(decodeURIComponent('${esc(encodeURIComponent(name))}'))">${esc(name)} · Výplaty obchodů</button></td><td class="num">${num(x.bj)}</td><td class="money">${money(x.cash)}</td><td class="num">${avgPct(x).toFixed(0)} %</td><td class="money">${money(x.payout)}</td><td class="money">${money(x.net)}</td><td class="num">${num(x.count)}</td><td class="money">${num(x.paid)} · ${money(x.paidAmount)}</td><td class="money">${num(x.unpaid)} · ${money(x.unpaidAmount)}</td></tr>`).join('') || `<tr><td colspan="9" class="note">Zatím nemáš žádného typaře s obchodem.</td></tr>`}</tbody>`;
   ['ownerTable', 'dealsOwnerTable'].forEach(id => {
     const el = byId(id);
     if (el) el.innerHTML = html;
@@ -4886,7 +4887,7 @@ function renderReferrerHubCore() {
   const t = byId('referrerHubTable');
   if (t) t.innerHTML = `<thead><tr><th>Typař</th><th>Přivedl klientů</th><th>Obchodů</th><th>BJ celkem</th><th>Oček. provize z BJ</th><th>Investice objem</th><th>Hypotéky objem</th><th>Domluveno</th><th>K výplatě</th><th>Vyplaceno</th><th>Mimo obchod</th><th>Nevyplaceno</th><th>Čistá provize</th><th>Akce</th></tr></thead><tbody>${owners.map(([name, x]) => {
     const clients = state.clients.filter(c => c.leadType === 'tipar' && norm(c.leadSource) === norm(name)).length;
-    return `<tr><td><b>${esc(name)}</b></td><td class="num">${num(clients)}</td><td class="num">${num(x.count)}</td><td class="num">${num(x.bj)}</td><td class="money">${money(x.cash)}</td><td class="money">${money(x.inv)}</td><td class="money">${money(x.mort)}</td><td class="num">${avgPct(x).toFixed(0)} %</td><td class="money">${money(x.payout)}</td><td class="money">${num(x.paid)} · ${money(x.paidAmount)}</td><td class="money">${money(x.extraPaid || 0)}</td><td class="money">${num(x.unpaid)} · ${money(x.unpaidAmount)}</td><td class="money">${money(x.net)}</td><td><button class="btn slim" onclick="openReferrerPayoutModal(decodeURIComponent('${esc(encodeURIComponent(name))}'))">+ Mimo obchod</button></td></tr>`;
+    return `<tr><td><button class="btn slim" onclick="openOwnerLedger(decodeURIComponent('${esc(encodeURIComponent(name))}'))">${esc(name)} · Výplaty obchodů</button></td><td class="num">${num(clients)}</td><td class="num">${num(x.count)}</td><td class="num">${num(x.bj)}</td><td class="money">${money(x.cash)}</td><td class="money">${money(x.inv)}</td><td class="money">${money(x.mort)}</td><td class="num">${avgPct(x).toFixed(0)} %</td><td class="money">${money(x.payout)}</td><td class="money">${num(x.paid)} · ${money(x.paidAmount)}</td><td class="money">${money(x.extraPaid || 0)}</td><td class="money">${num(x.unpaid)} · ${money(x.unpaidAmount)}</td><td class="money">${money(x.net)}</td><td><button class="btn slim" onclick="openReferrerPayoutModal(decodeURIComponent('${esc(encodeURIComponent(name))}'))">+ Mimo obchod</button></td></tr>`;
   }).join('') || '<tr><td colspan="14" class="note">Zatím tu není žádný typař. Označ klienta jako „Je typař“ v kartě klienta a tady se objeví i s domluvenou provizí.</td></tr>'}</tbody>`;
   const r = byId('recommendationHubTable');
   if (r) r.innerHTML = `<thead><tr><th>Typ</th><th>Doporučil / typař</th><th>Koho</th><th>Co</th><th>Datum</th><th>Obchodů</th><th>BJ</th><th>Oček. provize</th><th>Investice</th><th>Hypotéky</th><th>Klient</th></tr></thead><tbody>${recRows.map(x => {
@@ -11790,7 +11791,7 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.09.22-1';
+const VERSION = '2026.09.22-2';
 const VERSION_NOTE = 'Investiční plán nabízí podrobný návrh ve stylu původní kalkulačky i samostatné srovnání variant A/B.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
@@ -11994,3 +11995,58 @@ initDiskStorage().then(() => {
   fundPerformance_applyApprovedFundExpectedRates();
   renderAll();
 });
+
+function crmExtraModal(id, title, html) {
+  let el=byId(id);
+  if(!el){el=document.createElement('div');el.id=id;el.className='modal';document.body.appendChild(el);}
+  el.innerHTML=`<div class="modal-box wide"><div class="toolbar"><h2>${esc(title)}</h2><button class="btn" onclick="closeModal('${id}')">Zavřít</button></div>${html}</div>`;
+  openModal(id);
+}
+function openOwnerLedger(name, filter='all') {
+  const all=state.deals.filter(d=>dealOwnerType(d)==='tipar' && norm(d.owner)===norm(name));
+  const rows=all.filter(d=>filter==='all'||(filter==='paid'?d.ownerPaid:!d.ownerPaid)).sort((a,b)=>Number(!!a.ownerPaid)-Number(!!b.ownerPaid)||String(b.date).localeCompare(String(a.date)));
+  const enc=esc(encodeURIComponent(name));
+  crmExtraModal('ownerLedgerModal','Výplaty obchodů · '+name,`<p class="note">Všechny roky, včetně skrytých obchodů. Stav vychází ze zaznamenané výplaty tipaři. Chybějící záznam není potvrzením, že platba neproběhla; před další platbou ověř historii plateb.</p><div class="actions">${[['all','Všechny'],['unpaid','Bez záznamu výplaty'],['paid','Vyplacené']].map(([key,label])=>`<button class="btn ${filter===key?'primary':''}" onclick="openOwnerLedger(decodeURIComponent('${enc}'),'${key}')">${label}</button>`).join('')}</div><p>Vyplaceno: <b>${num(all.filter(d=>d.ownerPaid).length)}</b> obchodů · Bez záznamu výplaty: <b>${num(all.filter(d=>!d.ownerPaid).length)}</b></p><div class="table-wrap"><table><thead><tr><th>Klient / obchod</th><th>Datum obchodu</th><th>Odměna</th><th>Stav výplaty tipaři</th><th>Datum výplaty</th><th>Doklad / poznámka</th><th>Akce</th></tr></thead><tbody>${rows.map(d=>`<tr><td><b>${esc(clientName(findClient(d.clientId)))}</b><br>${esc(d.product||d.category||'')} · ${esc(d.company||'')}${d.hidden?' · skrytý obchod':''}${d.ownerPaymentHistory?.length?`<details><summary>Historie označení (${d.ownerPaymentHistory.length})</summary>${d.ownerPaymentHistory.map(h=>`<p>${esc(h.changedAt)} · ${h.paid?'vyplaceno':'oprava stavu'} · ${esc(h.date||'')} · ${esc(h.note||'')}</p>`).join('')}</details>`:''}</td><td>${esc(d.date||'')}</td><td>${money(dealOwnerPayout(d,yearOf(d.date)))}</td><td><span class="badge ${d.ownerPaid?'green':'orange'}">${d.ownerPaid?'Vyplaceno':'Bez záznamu výplaty'}</span></td><td><input type="date" id="ownerDate${d.id}" value="${esc(d.ownerPaidDate||'')}"></td><td><input id="ownerNote${d.id}" value="${esc(d.ownerPaidNote||'')}" placeholder="Např. převod, číslo dokladu"></td><td><button class="btn" onclick="recordOwnerPayment(${d.id},true)">${d.ownerPaid?'Uložit údaje':'Zaznamenat výplatu'}</button>${d.ownerPaid?`<button class="btn" onclick="recordOwnerPayment(${d.id},false)">Opravit stav</button>`:''}</td></tr>`).join('')||'<tr><td colspan="7">Žádné obchody v tomto výběru.</td></tr>'}</tbody></table></div><h3>Samostatné platby mimo obchod</h3><p class="note">Tyto platby nejsou automaticky přiřazené ke konkrétním obchodům.</p>${(state.referrerPayouts||[]).filter(x=>norm(x.name)===norm(name)).map(x=>`<p>${esc(x.date)} · ${money(x.amount)} · ${esc(x.note||'')}</p>`).join('')||'<p class="note">Bez samostatných plateb.</p>'}`);
+}
+function recordOwnerPayment(id, paid) {
+  const d=state.deals.find(x=>String(x.id)===String(id));if(!d)return;
+  const date=val('ownerDate'+id),note=val('ownerNote'+id).trim();
+  if(paid&&!date)return alert('Vyplň skutečné datum výplaty.');
+  if(!paid&&!confirm('Opravit označení na stav bez záznamu výplaty? Původní záznam zůstane v historii změn.'))return;
+  d.ownerPaymentHistory=d.ownerPaymentHistory||[];
+  d.ownerPaymentHistory.push({changedAt:new Date().toISOString(),previousPaid:!!d.ownerPaid,previousDate:d.ownerPaidDate||'',previousNote:d.ownerPaidNote||'',paid,date,note});
+  d.ownerPaid=paid;d.ownerPaidDate=paid?date:'';d.ownerPaidNote=note;
+  persist();renderAll();openOwnerLedger(d.owner);
+}
+function clientFamilyHtml(c) {
+  const labels={child:'Dítě',parent:'Rodič',partner:'Partner/partnerka',sibling:'Sourozenec',other:'Rodinná vazba'};
+  const links=(c.familyLinks||[]).filter(x=>findClient(x.clientId));
+  return `<div class="mini-card" style="margin-top:12px"><div class="toolbar"><h3>Rodina · ${links.length}</h3><button class="btn" onclick="openFamilyLink(${c.id})">+ Přidat rodinnou vazbu</button></div>${links.map(x=>{const person=findClient(x.clientId),age=clientAgeFromBirthId(person.birthId),childAge=x.type==='child'?age:clientAgeFromBirthId(c.birthId);return `<div class="family-row"><div><b>${esc(clientName(person))}</b> · ${labels[x.type]||labels.other}${age!==null?' · '+num(age)+' let':''}<div class="note">${esc(x.note||'')}${x.managedByParent&&childAge!==null&&childAge>=18?' · Klient je plnoletý; správa do 18 let již skončila':x.managedByParent?(x.type==='child'?' · Rodič spravuje produkty dítěte do 18 let':' · Tento rodič spravuje produkty do 18 let'):''}</div></div><div class="actions"><button class="btn" onclick="selectClient(${person.id});clientSection='family';renderClientDetail()">Otevřít klienta</button><button class="btn" onclick="removeFamilyLink(${c.id},${person.id})">Odebrat vazbu</button></div></div>`;}).join('')||'<p class="note">Připoj existujícího klienta nebo založ dítě, partnera či dalšího člena rodiny.</p>'}</div>`;
+}
+function openFamilyLink(id) {
+  const c=findClient(id);if(!c)return;
+  crmExtraModal('familyLinkModal','Rodina · '+clientName(c),`<input id="familyOwner" type="hidden" value="${id}"><div class="form-grid"><div class="field"><label>Vybraný člověk je vůči klientovi</label><select id="familyType"><option value="child">Dítě</option><option value="parent">Rodič</option><option value="partner">Partner/partnerka</option><option value="sibling">Sourozenec</option><option value="other">Jiný člen rodiny</option></select></div><div class="field"><label>Existující klient</label><select id="familyPerson"><option value="">Založit nového člena rodiny</option>${state.clients.filter(x=>String(x.id)!==String(id)).sort((a,b)=>clientName(a).localeCompare(clientName(b),'cs')).map(x=>`<option value="${x.id}">${esc(clientName(x))}${x.birthId?' · '+esc(x.birthId):''}</option>`).join('')}</select></div><div class="field"><label>Jméno nového člena (při založení)</label><input id="familyName"></div><div class="field"><label>Rodné číslo nového člena (volitelné)</label><input id="familyBirthId"></div><div class="field full"><label>Poznámka k vazbě</label><input id="familyNote"></div></div><label><input type="checkbox" id="familyManaged"> Rodič spravuje produkty dítěte do 18 let</label><div class="actions" style="margin-top:12px"><button class="btn primary" onclick="saveFamilyLink()">Uložit rodinnou vazbu</button></div>`);
+}
+function saveFamilyLink() {
+  const c=findClient(val('familyOwner'));if(!c)return;
+  let person=findClient(val('familyPerson'));const type=val('familyType'),name=val('familyName').trim(),birthId=val('familyBirthId').trim();
+  if(!person){if(!name)return alert('Vyber klienta nebo vyplň jméno nového člena rodiny.');
+    const duplicate=state.clients.find(x=>(birthId&&String(x.birthId||'').replace(/\D/g,'')===birthId.replace(/\D/g,''))||norm(clientName(x))===norm(name));
+    if(duplicate)return alert('Klient již může existovat. Vyber jej v seznamu existujících klientů.');
+    person={id:uid(),name,birthId,createdAt:today(),updatedAt:today()};state.clients.push(person);
+  }
+  if(String(person.id)===String(c.id))return alert('Klient nemůže být ve vazbě sám se sebou.');
+  const inverse={child:'parent',parent:'child',partner:'partner',sibling:'sibling',other:'other'};
+  const note=val('familyNote').trim(),managedByParent=['child','parent'].includes(type)&&byId('familyManaged').checked;
+  c.familyLinks=(c.familyLinks||[]).filter(x=>String(x.clientId)!==String(person.id));
+  person.familyLinks=(person.familyLinks||[]).filter(x=>String(x.clientId)!==String(c.id));
+  c.familyLinks.push({clientId:person.id,type,note,managedByParent});person.familyLinks.push({clientId:c.id,type:inverse[type],note,managedByParent});
+  persist();closeModal('familyLinkModal');renderAll();clientSection='family';renderClientDetail();
+}
+function removeFamilyLink(id,otherId) {
+  if(!confirm('Odebrat rodinnou vazbu? Obě klientské karty zůstanou zachované.'))return;
+  const c=findClient(id),other=findClient(otherId);
+  if(c)c.familyLinks=(c.familyLinks||[]).filter(x=>String(x.clientId)!==String(otherId));
+  if(other)other.familyLinks=(other.familyLinks||[]).filter(x=>String(x.clientId)!==String(id));
+  persist();renderClientDetail();
+}
