@@ -1,5 +1,10 @@
 # Historie verzí
 
+## 2026.09.28-1
+- Klientský report: samostatný přehled dostupnosti prostředků u investic a FKI, včetně časového testu, odkupu a vypořádání po jednotlivých nákupech.
+- Nejbližší termín se počítá nejdříve ode dne vytvoření reportu; chybějící pravidla se označí místo vymyšleného termínu.
+- Přehled rozlišuje nejbližší známou pozici a vypořádání všech zbývajících pozic.
+
 ## 2026.09.22-4
 - Souhrny smluv a hypoték v jednom řádku na monitoru; tržní sazba jako kompaktní dlaždice.
 - Příležitosti řazené od schválených přes schvalování až k novým příležitostem.
