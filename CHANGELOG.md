@@ -1,5 +1,11 @@
 # Historie verzí
 
+## 2026.09.28-2
+- Popis fondu předchází zvýrazněným hodnotám; termíny odkupu jsou drobnou poznámkou pod transakcemi.
+- Odhad odkupní částky používá dosavadní průměrný roční výnos pozice pouze do nejbližšího odkupu, během vypořádání neroste.
+- Graf od prvního evidovaného vkladu barevně rozlišuje historické vklady a budoucí model; nezaměňuje vklady za historická ocenění.
+- Investiční přehled a grafy mají v reportu přednost před ostatními produkty.
+
 ## 2026.09.28-1
 - Klientský report: samostatný přehled dostupnosti prostředků u investic a FKI, včetně časového testu, odkupu a vypořádání po jednotlivých nákupech.
 - Nejbližší termín se počítá nejdříve ode dne vytvoření reportu; chybějící pravidla se označí místo vymyšleného termínu.

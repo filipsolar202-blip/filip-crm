@@ -37,11 +37,16 @@ try{
    const rows=[row('2024-02-29'),row('2025-06-15',1)];
    const future=clientOutput_xRedemptionPlan(fund,rows,'2026-09-28');
    const matured=clientOutput_xRedemptionPlan(fund,[row('2020-01-10')],'2026-09-28');
+   state.fundValues[key].expectedRate=8;
+   rows[0].valueDate='2026-03-31';rows[0].pa=8;
+   const estimate=clientOutput_xRedemptionEstimate(fund,future.positions[0]);
+   const delayed=clientOutput_xRedemptionEstimate(fund,{...future.positions[0],payout:'2030-01-31'});
    const html=clientOutput_xRedemptionHtml(fund,rows);
+   const chart=clientOutput_xHistoryChart([{...fund,rows:[{sourceType:'deal',date:'2023-01-10',purchaseDate:'2023-01-10',invested:100000,current:110000}]}]);
    delete state.fundValues[key].settlementMonths;
    const missing=clientOutput_xRedemptionPlan(fund,rows,'2026-09-28');
    delete state.fundValues[key];
-   return{future,matured,missing,html};
+   return{future,matured,missing,html,estimate,delayed,chart};
  });
  assert.equal(redemptionReport.future.positions[0].taxReady,'2027-02-28');
  assert.equal(redemptionReport.future.positions[0].redemption,'2027-03-31');
@@ -51,6 +56,10 @@ try{
  assert.equal(redemptionReport.matured.positions[0].payout,'2026-11-30');
  assert(redemptionReport.missing.positions.every(x=>!x.payout));
  assert(redemptionReport.html.includes('Kdy můžete mít prostředky zpět'));
+ assert(Math.abs(redemptionReport.estimate.amount-54000)<10);
+ assert.equal(redemptionReport.estimate.amount,redemptionReport.delayed.amount);
+ assert(!redemptionReport.html.includes('<table'));assert(redemptionReport.html.includes('Odhad hodnoty odkupu'));
+ assert(redemptionReport.chart.includes('10. 1. 2023'));assert(redemptionReport.chart.includes('nikoli průběžná ocenění'));
  results.push('Report redemption dates include 36-month test, next future window, settlement and missing settings');
 
  const overviewUpdates=await page.evaluate(()=>{
@@ -111,7 +120,7 @@ try{
   const pending=page.waitForEvent('download');await page.evaluate(action);const download=await pending;assert(download.suggestedFilename().endsWith('.html'));
   const report=fs.readFileSync(await download.path(),'utf8');assert(report.includes('Testovací klient Alfa'));assert(!report.includes('NaN'));assert(!report.includes('undefined'));
   if(name==='scenario'){assert(report.includes('Skladba nového nákupu'));assert(report.includes('Model vývoje portfolia'));assert(report.includes('Navržené fondy'));assert(report.includes('Test FKI fond'));}
-  const reportPage=await context.newPage();await reportPage.setContent(report);await reportPage.waitForTimeout(150);assert((await reportPage.locator('body').innerText()).length>100);if(name==='client'||name==='fki'){assert(report.includes('Kdy můžete mít prostředky zpět'));await reportPage.locator('.report-redemption').first().screenshot({path:'/private/tmp/crm-redemption-'+name+'.png'});}if(name==='scenario')await reportPage.screenshot({path:'/private/tmp/crm-investment-purchase-report.png',fullPage:true});const pdf=await reportPage.pdf({format:'A4',printBackground:true});assert(pdf.length>10000);await reportPage.close();
+  const reportPage=await context.newPage();await reportPage.setContent(report);await reportPage.waitForTimeout(150);assert((await reportPage.locator('body').innerText()).length>100);if(name==='client')await reportPage.locator('.report-fund-detail').first().screenshot({path:'/private/tmp/crm-compact-fund.png'});if(name==='client'||name==='fki'){assert(report.includes('Kdy můžete mít prostředky zpět'));await reportPage.locator('.report-redemption').first().screenshot({path:'/private/tmp/crm-redemption-'+name+'.png'});}if(name==='scenario')await reportPage.screenshot({path:'/private/tmp/crm-investment-purchase-report.png',fullPage:true});const pdf=await reportPage.pdf({format:'A4',printBackground:true});assert(pdf.length>10000);await reportPage.close();
   results.push(name+' HTML download opens independently');
  }
  await page.evaluate(()=>{document.querySelectorAll('.modal.show').forEach(x=>x.classList.remove('show'));showView('referrers');setVal('quickCallDate','2026-09-16');setVal('quickCallOutcome','realized');setVal('quickCallNext','Schůzka');setVal('quickCallNextDate','2026-09-23');saveQuickAnalysis('call')});
