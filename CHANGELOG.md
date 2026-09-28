@@ -1,5 +1,10 @@
 # Historie verzí
 
+## 2026.09.28-3
+- Graf lineárně propojuje počáteční investici s aktuální hodnotou a navazující prognózou.
+- Vklady ze stejného dne se sčítají; pozdější dokupy tvoří skoky v průběhu.
+- Historická část je označena jako zjednodušená ilustrace.
+
 ## 2026.09.28-2
 - Popis fondu předchází zvýrazněným hodnotám; termíny odkupu jsou drobnou poznámkou pod transakcemi.
 - Odhad odkupní částky používá dosavadní průměrný roční výnos pozice pouze do nejbližšího odkupu, během vypořádání neroste.

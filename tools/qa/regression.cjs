@@ -59,9 +59,23 @@ try{
  assert(Math.abs(redemptionReport.estimate.amount-54000)<10);
  assert.equal(redemptionReport.estimate.amount,redemptionReport.delayed.amount);
  assert(!redemptionReport.html.includes('<table'));assert(redemptionReport.html.includes('Odhad hodnoty odkupu'));
- assert(redemptionReport.chart.includes('10. 1. 2023'));assert(redemptionReport.chart.includes('nikoli průběžná ocenění'));
+ assert(redemptionReport.chart.includes('10. 1. 2023'));assert(redemptionReport.chart.includes('nikoli skutečná průběžná ocenění'));
  results.push('Report redemption dates include 36-month test, next future window, settlement and missing settings');
 
+ const connectedChart=await page.evaluate(()=>{
+ const funds=[{area:'Investice',amount:166627,rows:[{sourceType:'deal',purchaseDate:'2023-09-20',invested:130000,current:166627}]},{area:'Investice',amount:146487,rows:[{sourceType:'deal',purchaseDate:'2023-09-20',invested:120000,current:146487}]}];
+ const parse=html=>{const el=document.createElement('div');el.innerHTML=html;return {history:el.querySelector('[data-series="history"]').getAttribute('points').split(' '),forecast:el.querySelector('[data-series="forecast"]').getAttribute('points').split(' ')};};
+ const html=clientOutput_xHistoryChart(funds), normal=parse(html);
+ funds[1].rows[0].purchaseDate='2024-09-20';const topup=parse(clientOutput_xHistoryChart(funds));
+ return {normal,topup,html};
+ });
+ assert.equal(connectedChart.normal.history.length,2);
+ assert.equal(connectedChart.normal.history.at(-1),connectedChart.normal.forecast[0]);
+ assert(Number(connectedChart.normal.history[0].split(',')[1])>Number(connectedChart.normal.history[1].split(',')[1]));
+ assert.equal(connectedChart.topup.history[1].split(',')[0],connectedChart.topup.history[2].split(',')[0]);
+ assert.equal(connectedChart.topup.history.at(-1),connectedChart.topup.forecast[0]);
+ const chartPreview=await context.newPage();await chartPreview.setContent('<style>body{font-family:Arial;max-width:1000px}.sim-chart{width:100%}.chart-label{font-size:12px;fill:#64748b}</style>'+connectedChart.html);await chartPreview.screenshot({path:'/private/tmp/crm-connected-chart.png'});await chartPreview.close();
+ results.push('History aggregates initial deposits, connects to current value and preserves later top-up jumps');
  const overviewUpdates=await page.evaluate(()=>{
    const ordered=['Oportunita','Ve schvalování','Schváleno','Čekám na podklady'].map(status=>({o:{status},c:findClient(1)})).sort(compareOpportunities).map(x=>x.o.status);
    showView('contracts');setContractSection('hypoteky');
