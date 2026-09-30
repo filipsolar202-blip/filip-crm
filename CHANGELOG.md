@@ -1,5 +1,12 @@
 # Historie verzí
 
+## 2026.09.30-1
+- Propojený graf vývoje a koláč alokace: kurzor, časový posuvník, hodnoty, vklady a zhodnocení ke společnému datu; funguje i ve staženém HTML bez internetu.
+- Filtry společností u klientského portfolia a v klientských sekcích Investice, FKI a Penze, včetně volby Všechny společnosti.
+- Report: jednoduchý celkový přehled, grafy, souhrnná tabulka fondů a pak detail. Transakce se rozbalují až na kliknutí.
+- Tisk/PDF zobrazí transakce a vrátí grafy na aktuální hodnoty; po tisku obnoví zvolený náhled.
+- Zachována dosavadní metodika výnosů, časových testů a odkupu.
+
 ## 2026.09.28-3
 - Graf lineárně propojuje počáteční investici s aktuální hodnotou a navazující prognózou.
 - Vklady ze stejného dne se sčítají; pozdější dokupy tvoří skoky v průběhu.

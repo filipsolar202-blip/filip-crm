@@ -76,6 +76,39 @@ try{
  assert.equal(connectedChart.topup.history.at(-1),connectedChart.topup.forecast[0]);
  const chartPreview=await context.newPage();await chartPreview.setContent('<style>body{font-family:Arial;max-width:1000px}.sim-chart{width:100%}.chart-label{font-size:12px;fill:#64748b}</style>'+connectedChart.html);await chartPreview.screenshot({path:'/private/tmp/crm-connected-chart.png'});await chartPreview.close();
  results.push('History aggregates initial deposits, connects to current value and preserves later top-up jumps');
+ const interactive=await page.evaluate(()=>{
+   const now=liquidity_localDate(today()).getTime(), earlier=liquidity_localDate('2023-09-20').getTime();
+   const model={start:earlier,now,end:liquidity_addMonths(new Date(now),108).getTime(),funds:[{name:'Fond A',current:166627,rate:8,color:'#0b3558',positions:[{date:earlier,invested:130000,current:166627}]},{name:'Fond B',current:146487,rate:4,color:'#2aa7b8',positions:[{date:earlier,invested:120000,current:146487}]}]};
+   const base=portfolioTimelineValue(model,now),future=portfolioTimelineValue(model,model.end),past=portfolioTimelineValue(model,earlier);
+   const funds=model.funds.map((f,i)=>({area:'Investice',key:'qa-'+i,product:f.name,company:'Společnost '+i,amount:f.current,invested:f.positions[0].invested,valueDate:today(),rows:[{sourceType:'deal',date:'2023-09-20',purchaseDate:'2023-09-20',current:f.current,invested:f.positions[0].invested}]}));
+   const html='<!doctype html><html><head><style>'+clientOutput_xCss()+portfolioTimelineCss()+'</style></head><body><div class="wrap">'+portfolioTimelineHtml(funds)+'</div><script>'+portfolioTimelineValue.toString()+'\n'+portfolioTimelineSelect.toString()+'</'+'script></body></html>';
+   return {base,future,past,html};
+ });
+ assert.equal(interactive.base.total,313114);assert.equal(interactive.past.total,250000);assert(interactive.future.total>interactive.base.total);
+ assert(interactive.future.values[0]/interactive.future.total>interactive.base.values[0]/interactive.base.total);
+ const offline=await context.newPage();await offline.setContent(interactive.html);
+ const initialDonut=await offline.locator('.timeline-donut').getAttribute('style');
+ await offline.locator('input[type=range]').evaluate(el=>{el.value=el.max;el.dispatchEvent(new Event('input',{bubbles:true}));});
+ assert.equal(await offline.locator('.timeline-status').innerText(),'Prognóza');assert.notEqual(await offline.locator('.timeline-donut').getAttribute('style'),initialDonut);
+ assert.equal(await offline.locator('.timeline-total').innerText(),await offline.locator('.timeline-value').innerText());
+ const svgBox=await offline.locator('svg').boundingBox();await offline.mouse.move(svgBox.x+svgBox.width*.75,svgBox.y+svgBox.height*.5);
+ assert.equal(await offline.locator('.timeline-status').innerText(),'Prognóza');
+ await offline.screenshot({path:'/private/tmp/crm-interactive-timeline.png',fullPage:true});
+ await offline.locator('.timeline-reset').click();assert.equal(await offline.locator('.timeline-value').innerText(),'313 114 Kč');
+ await offline.locator('input[type=range]').focus();await offline.keyboard.press('ArrowRight');assert.equal(await offline.locator('.timeline-status').innerText(),'Prognóza');await offline.close();
+ const providerFiltering=await page.evaluate(()=>{
+   const added={...state.deals.find(d=>d.id===20),id:991,company:'Druhá společnost',product:'Druhý fond',amount:50000};state.deals.push(added);
+   showView('investments');selectInvestmentClient(1);
+   setClientProvider('investice',1,encodeURIComponent('Druhá společnost'));
+   const filtered=byId('investmentDetail').querySelector('.fki-work-list').innerText;
+   setClientProvider('investice',1,'');const all=byId('investmentDetail').querySelector('.fki-work-list').innerText;
+   showView('clients');selectClient(1);clientSection='portfolio';renderClients();setClientProvider('portfolio',1,encodeURIComponent('Druhá společnost'));
+   const card=byId('clientDetail').querySelector('.portfolio-grid').innerText;setClientProvider('portfolio',1,'');
+   showView('pensions');selectPensionClient(1);const pensions=byId('pensionDetail').querySelector('.provider-filter').innerText;
+   state.deals=state.deals.filter(d=>d.id!==991);renderAll();return {filtered,all,card,pensions};
+ });
+ assert(providerFiltering.filtered.includes('Druhý fond'));assert(!providerFiltering.filtered.includes('Test klasický fond'));assert(providerFiltering.all.includes('Test klasický fond'));assert(providerFiltering.card.includes('Druhý fond'));assert(!providerFiltering.card.includes('Test klasický fond'));assert(providerFiltering.pensions.includes('Všechny společnosti'));
+ results.push('Offline linked timeline hover, slider, reset, allocations and per-client provider filters');
  const overviewUpdates=await page.evaluate(()=>{
    const ordered=['Oportunita','Ve schvalování','Schváleno','Čekám na podklady'].map(status=>({o:{status},c:findClient(1)})).sort(compareOpportunities).map(x=>x.o.status);
    showView('contracts');setContractSection('hypoteky');
@@ -134,7 +167,7 @@ try{
   const pending=page.waitForEvent('download');await page.evaluate(action);const download=await pending;assert(download.suggestedFilename().endsWith('.html'));
   const report=fs.readFileSync(await download.path(),'utf8');assert(report.includes('Testovací klient Alfa'));assert(!report.includes('NaN'));assert(!report.includes('undefined'));
   if(name==='scenario'){assert(report.includes('Skladba nového nákupu'));assert(report.includes('Model vývoje portfolia'));assert(report.includes('Navržené fondy'));assert(report.includes('Test FKI fond'));}
-  const reportPage=await context.newPage();await reportPage.setContent(report);await reportPage.waitForTimeout(150);assert((await reportPage.locator('body').innerText()).length>100);if(name==='client')await reportPage.locator('.report-fund-detail').first().screenshot({path:'/private/tmp/crm-compact-fund.png'});if(name==='client'||name==='fki'){assert(report.includes('Kdy můžete mít prostředky zpět'));await reportPage.locator('.report-redemption').first().screenshot({path:'/private/tmp/crm-redemption-'+name+'.png'});}if(name==='scenario')await reportPage.screenshot({path:'/private/tmp/crm-investment-purchase-report.png',fullPage:true});const pdf=await reportPage.pdf({format:'A4',printBackground:true});assert(pdf.length>10000);await reportPage.close();
+  const reportPage=await context.newPage();await reportPage.setContent(report);await reportPage.waitForTimeout(150);assert((await reportPage.locator('body').innerText()).length>100);if(name==='client'){assert(await reportPage.locator('.report-fund-overview').count());assert.equal(await reportPage.locator('.report-transactions').first().getAttribute('open'),null);await reportPage.locator('.report-transactions summary').first().click();assert(await reportPage.locator('.fund-transactions').first().isVisible());await reportPage.locator('.report-transactions summary').first().click();await reportPage.locator('.portfolio-timeline input').evaluate(el=>{el.value=el.max;el.dispatchEvent(new Event('input',{bubbles:true}));});await reportPage.evaluate(()=>window.dispatchEvent(new Event('beforeprint')));assert.equal(await reportPage.locator('.timeline-date').innerText(),new Date().toLocaleDateString('cs-CZ'));assert(await reportPage.locator('.fund-transactions').first().isVisible());await reportPage.evaluate(()=>window.dispatchEvent(new Event('afterprint')));assert.equal(await reportPage.locator('.timeline-status').innerText(),'Prognóza');}if(name==='client')await reportPage.locator('.report-fund-detail').first().screenshot({path:'/private/tmp/crm-compact-fund.png'});if(name==='client'||name==='fki'){assert(report.includes('Kdy můžete mít prostředky zpět'));await reportPage.locator('.report-redemption').first().screenshot({path:'/private/tmp/crm-redemption-'+name+'.png'});}if(name==='scenario')await reportPage.screenshot({path:'/private/tmp/crm-investment-purchase-report.png',fullPage:true});const pdf=await reportPage.pdf({format:'A4',printBackground:true,...(name==='client'?{path:'/private/tmp/crm-client-layout.pdf'}:{})});assert(pdf.length>10000);await reportPage.close();
   results.push(name+' HTML download opens independently');
  }
  await page.evaluate(()=>{document.querySelectorAll('.modal.show').forEach(x=>x.classList.remove('show'));showView('referrers');setVal('quickCallDate','2026-09-16');setVal('quickCallOutcome','realized');setVal('quickCallNext','Schůzka');setVal('quickCallNextDate','2026-09-23');saveQuickAnalysis('call')});
