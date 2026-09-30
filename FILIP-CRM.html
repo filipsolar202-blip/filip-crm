@@ -7,7 +7,7 @@
 <script src="assets/vendor/chart.umd.min.js"></script>
 <script src="assets/vendor/xlsx.full.min.js"></script>
 
-<link rel="stylesheet" href="assets/css/crm.css?v=2026.09.30-1">
+<link rel="stylesheet" href="assets/css/crm.css?v=2026.09.30-2">
 </head>
 <body>
 <div class="app">
@@ -16,7 +16,8 @@
     <nav class="tabs">
       <button class="tab active" data-view="dashboard">Dashboard</button>
       <button class="tab" data-view="clients">Klienti</button>
-      <button class="tab" data-view="opportunities">Příležitosti</button>
+      <button class="tab" data-view="opportunities">Obchodní případy</button>
+      <button class="tab" data-view="pipeline">Pipeline</button>
       <button class="tab" data-view="contracts">Smlouvy</button>
       <button class="tab" data-view="deals">Obchody</button>
       <button class="tab" data-view="investments">Investice</button>
@@ -110,16 +111,9 @@
       </div>
     </section>
 
-    <section id="opportunities" class="view">
-      <div class="card">
-        <div class="toolbar">
-          <div><div class="eyebrow">Příležitosti</div><h2>Rozpracované obchody před podpisem</h2></div>
-          <div class="filters"><input class="search" id="oppSearch" placeholder="Hledat klienta, produkt, stav..." oninput="renderOpportunities()"><select id="oppStatusFilter" onchange="renderOpportunities()"><option value="">Všechny stavy</option></select><select id="oppSort" onchange="renderOpportunities()"><option value="status">Řadit podle stavu</option><option value="date">Řadit podle data</option><option value="client">Řadit podle klienta</option><option value="area">Řadit podle oblasti</option><option value="volume">Řadit podle BJ</option></select><button class="btn primary" onclick="openOpportunityModal(selectedClientId||null)">+ Příležitost</button></div>
-        </div>
-        <div id="oppMetrics" class="metric-strip"></div>
-        <div class="table-wrap"><table id="opportunityTable"></table></div>
-      </div>
-    </section>
+    <section id="opportunities" class="view"><div class="card"><div class="toolbar"><div><div class="eyebrow">Obchodní případy</div><h2>Obchodní případy</h2></div><button class="btn primary" onclick="openOpportunityModal(selectedClientId||null)">+ Obchodní případ</button></div><div class="case-filters"><input class="search" id="oppSearch" placeholder="Hledat případ, klienta, společnost..." oninput="setCaseFilter('query',this.value)"><select id="oppCategoryFilter" aria-label="Kategorie" onchange="setCaseFilter('category',this.value)"></select><select id="oppStatusFilter" aria-label="Fáze" onchange="setCaseFilter('status',this.value)"></select><select id="oppSort" aria-label="Řazení" onchange="setCaseFilter('sort',this.value)"><option value="status">Nejblíže dokončení</option><option value="age">Nejdéle bez aktualizace</option><option value="date">Naposledy aktualizované</option><option value="client">Podle klienta</option><option value="area">Podle kategorie</option><option value="volume">Největší objem</option></select></div><div id="oppMetrics" class="metric-strip"></div><div class="table-wrap"><table id="opportunityTable"></table></div></div></section>
+
+    <section id="pipeline" class="view"><div class="card"><div class="toolbar"><div><div class="eyebrow">Obchodní případy</div><h2>Pipeline</h2></div><button class="btn primary" onclick="openOpportunityModal(selectedClientId||null)">+ Obchodní případ</button></div><div class="case-filters"><input class="search" id="pipelineSearch" placeholder="Hledat případ, klienta, společnost..." oninput="setCaseFilter('query',this.value)"><select id="pipelineCategoryFilter" aria-label="Kategorie" onchange="setCaseFilter('category',this.value)"></select><select id="pipelineStatusFilter" aria-label="Fáze" onchange="setCaseFilter('status',this.value)"></select><select id="pipelineSort" aria-label="Řazení" onchange="setCaseFilter('sort',this.value)"><option value="status">Nejblíže dokončení</option><option value="age">Nejdéle bez aktualizace</option><option value="date">Naposledy aktualizované</option><option value="client">Podle klienta</option><option value="area">Podle kategorie</option><option value="volume">Největší objem</option></select></div><div id="pipelineMetrics" class="metric-strip"></div><p class="note">Změňte fázi výběrem na kartě nebo přetažením mezi sloupci. Tabulka i pipeline zobrazují stejné případy.</p><div id="pipelineBoard" class="pipeline-board"></div></div></section>
 
     <section id="contracts" class="view">
       <div class="card">
@@ -449,7 +443,7 @@
 </div></div>
 
 <div class="modal" id="investmentScenarioModal"><div class="modal-box note-full"><div class="toolbar"><div><div class="eyebrow">Investice / FKI</div><h2>Varianty portfolia</h2><div class="note">Porovnej aktuální portfolio s návrhem A a případně B. Prodeje, reinvestice a nové nákupy jsou pouze součástí návrhu, dokud je výslovně neuložíš jako sjednané.</div></div><button class="btn" onclick="closeModal('investmentScenarioModal')">Zavřít</button></div>
-  <div class="form-grid"><div class="field"><label>Klient</label><select id="scenarioClient" onchange="toggleInvestmentScenarioClient();resetScenarioExternalRows();renderInvestmentScenario()"></select></div><div class="field"><label>Název prognózy</label><input id="scenarioForecastName" placeholder="např. Varianty po dnešní schůzce"></div><div class="field"><label>Oblast nového nákupu</label><select id="scenarioArea" onchange="fillInvestmentScenarioFunds()"><option>Investice</option><option>FKI</option></select></div><div class="field"><label>Horizont v letech</label><input id="scenarioYears" type="number" min="1" max="40" value="10" oninput="renderInvestmentScenario()"></div><div class="field"><label>Způsob uložení</label><select id="scenarioSaveMode" onchange="updateInvestmentScenarioSaveMode()"><option value="forecast">Uložit pouze prognózu</option><option value="proposal">Prognóza + příležitosti</option><option value="signed">Sjednáno rovnou</option></select></div><div class="field"><label>Datum sjednání</label><input id="scenarioSignedDate" type="date"></div></div>
+  <div class="form-grid"><div class="field"><label>Klient</label><select id="scenarioClient" onchange="toggleInvestmentScenarioClient();resetScenarioExternalRows();renderInvestmentScenario()"></select></div><div class="field"><label>Název prognózy</label><input id="scenarioForecastName" placeholder="např. Varianty po dnešní schůzce"></div><div class="field"><label>Oblast nového nákupu</label><select id="scenarioArea" onchange="fillInvestmentScenarioFunds()"><option>Investice</option><option>FKI</option></select></div><div class="field"><label>Horizont v letech</label><input id="scenarioYears" type="number" min="1" max="40" value="10" oninput="renderInvestmentScenario()"></div><div class="field"><label>Způsob uložení</label><select id="scenarioSaveMode" onchange="updateInvestmentScenarioSaveMode()"><option value="forecast">Uložit pouze prognózu</option><option value="proposal">Prognóza + obchodnímu případu</option><option value="signed">Sjednáno rovnou</option></select></div><div class="field"><label>Datum sjednání</label><input id="scenarioSignedDate" type="date"></div></div>
   <div id="scenarioVariantBar" class="scenario-variant-bar" style="margin-top:12px"></div>
   <div id="scenarioNewClientFields" class="mini-card" style="display:none;margin-top:12px"><h3>Nový klient</h3><div class="form-grid"><div class="field"><label>Jméno a příjmení</label><input id="scenarioNewClientName"></div><div class="field"><label>Rodné číslo / IČO</label><input id="scenarioNewClientBirthId"></div><div class="field"><label>Telefon</label><input id="scenarioNewClientPhone"></div><div class="field"><label>E-mail</label><input id="scenarioNewClientEmail" type="email"></div></div></div>
   <div id="scenarioCurrentPortfolio" class="mini-card" style="margin-top:12px"></div>
@@ -499,7 +493,7 @@
   <div class="field"><label>Propsat do smluv</label><select id="dCreateContract" onchange="toggleDealContractFields()"><option value="yes">Ano</option><option value="no">Ne</option></select></div><div class="field"><label>Typ smlouvy</label><select id="dContractType"><option>auto</option><option>majetek</option><option>život</option><option>hypotéka</option><option>úvěr</option><option>investice</option><option>FKI</option><option>DPS</option><option>DIP</option><option>ostatní</option></select></div><div class="field"><label>Číslo smlouvy</label><input id="dContractNumber"></div>
   <div class="field"><label>Výročí / fixace</label><input id="dContractAnniv" type="date"></div><div class="field"><label>Částka / platba</label><input id="dContractAmount"></div><div class="field"><label>Úrok</label><input id="dContractRate"></div>
   <div class="field"><label>Stav smlouvy</label><select id="dContractStatus" onchange="syncSignedDealContractRule()"></select></div><div class="field full"><label>Poznámka ke smlouvě</label><textarea class="contract-note-editor" id="dContractNote" onkeydown="datedTextareaEnter(event,this)" placeholder="Enter = nový datovaný záznam, Shift+Enter = nový řádek"></textarea></div>
-</div><div class="actions" style="justify-content:space-between;margin-top:12px"><button class="btn red" id="deleteDealBtn" onclick="deleteDeal()">Smazat</button><div class="actions"><button class="btn" id="moveDealToOppBtn" onclick="moveDealToOpportunity()">Přesunout do příležitostí</button><button class="btn primary" onclick="saveDeal()">Uložit obchod</button></div></div></div></div>
+</div><div class="actions" style="justify-content:space-between;margin-top:12px"><button class="btn red" id="deleteDealBtn" onclick="deleteDeal()">Smazat</button><div class="actions"><button class="btn" id="moveDealToOppBtn" onclick="moveDealToOpportunity()">Přesunout do obchodních případů</button><button class="btn primary" onclick="saveDeal()">Uložit obchod</button></div></div></div></div>
 
 <div class="modal" id="investmentSnapshotModal"><div class="modal-box"><div class="toolbar"><div><div class="eyebrow">Aktualizace portfolia</div><h2>Aktuální hodnota investice</h2></div><button class="btn" onclick="closeModal('investmentSnapshotModal')">Zavřít</button></div><div class="form-grid">
   <div class="field"><label>Klient</label><select id="isClient" onchange="fillInvestmentProductSelect()"></select></div><div class="field"><label>Produkt</label><select id="isProduct" onchange="syncInvestmentSnapshotProduct()"></select></div><div class="field"><label>Datum aktualizace</label><input id="isDate" type="date"></div>
@@ -550,7 +544,7 @@
 
 <div class="modal" id="noteViewModal"><div class="modal-box wide"><div class="toolbar"><div><div class="eyebrow" id="noteViewMeta"></div><h2 id="noteViewTitle">Poznámka</h2><div class="chips" id="noteViewTags"></div></div><div class="actions"><input class="search" id="noteInsideSearch" placeholder="Hledat uvnitř poznámky..." oninput="renderNoteViewText()"><button class="btn" onclick="editViewedNote()">Upravit</button><button class="btn" onclick="closeModal('noteViewModal')">Zavřít</button></div></div><div class="note-reader" id="noteViewText"></div></div></div>
 
-<div class="modal" id="opportunityModal"><div class="modal-box"><div class="toolbar"><h2 id="oppModalTitle">Příležitost</h2><button class="btn" onclick="closeModal('opportunityModal')">Zavřít</button></div><div class="form-grid">
+<div class="modal" id="opportunityModal"><div class="modal-box"><div class="toolbar"><h2 id="oppModalTitle">Obchodní případ</h2><button class="btn" onclick="closeModal('opportunityModal')">Zavřít</button></div><div class="form-grid">
   <div class="field"><label>Klient</label><select id="oClient"></select></div><div class="field"><label>Stav</label><select id="oStatus"></select></div><div class="field"><label>Datum stavu</label><input id="oStatusDate" type="date"></div>
   <div class="field"><label>Oblast</label><select id="oCategory" onchange="toggleOpportunityCustomCategory()"></select></div><div class="field"><label>Vlastní oblast</label><input id="oCategoryCustom" placeholder="např. Nemovitost, Firemní majetek"></div><div class="field"><label>Společnost</label><input id="oCompany"></div>
   <div class="field"><label>Produkt</label><input id="oProduct"></div>
@@ -558,8 +552,8 @@
   <div class="field"><label>Typař / zdroj</label><input id="oOwner"></div><div class="field"><label>Propsat po podpisu do smluv</label><select id="oCreateContract"><option value="yes">Ano</option><option value="no">Ne</option></select></div><div class="field"><label>Číslo smlouvy</label><input id="oContractNumber"></div>
   <div class="field"><label>Výročí / fixace</label><input id="oContractAnniv" type="date"></div><div class="field"><label>Úrok</label><input id="oContractRate"></div><div class="field"><label>Skutečná provize</label><input id="oActualCommission" type="number"></div>
   <div class="field full"><label>Poznámka</label><textarea id="oNote"></textarea></div>
-  <div class="field full"><label>Naplánovat aktivitu k příležitosti</label><div class="quick-form"><select id="oActivityType"><option>Telefon</option><option>SMS</option><option>Email</option><option>Schůzka</option><option>WhatsApp</option><option>Úkol</option></select><input id="oActivityDate" type="date"><input id="oActivityTime" type="time"><input id="oActivityText" placeholder="co chci řešit"><button class="btn" type="button" onclick="createActivityFromOpportunity()">+ Aktivita</button></div></div>
-</div><div class="actions" style="justify-content:space-between;margin-top:12px"><button class="btn red" id="deleteOppBtn" onclick="deleteOpportunity()">Smazat</button><div class="actions"><button class="btn" onclick="quickSignOpportunity()">Podepsáno a propsat</button><button class="btn primary" onclick="saveOpportunity()">Uložit příležitost</button></div></div></div></div>
+  <div class="field full"><label>Naplánovat aktivitu k obchodnímu případu</label><div class="quick-form"><select id="oActivityType"><option>Telefon</option><option>SMS</option><option>Email</option><option>Schůzka</option><option>WhatsApp</option><option>Úkol</option></select><input id="oActivityDate" type="date"><input id="oActivityTime" type="time"><input id="oActivityText" placeholder="co chci řešit"><button class="btn" type="button" onclick="createActivityFromOpportunity()">+ Aktivita</button></div></div>
+</div><div class="actions" style="justify-content:space-between;margin-top:12px"><button class="btn red" id="deleteOppBtn" onclick="deleteOpportunity()">Smazat</button><div class="actions"><button class="btn" onclick="quickSignOpportunity()">Dokončit a zadat do obchodů</button><button class="btn primary" onclick="saveOpportunity()">Uložit obchodní případ</button></div></div></div></div>
 
 <div class="modal" id="activityModal"><div class="modal-box wide"><div class="toolbar"><h2 id="activityModalTitle">Aktivita</h2><button class="btn" onclick="closeModal('activityModal')">Zavřít</button></div><div class="form-grid">
   <div class="field"><label>Klient</label><select id="aClient"></select></div><div class="field"><label>Typ</label><select id="aType"><option>Telefon</option><option>SMS</option><option>WhatsApp</option><option>Email</option><option>Schůzka</option><option>Úkol</option><option>Poznámka</option></select></div><div class="field"><label>Datum</label><input id="aDate" type="date"></div>
@@ -590,6 +584,6 @@
 
 
 
-<script src="assets/js/crm.js?v=2026.09.30-1"></script>
+<script src="assets/js/crm.js?v=2026.09.30-2"></script>
 </body>
 </html>

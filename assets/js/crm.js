@@ -5,7 +5,7 @@ function renderAll() {
   persist();
   fillYears();
   fillPeopleList();
-  [['Dashboard', renderDashboard], ['Klienti', renderClients], ['Poznámky', renderNotes], ['Kampaně', renderCampaigns], ['Příležitosti', renderOpportunities], ['Smlouvy', renderContracts], ['Investice', renderInvestments], ['FKI', renderFk], ['Penze', renderPensions], ['Obchody', renderDeals], ['Reporty', renderReports], ['Typaři', renderReferrerHub], ['Roční plán', renderPlanForm], ['Plnění plánu', renderPlanProgress], ['Segmenty plánu', renderPlanSegments], ['Provize plánu', renderPlanCommission], ['Nastavení', renderSettings]].forEach(x => renderPart(x[0], x[1]));
+  [['Dashboard', renderDashboard], ['Klienti', renderClients], ['Poznámky', renderNotes], ['Kampaně', renderCampaigns], ['Obchodní případy', renderOpportunities], ['Smlouvy', renderContracts], ['Investice', renderInvestments], ['FKI', renderFk], ['Penze', renderPensions], ['Obchody', renderDeals], ['Reporty', renderReports], ['Typaři', renderReferrerHub], ['Roční plán', renderPlanForm], ['Plnění plánu', renderPlanProgress], ['Segmenty plánu', renderPlanSegments], ['Provize plánu', renderPlanCommission], ['Nastavení', renderSettings]].forEach(x => renderPart(x[0], x[1]));
 }
 // Shared file delivery for all client-facing HTML outputs.
 function downloadHtmlFile(html, filename) {
@@ -498,10 +498,11 @@ function opportunityFromContract(s) {
     id: 'contract_' + s.id,
     contractId: s.id,
     clientId: s.clientId,
-    status,
+    status:caseStage(status),
+    updatedAt: s.updatedAt || last?.d || s.createdAt || '',
     contractStatus: s.status || '',
     contractStatusLabel: STATUS_LABELS[s.status] || '',
-    statusDate: last?.d || s.updatedAt || s.createdAt || today(),
+    statusDate: s.updatedAt || last?.d || s.createdAt || '',
     category: contractOpportunityCategory(s),
     company: s.company || '',
     product: s.product || s.type || '',
@@ -550,7 +551,7 @@ function sameOpenOpportunity(a, b) {
 function allOpenOpportunities() {
   const manual = [...(state.opportunities || [])].filter(isOpenOpportunity),
     generated = contractOpportunities().filter(o => !manual.some(m => sameOpenOpportunity(m, o)));
-  return [...manual, ...generated];
+  return [...manual, ...generated].map(o=>({...o,status:caseStage(o.status)}));
 }
 function clientOpenOpportunities(id) {
   return allOpenOpportunities().filter(o => String(o.clientId) === String(id));
@@ -836,17 +837,10 @@ function opportunityCategoryToDeal(category, product = '') {
   return category || categoryFrom(product);
 }
 function opportunityStatusClass(s) {
-  return {
-    'Oportunita': 'opp-opportunity',
-    'Čekám na podklady': 'opp-docs',
-    'Ve schvalování': 'opp-approval',
-    'Schváleno': 'opp-approved',
-    'Podepsáno': 'opp-signed',
-    'Zamítnuto': 'opp-rejected'
-  }[s] || 'opp-opportunity';
+  return {'Nabídka':'opp-opportunity','Scoring':'opp-docs','Kompletace':'opp-docs','Schvalování':'opp-approval','Podpis':'opp-approved','K zadání (BeTy)':'opp-signed','Podepsáno':'opp-signed','Zamítnuto':'opp-rejected'}[caseStage(s)] || 'opp-opportunity';
 }
 function opportunityBadge(s) {
-  return `<span class="opp-status ${opportunityStatusClass(s)}">${esc(s || 'Oportunita')}</span>`;
+  return `<span class="opp-status ${opportunityStatusClass(s)}">${esc(caseStageLabel(s))}</span>`;
 }
 function isOpenOpportunity(o) {
   return !['Podepsáno', 'Zamítnuto'].includes(o?.status);
@@ -2134,7 +2128,7 @@ function openClientMergeModal(ids) {
     body = byId('mergeClientBody');
   body.innerHTML = `<div class="merge-warning"><b>Důvod duplicity: ${esc(reason)}.</b><br><span class="note">${reason === 'Rodné číslo / IČO' ? 'Tuhle skupinu je vhodné sloučit. Rodné číslo/IČO bereme jako nejsilnější identifikátor klienta.' : 'Tady raději zkontroluj, jestli jde opravdu o stejného člověka. Stejný telefon nebo e-mail může být i u rodiny.'}</span></div><div class="merge-grid"><div class="merge-client-box"><h3>1. Vyber hlavního klienta</h3><div class="field"><label>Do této karty se vše sloučí</label><select id="mergeMaster">${clients.map(c => `<option value="${c.id}" ${c.id === master.id ? 'selected' : ''}>${esc(mergeClientOptionLabel(c))}</option>`).join('')}</select></div><div class="divider"></div>${clients.map(c => {
     const n = mergeLinkCounts(c.id);
-    return `<div class="event"><small>${esc(c.birthId || 'bez RČ')}</small><div><b>${esc(clientName(c))}</b><br><span class="note">${esc([c.phone, c.email, c.altEmails, c.address].filter(Boolean).join(' · ') || 'bez kontaktů')}</span><div class="chips"><span class="chip">${num(n.contracts)} smluv</span><span class="chip">${num(n.deals)} obchodů</span><span class="chip">${num(n.opps)} příležitostí</span><span class="chip">${num(n.fki)} FKI záznamů</span><span class="chip">${num(n.snapshots)} aktualizací investic</span>${leadSourceBadge(c)}</div></div></div>`;
+    return `<div class="event"><small>${esc(c.birthId || 'bez RČ')}</small><div><b>${esc(clientName(c))}</b><br><span class="note">${esc([c.phone, c.email, c.altEmails, c.address].filter(Boolean).join(' · ') || 'bez kontaktů')}</span><div class="chips"><span class="chip">${num(n.contracts)} smluv</span><span class="chip">${num(n.deals)} obchodů</span><span class="chip">${num(n.opps)} obchodních případů</span><span class="chip">${num(n.fki)} FKI záznamů</span><span class="chip">${num(n.snapshots)} aktualizací investic</span>${leadSourceBadge(c)}</div></div></div>`;
   }).join('')}</div><div class="merge-client-box"><h3>2. Vyber správné údaje</h3>${mergeFieldSelect('name', 'Jméno / firma', clients)}${mergeFieldSelect('birthId', 'RČ / IČO', clients)}${mergeFieldSelect('phone', 'Telefon', clients)}${mergeFieldSelect('email', 'E-mail', clients)}${mergeFieldSelect('altEmails', 'Další e-maily', clients)}${mergeFieldSelect('contactPref', 'Preferovaný kontakt', clients)}${mergeFieldSelect('address', 'Adresa', clients)}${mergeFieldSelect('leadType', 'Zdroj klienta', clients)}${mergeFieldSelect('leadSource', 'Typař / doporučil', clients)}${mergeFieldSelect('leadDate', 'Datum doporučení', clients)}${mergeFieldSelect('leadCommissionPct', 'Provize typaři %', clients)}${mergeFieldSelect('referrerRole', 'Role typaře/doporučitele', clients)}${mergeFieldSelect('referrerCommissionPct', 'Domluvená provize typaři %', clients)}${mergeFieldSelect('note', 'Poznámka', clients)}</div></div><div class="divider"></div><h3>Možné stejné smlouvy při sloučení</h3><div class="table-wrap"><table class="compact-table"><thead><tr><th>Smlouva</th><th>Klienti</th><th>Co se stane</th></tr></thead><tbody>${conflicts.map(g => `<tr class="row-soon"><td><b>${esc(g[0].number || 'bez čísla')}</b><br><span class="note">${esc([g[0].type, g[0].company, g[0].product].filter(Boolean).join(' · '))}</span></td><td>${g.map(s => esc(clientName(findClient(s.clientId)))).join('<br>')}</td><td>Obě smlouvy zůstanou zachované pod hlavní kartou. CRM nic automaticky nesmaže.</td></tr>`).join('') || '<tr><td colspan="3" class="note">Nevidím stejné číslo smlouvy ani stejnou smlouvu mezi těmito klienty.</td></tr>'}</tbody></table></div><div class="actions" style="justify-content:flex-end;margin-top:12px"><button class="btn" onclick="closeModal('mergeClientModal')">Zrušit</button><button class="btn primary" onclick="mergeClientsFromModal()">Sloučit klienty</button></div>`;
   openModal('mergeClientModal');
 }
@@ -2527,7 +2521,7 @@ function renderReports() {
 }
 function fillOpportunityStatusSelect(id, selected = '') {
   const el = byId(id);
-  if (el) el.innerHTML = OPPORTUNITY_STATUSES.map(s => `<option ${s === selected ? 'selected' : ''}>${s}</option>`).join('');
+  if (el) el.innerHTML = OPPORTUNITY_STATUSES.map(s => `<option value="${esc(s)}" ${s === caseStage(selected) ? 'selected' : ''}>${esc(caseStageLabel(s))}</option>`).join('');
 }
 function opportunityCategoryOptions() {
   return ['Život', 'Auto', 'Nemovitost', 'Hypotéka', 'Úvěry', 'Penze', 'Investice', 'FKI', 'Ostatní'];
@@ -2549,9 +2543,18 @@ function opportunityInlineStatuses() {
   return OPPORTUNITY_STATUSES;
 }
 function opportunityStatusSelect(o) {
-  return `<select class="opp-inline-status ${opportunityStatusClass(o.status)}" onchange="updateOpportunityStatus('${esc(o.id)}',this.value)">${opportunityInlineStatuses().map(s => `<option value="${esc(s)}" ${s === o.status ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select>`;
+  return `<select class="opp-inline-status ${opportunityStatusClass(o.status)}" onchange="updateOpportunityStatus(decodeURIComponent('${caseEncodedId(o.id)}'),this.value)">${opportunityInlineStatuses().map(s => `<option value="${esc(s)}" ${s === caseStage(o.status) ? 'selected' : ''}>${esc(caseStageLabel(s))}</option>`).join('')}</select>`;
 }
 function updateOpportunityStatus(id, status) {
+  status=caseStage(status);
+  if(!OPPORTUNITY_STATUSES.includes(status))return;
+  const existing=allOpenOpportunities().find(x=>String(x.id)===String(id));
+  if(!existing||caseStage(existing.status)===status)return;
+  if(status==='Podepsáno'){
+    if(existing.isContractOpportunity){const contract=state.contracts.find(x=>String(x.id)===String(existing.contractId));if(contract)openDealFromContract({...contract,status:'podepsano'});}
+    else openDealFromOpportunity({...existing,status:'Podepsáno'});
+    return;
+  }
   if (String(id).startsWith('contract_')) {
     const contractId = String(id).replace('contract_', '');
     state.contractOpportunityStatuses = state.contractOpportunityStatuses || {};
@@ -2562,7 +2565,7 @@ function updateOpportunityStatus(id, status) {
       s.log = s.log || [];
       s.log.push({
         d: today(),
-        t: 'CRM stav příležitosti: ' + status
+        t: 'CRM stav obchodního případu: ' + status
       });
       if (status === 'Podepsáno') {
         s.status = 'podepsano';
@@ -2600,7 +2603,7 @@ function opportunitySortValue(x, key) {
   if (key === 'area') return norm(x.o.category);
   if (key === 'volume') return +x.o.bj || 0;
   if (key === 'date') return String(x.o.statusDate || x.o.date || x.o.expectedDate || '');
-  return ['Schváleno', 'Ve schvalování', 'Čekám na podklady', 'Oportunita', 'Podepsáno', 'Zamítnuto'].indexOf(x.o.status);
+  return ['K zadání (BeTy)','Podpis','Schvalování','Kompletace','Scoring','Nabídka','Podepsáno','Zamítnuto'].indexOf(caseStage(x.o.status));
 }
 function compareOpportunities(a, b) {
   const sort = val('oppSort') || 'status';
@@ -2612,33 +2615,68 @@ function compareOpportunities(a, b) {
   if (sort === 'date') return String(a.o.statusDate || a.o.date || '').localeCompare(String(b.o.statusDate || b.o.date || '')) || clientName(a.c).localeCompare(clientName(b.c), 'cs');
   return opportunitySortValue(a, 'status') - opportunitySortValue(b, 'status') || String(a.o.expectedDate || a.o.statusDate).localeCompare(String(b.o.expectedDate || b.o.statusDate)) || clientName(a.c).localeCompare(clientName(b.c), 'cs');
 }
+function caseStage(status) {
+  return {'Oportunita':'Nabídka','Čekám na podklady':'Kompletace','Ve schvalování':'Schvalování','Schváleno':'Podpis'}[status] || status || 'Nabídka';
+}
+function caseStageLabel(status) {
+  return status === 'Podepsáno' ? 'Dokončeno / do obchodů' : caseStage(status);
+}
+function caseStages() { return ['Nabídka','Scoring','Kompletace','Schvalování','Podpis','K zadání (BeTy)']; }
+function caseLastUpdate(o) {
+  const dates=[o.updatedAt,o.statusDate,o.createdAt,o.date,...(o.history||[]).map(x=>x.d)].map(x=>liquidity_isoDate(x)).filter(Boolean).sort();
+  return dates.at(-1)||'';
+}
+function caseDays(o,asOf=today()) {
+  const date=caseLastUpdate(o);if(!date)return null;
+  return Math.max(0,Math.floor((Date.parse(asOf+'T00:00:00Z')-Date.parse(date+'T00:00:00Z'))/86400000));
+}
+function caseAgeHtml(o) {
+  const days=caseDays(o),date=caseLastUpdate(o);
+  return `<span class="case-age ${days!==null&&days>14?'stale':''}" title="${esc(date?'Poslední aktualizace '+dateObj(date).toLocaleDateString('cs-CZ'):'Datum aktualizace není evidované')}">${days===null?'Datum chybí':days+' dní'}</span>`;
+}
+function setCaseFilter(key,value) {
+  window.businessCaseFilters ||= {query:'',category:'',status:'',sort:'status'};
+  window.businessCaseFilters[key]=value;renderOpportunities();
+}
+function caseEdit(id) {
+  const o=allOpenOpportunities().find(o=>String(o.id)===String(id)) || state.opportunities.find(o=>String(o.id)===String(id));
+  if(!o)return;
+  if(o.isContractOpportunity)openContractModal(o.clientId,o.contractId);else openOpportunityModal(o.clientId,o.id);
+}
+function caseEncodedId(id) { return esc(encodeURIComponent(String(id)).replace(/'/g,'%27')); }
+function caseDrop(event,stage) {
+  event.preventDefault();event.currentTarget.classList.remove('drag-over');
+  const id=event.dataTransfer.getData('application/x-crm-case');
+  if(id&&caseStages().includes(stage))updateOpportunityStatus(id,stage);
+}
 function renderOpportunities() {
-  const table = byId('opportunityTable');
-  if (!table) return;
-  const filter = byId('oppStatusFilter');
-  if (filter) {
-    const cur = filter.value;
-    filter.innerHTML = '<option value="">Všechny otevřené</option>' + OPPORTUNITY_STATUSES.filter(s => s !== 'Podepsáno').map(s => `<option ${s === cur ? 'selected' : ''}>${s}</option>`).join('');
+  const filters=window.businessCaseFilters ||= {query:'',category:'',status:'',sort:'status'};
+  const all=allOpenOpportunities(), categories=[...new Set([...opportunityCategoryOptions(),...all.map(o=>o.category)].filter(Boolean))].sort((a,b)=>a.localeCompare(b,'cs'));
+  for(const prefix of ['opp','pipeline']){
+    const cat=byId(prefix+'CategoryFilter'),status=byId(prefix+'StatusFilter');
+    if(cat){cat.innerHTML='<option value="">Všechny kategorie</option>'+categories.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');cat.value=filters.category;}
+    if(status){status.innerHTML='<option value="">Všechny otevřené fáze</option>'+caseStages().map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');status.value=filters.status;}
+    setVal(prefix+'Search',filters.query);setVal(prefix+'Sort',filters.sort);
   }
-  const q = norm(val('oppSearch')),
-    sf = val('oppStatusFilter'),
-    year = new Date().getFullYear();
-  let rows = allOpenOpportunities().map(o => ({
-    o,
-    c: findClient(o.clientId)
-  })).filter(x => sf ? x.o.status === sf : isOpenOpportunity(x.o)).filter(x => !q || norm([clientName(x.c), x.o.status, x.o.contractStatusLabel, x.o.category, x.o.company, x.o.product, x.o.note, x.o.owner, x.o.isContractOpportunity ? 'smlouva' : ''].join(' ')).includes(q));
-  rows.sort(compareOpportunities);
-  const open = rows.filter(x => isOpenOpportunity(x.o)),
-    bj = open.reduce((s, x) => s + (+x.o.bj || 0), 0),
-    cash = open.reduce((s, x) => s + (+x.o.actualCommission || +x.o.expectedCommission || opportunityCash(x.o, year)), 0);
-  const m = byId('oppMetrics');
-  if (m) m.innerHTML = `<div class="metric"><span class="note">Otevřené</span><b>${num(open.length)}</b></div><div class="metric"><span class="note">Očekávané BJ</span><b>${num(bj)}</b></div><div class="metric"><span class="note">Očekávaná provize</span><b>${money(cash)}</b></div><div class="metric"><span class="note">Po podpisu</span><b>do obchodů</b></div>`;
-  table.className = 'compact-table';
-  table.innerHTML = `<thead><tr><th>Klient</th><th>Datum</th><th>Stav</th><th>Oblast</th><th>Produkt</th><th>Objem klienta</th><th>BJ</th><th>Oček. provize</th><th>Další termín</th><th>Akce</th></tr></thead><tbody>${rows.map(x => {
-    const edit = x.o.isContractOpportunity ? `openContractModal(${x.o.clientId},${x.o.contractId})` : `openOpportunityModal(${x.o.clientId},${x.o.id})`,
-      contractBadge = x.o.contractStatusLabel ? `<br><span class="chip">Smlouva: ${esc(x.o.contractStatusLabel)}</span>` : '';
-    return `<tr class="${isOpenOpportunity(x.o) ? 'opp-hot' : ''}"><td><b>${esc(clientName(x.c))}</b>${x.o.isContractOpportunity ? '<br><span class="chip">ze smlouvy</span>' : ''}</td><td>${esc(x.o.statusDate || x.o.date || '')}</td><td>${opportunityStatusSelect(x.o)}${contractBadge}</td><td>${esc(x.o.category || '')}</td><td><b>${esc(x.o.product || '')}</b><br><span class="note">${esc(x.o.company || '')}</span></td><td class="money">${money(x.o.amount)}</td><td class="num">${num(x.o.bj)}</td><td class="money">${money(+x.o.actualCommission || +x.o.expectedCommission || opportunityCash(x.o, year))}</td><td>${esc(x.o.expectedDate || '')}</td><td><button class="btn slim" onclick="selectedClientId=${x.o.clientId};showView('clients')">Klient</button> <button class="icon-btn" onclick="${edit}">✎</button></td></tr>`;
-  }).join('') || '<tr><td colspan="10" class="note">Zatím žádné otevřené příležitosti.</td></tr>'}</tbody>`;
+  const q=norm(filters.query),rows=all.filter(isOpenOpportunity).filter(o=>(!filters.category||o.category===filters.category)&&(!filters.status||caseStage(o.status)===filters.status)&&(!q||norm([clientName(findClient(o.clientId)),o.product,o.company,o.category,caseStage(o.status),o.note,o.owner].join(' ')).includes(q))).map(o=>({o,c:findClient(o.clientId)}));
+  rows.sort((a,b)=>{
+    if(filters.sort==='age')return (caseDays(b.o)??-1)-(caseDays(a.o)??-1);
+    if(filters.sort==='volume')return (+b.o.amount||0)-(+a.o.amount||0);
+    if(filters.sort==='client')return clientName(a.c).localeCompare(clientName(b.c),'cs');
+    if(filters.sort==='area')return String(a.o.category).localeCompare(String(b.o.category),'cs');
+    if(filters.sort==='date')return caseLastUpdate(b.o).localeCompare(caseLastUpdate(a.o));
+    return caseStages().indexOf(caseStage(b.o.status))-caseStages().indexOf(caseStage(a.o.status))||(caseDays(b.o)??-1)-(caseDays(a.o)??-1);
+  });
+  const total=rows.reduce((s,x)=>s+(+x.o.amount||0),0),cash=rows.reduce((s,x)=>s+(+x.o.actualCommission||+x.o.expectedCommission||opportunityCash(x.o,new Date().getFullYear())),0);
+  const metrics=`<div class="metric"><span class="note">Otevřených případů</span><b>${rows.length}</b></div><div class="metric"><span class="note">Bez aktualizace přes 14 dní</span><b>${rows.filter(x=>caseDays(x.o)>14).length}</b></div><div class="metric"><span class="note">Objem</span><b>${money(total)}</b></div><div class="metric"><span class="note">Očekávaná provize</span><b>${money(cash)}</b></div>`;
+  if(byId('oppMetrics'))byId('oppMetrics').innerHTML=metrics;if(byId('pipelineMetrics'))byId('pipelineMetrics').innerHTML=metrics;
+  const table=byId('opportunityTable');
+  if(table)table.innerHTML=`<thead><tr><th>Případ / klient</th><th>Kategorie</th><th>Fáze</th><th>Od aktualizace</th><th>Společnost</th><th>Objem</th><th>BJ</th><th>Oček. provize</th><th>Další termín</th><th>Akce</th></tr></thead><tbody>${rows.map(({o,c})=>`<tr data-case-id="${esc(o.id)}"><td><button class="case-title" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">${esc(o.product||o.category||'Obchodní případ')}</button><br><span>${esc(clientName(c))}</span>${o.isContractOpportunity?'<span class="chip">ze smlouvy</span>':''}</td><td>${esc(o.category)}</td><td>${opportunityStatusSelect(o)}</td><td>${caseAgeHtml(o)}<br><small>${esc(caseLastUpdate(o)?dateObj(caseLastUpdate(o)).toLocaleDateString('cs-CZ'):'')}</small></td><td>${esc(o.company)}</td><td class="money">${money(o.amount)}</td><td>${num(o.bj)}</td><td class="money">${money(+o.actualCommission||+o.expectedCommission||opportunityCash(o,new Date().getFullYear()))}</td><td>${esc(o.expectedDate||'')}</td><td><button class="btn slim" onclick="selectedClientId=${Number(o.clientId)};showView('clients')">Klient</button><button class="btn slim" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">Upravit</button></td></tr>`).join('')||'<tr><td colspan="10" class="note">Žádné obchodní případy pro tento výběr.</td></tr>'}</tbody>`;
+  const board=byId('pipelineBoard');
+  if(board)board.innerHTML=caseStages().map((stage,index)=>{
+    const cards=rows.filter(x=>caseStage(x.o.status)===stage);
+    return `<section class="pipeline-column" data-stage="${esc(stage)}" style="--stage-color:${['#7289bb','#b69a65','#69a69c','#739ac3','#8b7db9','#487aa0'][index]}" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="caseDrop(event,'${esc(stage)}')"><header><h3>${esc(stage)} <span>${cards.length}</span></h3><b>${money(cards.reduce((s,x)=>s+(+x.o.amount||0),0))}</b></header><div class="pipeline-cards">${cards.map(({o,c})=>`<article class="pipeline-card" draggable="true" data-case-id="${esc(o.id)}" ondragstart="event.dataTransfer.setData('application/x-crm-case',decodeURIComponent('${caseEncodedId(o.id)}'))"><button class="case-title" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">${esc(o.product||o.category||'Obchodní případ')}</button><div class="pipeline-client">${esc(clientName(c))}</div><div class="chips"><span class="chip">${esc(o.category)}</span>${caseAgeHtml(o)}</div><div class="pipeline-amount">${money(o.amount)}</div><div class="note">${esc(o.company||'')}</div>${opportunityStatusSelect(o)}<div class="actions"><button class="btn slim" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">Upravit</button><button class="btn slim" onclick="selectedClientId=${Number(o.clientId)};showView('clients')">Klient</button></div></article>`).join('')||'<p class="pipeline-empty">Žádné případy</p>'}</div></section>`;
+  }).join('');
 }
 function renderVersion() {
   const label = `v${VERSION}`;
@@ -3114,12 +3152,12 @@ function renderClientDetail() {
     notes = clientNotes(c.id),
     year = new Date().getFullYear();
   const age = clientAgeFromBirthId(c.birthId);
-  el.innerHTML = `<div class="client-hero"><div class="avatar">${esc(initials(c.name))}</div><div class="detail-title"><div class="eyebrow">Karta klienta</div><h2>${esc(clientName(c))}${age !== null ? `<span class="client-age">· ${num(age)} let</span>` : ''}</h2><div class="chips"><span class="badge blue">Kontakt: ${esc(contactLabel(c))}</span>${c.birthId ? `<span class="chip">RČ/IČO: ${esc(c.birthId)}</span>` : ''}<span class="chip">${contracts.length} produktů</span><span class="chip">${deals.length} obchodů</span><span class="chip">${opps.filter(isOpenOpportunity).length} příležitostí</span>${clientSourceSummary(c)}</div></div>${contactGrid(c)}</div><div class="actions client-actions"><button class="btn primary" onclick="openClientReportModal(${c.id})">Report pro klienta</button><button class="btn" onclick="openClientReferralModal(${c.id})">+ Doporučení</button><button class="btn" onclick="openActivityModal(${c.id})">+ Aktivita</button><button class="btn" onclick="openOpportunityModal(${c.id})">+ Příležitost</button><button class="btn" onclick="openDealModal(${c.id})">+ Obchod</button><button class="btn" onclick="openContractModal(${c.id})">+ Smlouva</button><button class="btn" onclick="openNoteModal(${c.id})">+ Poznámka</button><button class="btn" onclick="openClientModal(${c.id})">Upravit klienta</button></div><div class="subnav"></div>`;
+  el.innerHTML = `<div class="client-hero"><div class="avatar">${esc(initials(c.name))}</div><div class="detail-title"><div class="eyebrow">Karta klienta</div><h2>${esc(clientName(c))}${age !== null ? `<span class="client-age">· ${num(age)} let</span>` : ''}</h2><div class="chips"><span class="badge blue">Kontakt: ${esc(contactLabel(c))}</span>${c.birthId ? `<span class="chip">RČ/IČO: ${esc(c.birthId)}</span>` : ''}<span class="chip">${contracts.length} produktů</span><span class="chip">${deals.length} obchodů</span><span class="chip">${opps.filter(isOpenOpportunity).length} obchodních případů</span>${clientSourceSummary(c)}</div></div>${contactGrid(c)}</div><div class="actions client-actions"><button class="btn primary" onclick="openClientReportModal(${c.id})">Report pro klienta</button><button class="btn" onclick="openClientReferralModal(${c.id})">+ Doporučení</button><button class="btn" onclick="openActivityModal(${c.id})">+ Aktivita</button><button class="btn" onclick="openOpportunityModal(${c.id})">+ Obchodní případ</button><button class="btn" onclick="openDealModal(${c.id})">+ Obchod</button><button class="btn" onclick="openContractModal(${c.id})">+ Smlouva</button><button class="btn" onclick="openNoteModal(${c.id})">+ Poznámka</button><button class="btn" onclick="openClientModal(${c.id})">Upravit klienta</button></div><div class="subnav"></div>`;
   const labels = {
     overview: 'Přehled',
     portfolio: 'Portfolio',
     family: 'Rodina',
-    opportunities: 'Příležitosti',
+    opportunities: 'Obchodní případy',
     contracts: 'Smlouvy',
     deals: 'Obchody',
     recommendations: 'Doporučení',
@@ -3311,7 +3349,7 @@ function opportunityFolderRow(o) {
     contractBadge = o.contractStatusLabel ? `<span class="chip">Smlouva: ${esc(o.contractStatusLabel)}</span>` : '',
     amount = +o.amount || 0 ? money(o.amount) : '',
     bj = +o.bj || 0 ? num(o.bj) + ' BJ' : '';
-  return `<div class="opp-folder-row ${isOpenOpportunity(o) ? 'open' : ''}"><div class="opp-folder-main"><div><b>${esc(o.product || o.category || 'Příležitost')}</b><br><span class="note">${esc([o.company, o.statusDate || o.date, o.expectedDate ? 'termín ' + o.expectedDate : ''].filter(Boolean).join(' · '))}</span><div class="chips">${opportunityBadge(o.status)}${o.isContractOpportunity ? '<span class="chip">ze smlouvy</span>' : ''}${contractBadge}${opportunityAttachmentBadge(o)}</div></div><div class="actions"><div class="money">${esc([amount, bj].filter(Boolean).join(' · '))}</div><button class="btn slim" onclick="${edit}">Upravit</button></div></div>${o.note ? `<div class="opp-folder-note note">${esc(o.note)}</div>` : ''}</div>`;
+  return `<div class="opp-folder-row ${isOpenOpportunity(o) ? 'open' : ''}"><div class="opp-folder-main"><div><b>${esc(o.product || o.category || 'Obchodní případ')}</b><br><span class="note">${esc([o.company, o.statusDate || o.date, o.expectedDate ? 'termín ' + o.expectedDate : ''].filter(Boolean).join(' · '))}</span><div class="chips">${opportunityBadge(o.status)}${o.isContractOpportunity ? '<span class="chip">ze smlouvy</span>' : ''}${contractBadge}${opportunityAttachmentBadge(o)}</div></div><div class="actions"><div class="money">${esc([amount, bj].filter(Boolean).join(' · '))}</div><button class="btn slim" onclick="${edit}">Upravit</button></div></div>${o.note ? `<div class="opp-folder-note note">${esc(o.note)}</div>` : ''}</div>`;
 }
 function notesMini(rows) {
   return `<div class="table-wrap"><table><thead><tr><th>Název</th><th>Datum</th><th>Štítky</th><th>Typ</th><th></th></tr></thead><tbody>${rows.map(n => `<tr><td><button class="note-title-btn" onclick="openNoteViewModal(${n.id})">▧ ${esc(n.title || 'Poznámka')}</button></td><td>${esc(n.date || '')}</td><td>${noteTags(n).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</td><td><span class="badge blue">${esc(noteType(n))}</span></td><td><button class="icon-btn" onclick="openNoteModal(${n.clientId || 'null'},${n.id})">✎</button></td></tr>`).join('') || '<tr><td colspan="5" class="note">Bez poznámek.</td></tr>'}</tbody></table></div>`;
@@ -4448,7 +4486,7 @@ function scenario_originalRender() {
     sum = portfolio.reduce((s, x) => s + (+x.amount || 0), 0),
     openOpps = c ? clientOpenOpportunities(c.id).filter(o => ['investice', 'fki'].includes(opportunityArea(o))) : [],
     current = byId('scenarioCurrentPortfolio');
-  if (current) current.innerHTML = `<h3>Stávající portfolio${c ? ' · ' + esc(clientName(c)) : ''}</h3>${c ? `<div class="toolbar"><span class="note">${num(portfolio.length)} investic v evidenci · ${num(openOpps.length)} rozpracovaných návrhů</span><b>${money(sum)}</b></div>${portfolio.length ? `<div class="table-wrap"><table class="compact-table"><thead><tr><th>Fond / produkt</th><th>Oblast</th><th>Hodnota</th></tr></thead><tbody>${portfolio.map(x => `<tr><td><b>${esc(x.product || 'Investice')}</b><br><span class="note">${esc(x.company || 'bez společnosti')}</span></td><td>${esc(x.area === 'fki' ? 'FKI' : 'Investice')}</td><td class="money">${money(x.amount)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="note">Klient zatím nemá evidované investice.</p>'}${openOpps.length ? `<div class="mini-card" style="margin-top:10px"><h3>Rozpracované investiční příležitosti</h3><div class="table-wrap"><table class="compact-table"><thead><tr><th>Stav</th><th>Produkt</th><th>Objem</th><th>Datum</th></tr></thead><tbody>${openOpps.map(o => `<tr><td>${opportunityBadge(o.status)}</td><td><b>${esc(o.product || o.category)}</b><br><span class="note">${esc([o.category, o.company].filter(Boolean).join(' · '))}</span></td><td class="money">${money(o.amount)}</td><td>${esc(o.statusDate || o.expectedDate || '')}</td></tr>`).join('')}</tbody></table></div></div>` : ''}` : '<p class="note">Po uložení se založí nový klient a návrh se k němu připojí.</p>'}`;
+  if (current) current.innerHTML = `<h3>Stávající portfolio${c ? ' · ' + esc(clientName(c)) : ''}</h3>${c ? `<div class="toolbar"><span class="note">${num(portfolio.length)} investic v evidenci · ${num(openOpps.length)} rozpracovaných návrhů</span><b>${money(sum)}</b></div>${portfolio.length ? `<div class="table-wrap"><table class="compact-table"><thead><tr><th>Fond / produkt</th><th>Oblast</th><th>Hodnota</th></tr></thead><tbody>${portfolio.map(x => `<tr><td><b>${esc(x.product || 'Investice')}</b><br><span class="note">${esc(x.company || 'bez společnosti')}</span></td><td>${esc(x.area === 'fki' ? 'FKI' : 'Investice')}</td><td class="money">${money(x.amount)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="note">Klient zatím nemá evidované investice.</p>'}${openOpps.length ? `<div class="mini-card" style="margin-top:10px"><h3>Rozpracované investiční obchodní případy</h3><div class="table-wrap"><table class="compact-table"><thead><tr><th>Stav</th><th>Produkt</th><th>Objem</th><th>Datum</th></tr></thead><tbody>${openOpps.map(o => `<tr><td>${opportunityBadge(o.status)}</td><td><b>${esc(o.product || o.category)}</b><br><span class="note">${esc([o.category, o.company].filter(Boolean).join(' · '))}</span></td><td class="money">${money(o.amount)}</td><td>${esc(o.statusDate || o.expectedDate || '')}</td></tr>`).join('')}</tbody></table></div></div>` : ''}` : '<p class="note">Po uložení se založí nový klient a návrh se k němu připojí.</p>'}`;
   const years = Math.max(1, parseMoney(val('scenarioYears')) || 10),
     box = byId('scenarioSelectedFunds'),
     total = investmentScenario.rows.reduce((s, x) => s + x.amount, 0),
@@ -5017,7 +5055,7 @@ function saveClient() {
 function deleteClient() {
   const c = findClient(editingClientId);
   if (!c) return;
-  if (!confirm('Smazat klienta včetně smluv, obchodů, příležitostí, poznámek a aktivit?')) return;
+  if (!confirm('Smazat klienta včetně smluv, obchodů, obchodních případů, poznámek a aktivit?')) return;
   state.clients = state.clients.filter(x => x.id !== c.id);
   state.contracts = state.contracts.filter(x => x.clientId !== c.id);
   state.deals = state.deals.filter(x => x.clientId !== c.id);
@@ -5494,7 +5532,7 @@ function openDealFromOpportunity(o) {
   toggleDealContractFields();
   byId('deleteDealBtn').style.display = editingDealId ? 'inline-flex' : 'none';
   byId('moveDealToOppBtn').style.display = 'none';
-  byId('dealModalTitle').textContent = 'Propsat příležitost do obchodu';
+  byId('dealModalTitle').textContent = 'Propsat obchodní případ do obchodu';
   closeModal('opportunityModal');
   openModal('dealModal');
   toast('Doplň BJ/provizi a ulož obchod.');
@@ -5789,13 +5827,13 @@ function fkiSync_before_moveDealToOpportunity() {
   if (!editingDealId) return;
   const d = state.deals.find(x => String(x.id) === String(editingDealId));
   if (!d) return;
-  if (!confirm('Přesunout tento řádek z uzavřených obchodů do příležitostí? Obchod zmizí z měsíční evidence, ale u klienta zůstane jako rozpracovaná věc.')) return;
+  if (!confirm('Přesunout tento řádek z uzavřených obchodů do obchodních případů? Obchod zmizí z měsíční evidence, ale u klienta zůstane jako rozpracovaná věc.')) return;
   const clientId = +val('dClient') || d.clientId,
     category = opportunityCategoryFromDeal(val('dCategory') || d.category, val('dProduct') || d.product),
     o = {
       id: uid(),
       clientId,
-      status: 'Oportunita',
+      status: 'Nabídka',
       statusDate: val('dDate') || d.date || today(),
       category,
       company: val('dCompany').trim() || d.company || '',
@@ -5829,15 +5867,15 @@ function fkiSync_before_moveDealToOpportunity() {
     s.log = s.log || [];
     s.log.push({
       d: today(),
-      t: 'Obchod přesunut zpět do příležitostí'
+      t: 'Obchod přesunut zpět do obchodních případů'
     });
   }
   selectedClientId = clientId;
-  addActivity(clientId, 'Příležitost', 'Obchod přesunut zpět do příležitostí: ' + (o.product || o.category), true);
+  addActivity(clientId, 'Obchodní případ', 'Obchod přesunut zpět do obchodních případů: ' + (o.product || o.category), true);
   closeModal('dealModal');
   persist();
   renderAll();
-  saveToast('Přesunuto do příležitostí');
+  saveToast('Přesunuto do obchodních případů');
 }
 function fkiSync_before_saveDeal() {
   const clientId = +val('dClient');
@@ -5896,7 +5934,7 @@ function fkiSync_before_saveDeal() {
         t: 'Podepsáno · propsáno do obchodu'
       });
       state.opportunities = state.opportunities.filter(x => String(x.id) !== String(o.id));
-      addActivity(clientId, 'Obchod', 'Příležitost propsána do obchodu: ' + (d.product || d.category) + ' · ' + num(dealBJ(d)) + ' BJ', true);
+      addActivity(clientId, 'Obchod', 'Obchodní případ propsán do obchodu: ' + (d.product || d.category) + ' · ' + num(dealBJ(d)) + ' BJ', true);
     }
   }
   if (pendingContractToDealId) {
@@ -6029,14 +6067,14 @@ function populateOpportunityForm(clientId = null, id = null) {
   fillOpportunityStatusSelect('oStatus');
   const o = id ? state.opportunities.find(x => x.id === id) : {
     clientId: clientId || selectedClientId,
-    status: 'Oportunita',
+    status: 'Nabídka',
     statusDate: today(),
     expectedDate: '',
     category: 'Život'
   };
   fillOpportunityCategorySelect('oCategory', o.category || 'Život');
   setVal('oClient', o.clientId || '');
-  setVal('oStatus', o.status || 'Oportunita');
+  setVal('oStatus', caseStage(o.status));
   setVal('oStatusDate', o.statusDate || today());
   setVal('oCategory', opportunityCategoryOptions().includes(o.category) ? o.category : '__custom');
   setVal('oCategoryCustom', opportunityCategoryOptions().includes(o.category) ? '' : o.category || '');
@@ -6054,14 +6092,14 @@ function populateOpportunityForm(clientId = null, id = null) {
   setVal('oActualCommission', o.actualCommission || '');
   setVal('oNote', o.note || '');
   byId('deleteOppBtn').style.display = id ? 'inline-flex' : 'none';
-  byId('oppModalTitle').textContent = id ? 'Upravit příležitost' : 'Nová příležitost';
+  byId('oppModalTitle').textContent = id ? 'Upravit obchodní případ' : 'Nový obchodní případ';
   openModal('opportunityModal');
 }
 function opportunityFromForm() {
   const category = val('oCategory') === '__custom' ? val('oCategoryCustom').trim() || 'Ostatní' : val('oCategory');
   return {
     clientId: +val('oClient'),
-    status: val('oStatus') || 'Oportunita',
+    status: val('oStatus') || 'Nabídka',
     statusDate: val('oStatusDate') || today(),
     category,
     company: val('oCompany').trim(),
@@ -6091,6 +6129,8 @@ function saveOpportunity() {
     };
     state.opportunities.push(o);
   }
+  const complete = data.status === 'Podepsáno';
+  if (complete) data.status = oldStatus && isOpenOpportunity({status: oldStatus}) ? caseStage(oldStatus) : 'K zadání (BeTy)';
   Object.assign(o, data, {
     updatedAt: today()
   });
@@ -6100,17 +6140,17 @@ function saveOpportunity() {
       d: o.statusDate || today(),
       t: o.status
     });
-    addActivity(o.clientId, 'Příležitost', 'Stav: ' + o.status + ' · ' + (o.product || o.category), true);
+    addActivity(o.clientId, 'Obchodní případ', 'Stav: ' + o.status + ' · ' + (o.product || o.category), true);
   }
   selectedClientId = o.clientId;
-  if (o.status === 'Podepsáno') {
+  if (complete) {
     persist();
-    openDealFromOpportunity(o);
+    openDealFromOpportunity({...o, status:'Podepsáno'});
     return;
   }
   closeModal('opportunityModal');
   renderAll();
-  saveToast('Příležitost uložena');
+  saveToast('Obchodní případ uložen');
 }
 function quickSignOpportunity() {
   setVal('oStatus', 'Podepsáno');
@@ -6162,7 +6202,7 @@ function convertOpportunityToDeal(o) {
         createdAt: today(),
         log: [{
           d: today(),
-          t: 'Smlouva vytvořena z podepsané příležitosti'
+          t: 'Smlouva vytvořena z dokončeného obchodního případu'
         }]
       };
     state.contracts.push(s);
@@ -6172,13 +6212,13 @@ function convertOpportunityToDeal(o) {
   }
   o.dealId = d.id;
   o.convertedAt = today();
-  addActivity(o.clientId, 'Obchod', 'Příležitost podepsána a propsána: ' + (o.product || o.category) + ' · ' + num(o.bj) + ' BJ', true);
+  addActivity(o.clientId, 'Obchod', 'Obchodní případ dokončen a propsán: ' + (o.product || o.category) + ' · ' + num(o.bj) + ' BJ', true);
   state.opportunities = state.opportunities.filter(x => x.id !== o.id);
 }
 function deleteOpportunity() {
   if (!editingOpportunityId) return;
   const o = state.opportunities.find(x => x.id === editingOpportunityId);
-  if (!o || !confirm('Smazat příležitost? Uzavřený obchod ani smlouva se tím nemažou.')) return;
+  if (!o || !confirm('Smazat obchodní případ? Uzavřený obchod ani smlouva se tím nemažou.')) return;
   state.opportunities = state.opportunities.filter(x => x.id !== editingOpportunityId);
   closeModal('opportunityModal');
   renderAll();
@@ -7096,7 +7136,7 @@ function scenario_scenarioRowFromOpportunity(o) {
       dropYear: scenario_noteNumber(note, /propad\s+([0-9]+)\.\s*rok/i),
       dropPct: scenario_noteNumber(note, /propad\s+[0-9]+.\s*rok\s+([0-9]+[,.]?[0-9]*)/i),
       opportunityId: o.id,
-      source: 'Načteno z příležitosti'
+      source: 'Načteno z obchodního případu'
     };
   row.key = row.key || o.fundKey || o.scenarioKey || '';
   row.isin = row.isin || o.isin || o.fundIsin || '';
@@ -7169,7 +7209,7 @@ function scenario_renderEditableSelectedFunds() {
       a[k] = (a[k] || 0) + scenario_n(x.amount);
       return a;
     }, {});
-  box.innerHTML = `<div class="toolbar"><div><h3>Navržené investice</h3><div class="note">Horizont ${num(years)} let · jednorázově ${money(total)} · modelová hodnota ${money(future)} · Investice ${money(areaSum.Investice || 0)} · FKI ${money(areaSum.FKI || 0)}${loaded ? ` · ${num(loaded)} načteno z otevřených příležitostí` : ''}</div></div></div>${rows.length ? `<div class="table-wrap"><table class="compact-table scenario-edit-table"><thead><tr><th>Fond</th><th>Vklad</th><th>Měsíčně</th><th>Výnos p.a.</th><th>Dokup rok</th><th>Dokup</th><th>Propad rok</th><th>Propad %</th><th>Modelová hodnota</th><th></th></tr></thead><tbody>${rows.map((x, i) => `<tr><td class="fund-cell"><select data-scenario-row="${i}" data-k="key">${scenario_fundOptions(x.area || scenario_scenarioAreaLabel(), x.key)}</select><span class="note"><span class="badge ${x.area === 'FKI' ? 'purple' : 'blue'}">${esc(x.area || scenario_scenarioAreaLabel())}</span> ${esc(x.company || '')} ${x.source ? `<span class="source-pill">${esc(x.source)}</span>` : ''}</span></td><td class="money-cell"><input data-scenario-row="${i}" data-k="amount" type="number" min="0" value="${esc(scenario_n(x.amount))}"></td><td class="money-cell"><input data-scenario-row="${i}" data-k="monthly" type="number" min="0" value="${esc(scenario_n(x.monthly))}"></td><td class="rate-cell"><input data-scenario-row="${i}" data-k="rate" type="number" step="0.1" value="${esc(scenario_n(x.rate))}"></td><td class="year-cell"><select data-scenario-row="${i}" data-k="topupYear">${scenario_yearOptions(x.topupYear)}</select></td><td class="money-cell"><input data-scenario-row="${i}" data-k="topupAmount" type="number" min="0" value="${esc(scenario_n(x.topupAmount))}"></td><td class="year-cell"><select data-scenario-row="${i}" data-k="dropYear">${scenario_yearOptions(x.dropYear)}</select></td><td class="rate-cell"><input data-scenario-row="${i}" data-k="dropPct" type="number" min="0" max="100" step="0.1" value="${esc(scenario_n(x.dropPct))}"></td><td class="money money-cell"><b>${money(scenario_scenarioRowValue(x, years))}</b></td><td><button class="icon-btn" title="Odebrat" data-scenario-remove="${i}">×</button></td></tr>`).join('')}</tbody></table></div><div class="scenario-edit-summary">Uložení prognózy nic nepropíše do AUM ani provizí. Příležitosti vzniknou pouze při zvoleném režimu Prognóza + příležitosti.</div>` : '<p class="note">Vyber fond a přidej nový jednorázový nebo pravidelný nákup. Samotná prognóza nevytvoří obchod.</p>'}`;
+  box.innerHTML = `<div class="toolbar"><div><h3>Navržené investice</h3><div class="note">Horizont ${num(years)} let · jednorázově ${money(total)} · modelová hodnota ${money(future)} · Investice ${money(areaSum.Investice || 0)} · FKI ${money(areaSum.FKI || 0)}${loaded ? ` · ${num(loaded)} načteno z otevřených obchodních případů` : ''}</div></div></div>${rows.length ? `<div class="table-wrap"><table class="compact-table scenario-edit-table"><thead><tr><th>Fond</th><th>Vklad</th><th>Měsíčně</th><th>Výnos p.a.</th><th>Dokup rok</th><th>Dokup</th><th>Propad rok</th><th>Propad %</th><th>Modelová hodnota</th><th></th></tr></thead><tbody>${rows.map((x, i) => `<tr><td class="fund-cell"><select data-scenario-row="${i}" data-k="key">${scenario_fundOptions(x.area || scenario_scenarioAreaLabel(), x.key)}</select><span class="note"><span class="badge ${x.area === 'FKI' ? 'purple' : 'blue'}">${esc(x.area || scenario_scenarioAreaLabel())}</span> ${esc(x.company || '')} ${x.source ? `<span class="source-pill">${esc(x.source)}</span>` : ''}</span></td><td class="money-cell"><input data-scenario-row="${i}" data-k="amount" type="number" min="0" value="${esc(scenario_n(x.amount))}"></td><td class="money-cell"><input data-scenario-row="${i}" data-k="monthly" type="number" min="0" value="${esc(scenario_n(x.monthly))}"></td><td class="rate-cell"><input data-scenario-row="${i}" data-k="rate" type="number" step="0.1" value="${esc(scenario_n(x.rate))}"></td><td class="year-cell"><select data-scenario-row="${i}" data-k="topupYear">${scenario_yearOptions(x.topupYear)}</select></td><td class="money-cell"><input data-scenario-row="${i}" data-k="topupAmount" type="number" min="0" value="${esc(scenario_n(x.topupAmount))}"></td><td class="year-cell"><select data-scenario-row="${i}" data-k="dropYear">${scenario_yearOptions(x.dropYear)}</select></td><td class="rate-cell"><input data-scenario-row="${i}" data-k="dropPct" type="number" min="0" max="100" step="0.1" value="${esc(scenario_n(x.dropPct))}"></td><td class="money money-cell"><b>${money(scenario_scenarioRowValue(x, years))}</b></td><td><button class="icon-btn" title="Odebrat" data-scenario-remove="${i}">×</button></td></tr>`).join('')}</tbody></table></div><div class="scenario-edit-summary">Uložení prognózy nic nepropíše do AUM ani provizí. Obchodní případy vzniknou pouze při zvoleném režimu Prognóza + obchodní případy.</div>` : '<p class="note">Vyber fond a přidej nový jednorázový nebo pravidelný nákup. Samotná prognóza nevytvoří obchod.</p>'}`;
 }
 function resetScenarioExternalRows() {
   const c = scenario_selected();
@@ -7567,7 +7607,7 @@ function scenario_scenarioOpportunityDraft(c, r, summary, horizon) {
   const proposalKey = scenario_scenarioProposalKey(r);
   return {
     clientId: c.id,
-    status: 'Oportunita',
+    status: 'Nabídka',
     statusDate: today(),
     category: r.area,
     company: r.company,
@@ -9206,9 +9246,9 @@ function clientOutput_xContracts(c, kind) {
 }
 function clientOutput_xOpen(c) {
   return (typeof clientOpenOpportunities === 'function' ? clientOpenOpportunities(c.id) : []).filter(o => typeof isOpenOpportunity !== 'function' || isOpenOpportunity(o)).map(o => ({
-    kind: 'Příležitost',
+    kind: 'Obchodní případ',
     area: typeof areaLabel === 'function' ? areaLabel(typeof opportunityArea === 'function' ? opportunityArea(o) : o.category) : o.category,
-    title: o.product || o.category || 'Příležitost',
+    title: o.product || o.category || 'Obchodní případ',
     company: o.company || '',
     status: o.status || '',
     date: o.expectedDate || o.statusDate || o.date || ''
@@ -9947,7 +9987,7 @@ function mergeIncomingState(incoming) {
 }
 function stateCountsText(s = state) {
   s = normalizeState(s);
-  return `${num((s.clients || []).length)} klientů · ${num((s.contracts || []).length)} smluv · ${num((s.deals || []).length)} obchodů · ${num((s.opportunities || []).length)} příležitostí · ${num((s.notes || []).length)} poznámek · ${num((s.analysisEntries || []).length)} analytických aktivit · ${num((s.investmentRecords || []).length)} investičních záznamů · ${num((s.investmentSnapshots || []).length)} aktualizací investic · ${num((s.externalInvestments || []).length)} investic mimo správu · ${num((s.investmentForecasts || []).length)} prognóz · ${num((s.activities || []).length)} aktivit · ${num((s.commissionImports || []).length)} provizních importů · ${num((s.referrerPayouts || []).length)} výplat tipařům`;
+  return `${num((s.clients || []).length)} klientů · ${num((s.contracts || []).length)} smluv · ${num((s.deals || []).length)} obchodů · ${num((s.opportunities || []).length)} obchodních případů · ${num((s.notes || []).length)} poznámek · ${num((s.analysisEntries || []).length)} analytických aktivit · ${num((s.investmentRecords || []).length)} investičních záznamů · ${num((s.investmentSnapshots || []).length)} aktualizací investic · ${num((s.externalInvestments || []).length)} investic mimo správu · ${num((s.investmentForecasts || []).length)} prognóz · ${num((s.activities || []).length)} aktivit · ${num((s.commissionImports || []).length)} provizních importů · ${num((s.referrerPayouts || []).length)} výplat tipařům`;
 }
 function criticalBackupCounts(s = state) {
   s = normalizeState(s);
@@ -10173,7 +10213,7 @@ function updateInvestmentScenarioSaveMode() {
     if (signed && !date.value) date.value = today();
     date.parentElement.style.opacity = signed ? '1' : '.58';
   }
-  if (btn) btn.textContent = signed ? 'Uložit aktivní variantu jako sjednáno' : mode === 'proposal' ? 'Uložit aktivní variantu a příležitosti' : 'Uložit všechny varianty';
+  if (btn) btn.textContent = signed ? 'Uložit aktivní variantu jako sjednáno' : mode === 'proposal' ? 'Uložit aktivní variantu a obchodní případy' : 'Uložit všechny varianty';
 }
 function openInvestmentScenarioModal(clientId = null, area = 'Investice') {
   if (typeof scenario_originalOpen === 'function') scenario_originalOpen(clientId, area);
@@ -10938,7 +10978,7 @@ function openOpportunityModal(clientId = null, id = null) {
   setVal('oActivityType', 'Telefon');
   setVal('oActivityDate', o?.expectedDate || today());
   setVal('oActivityTime', '09:00');
-  setVal('oActivityText', o ? `Navázat na příležitost: ${o.product || o.category || 'příležitost'}` : '');
+  setVal('oActivityText', o ? `Navázat na obchodní případ: ${o.product || o.category || 'obchodní případ'}` : '');
 }
 function fundPerformance_oldLoadInvFund() {
   if (typeof liquidity_oldLoadInv === 'function') liquidity_oldLoadInv.apply(this, arguments);
@@ -11609,8 +11649,8 @@ function createActivityFromOpportunity() {
   const type = activities_aVal('oActivityType') || 'Telefon',
     date = activities_aVal('oActivityDate') || activities_aToday(),
     time = activities_aVal('oActivityTime') || '',
-    product = activities_aVal('oProduct') || activities_aVal('oCategory') || 'příležitost';
-  const text = activities_aVal('oActivityText').trim() || `Příležitost: ${product}`;
+    product = activities_aVal('oProduct') || activities_aVal('oCategory') || 'obchodní případ';
+  const text = activities_aVal('oActivityText').trim() || `Obchodní případ: ${product}`;
   state.activities = state.activities || [];
   state.activities.push({
     id: activities_aUid(),
@@ -11633,7 +11673,7 @@ function createActivityFromOpportunity() {
   selectedClientId = clientId;
   if (typeof persist === 'function') persist();
   if (typeof renderAll === 'function') renderAll();
-  if (typeof saveToast === 'function') saveToast('Aktivita naplánovaná k příležitosti');
+  if (typeof saveToast === 'function') saveToast('Aktivita naplánovaná k obchodnímu případu');
 }
 function composeEmailForClient(clientId) {
   const c = activities_aClient(clientId),
@@ -11972,8 +12012,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.09.30-1';
-const VERSION_NOTE = 'Interaktivní vývoj propojený s alokací, filtry společností a přehlednější klientský report s rozbalovacími transakcemi.';
+const VERSION = '2026.09.30-2';
+const VERSION_NOTE = 'Obchodní případy a společná Pipeline: šest fází, filtry kategorií, stáří aktualizací a přesouvání karet.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
@@ -11985,7 +12025,7 @@ const OLD_GOOGLE_SYNC_KEY_KEY = 'filip_crm_old_google_sync_key';
 const MONTHS = ['Leden', 'Únor', 'Březen', 'Duben', 'Květen', 'Červen', 'Červenec', 'Srpen', 'Září', 'Říjen', 'Listopad', 'Prosinec'];
 const CATEGORIES = ['Investice', 'FKI', 'Životní pojištění', 'Neživotní pojištění', 'Úvěry', 'Hypotéky', 'Penze', 'Následná provize', 'Ostatní'];
 const PLAN_CATEGORIES = ['Investice', 'Hypotéky', 'Životní pojištění', 'Neživotní pojištění', 'Úvěry'];
-const OPPORTUNITY_STATUSES = ['Oportunita', 'Čekám na podklady', 'Ve schvalování', 'Schváleno', 'Podepsáno', 'Zamítnuto'];
+const OPPORTUNITY_STATUSES = ['Nabídka', 'Scoring', 'Kompletace', 'Schvalování', 'Podpis', 'K zadání (BeTy)', 'Podepsáno', 'Zamítnuto'];
 const STATUS_LABELS = {
   '': 'Bez stavu',
   kontakt: 'Ke kontaktu',
@@ -12068,7 +12108,7 @@ const BACKUP_COUNT_LABELS = {
   clients: 'klientů',
   contracts: 'smluv',
   deals: 'obchodů',
-  opportunities: 'příležitostí',
+  opportunities: 'obchodních případů',
   notes: 'poznámek',
   activities: 'aktivit',
   analysisEntries: 'analytických aktivit',

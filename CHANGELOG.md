@@ -1,5 +1,12 @@
 # Historie verzí
 
+## 2026.09.30-2
+- Příležitosti přejmenovány na Obchodní případy; nová Pipeline nad stejnými záznamy.
+- Fáze Nabídka, Scoring, Kompletace, Schvalování, Podpis a K zadání (BeTy); staré stavy se zobrazují v odpovídajících nových fázích bez přepisování historie.
+- Společné hledání, kategorie, fáze a řazení; počet dnů od poslední aktualizace a zvýraznění nad 14 dní.
+- Změny fází výběrem nebo přetažením; propojeno i s případy ze smluv.
+- Převod do obchodu se dokončí až uložením obchodu; zavření formuláře zachová otevřený případ.
+
 ## 2026.09.30-1
 - Propojený graf vývoje a koláč alokace: kurzor, časový posuvník, hodnoty, vklady a zhodnocení ke společnému datu; funguje i ve staženém HTML bez internetu.
 - Filtry společností u klientského portfolia a v klientských sekcích Investice, FKI a Penze, včetně volby Všechny společnosti.
