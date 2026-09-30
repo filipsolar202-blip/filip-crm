@@ -1,5 +1,10 @@
 # Historie verzí
 
+## 2026.09.30-3
+- Samostatný objem řešeného případu u smluv, oddělený od částky / platby smlouvy.
+- Úprava objemu kliknutím na částku v tabulce a Pipeline nebo ve formuláři smlouvy; podpora zápisu 2 500 000 a 2,5 mil.
+- Stejný objem v součtech obou pohledů a při přípravě nového obchodu.
+
 ## 2026.09.30-2
 - Příležitosti přejmenovány na Obchodní případy; nová Pipeline nad stejnými záznamy.
 - Fáze Nabídka, Scoring, Kompletace, Schvalování, Podpis a K zadání (BeTy); staré stavy se zobrazují v odpovídajících nových fázích bez přepisování historie.

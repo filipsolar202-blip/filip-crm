@@ -506,7 +506,7 @@ function opportunityFromContract(s) {
     category: contractOpportunityCategory(s),
     company: s.company || '',
     product: s.product || s.type || '',
-    amount: parseMoney(s.amount),
+    amount: s.caseVolume ?? parseMoney(s.amount),
     bj: +s.dealBj || 0,
     expectedCommission: +s.expectedCommission || 0,
     expectedDate: s.anniv || '',
@@ -2615,6 +2615,34 @@ function compareOpportunities(a, b) {
   if (sort === 'date') return String(a.o.statusDate || a.o.date || '').localeCompare(String(b.o.statusDate || b.o.date || '')) || clientName(a.c).localeCompare(clientName(b.c), 'cs');
   return opportunitySortValue(a, 'status') - opportunitySortValue(b, 'status') || String(a.o.expectedDate || a.o.statusDate).localeCompare(String(b.o.expectedDate || b.o.statusDate)) || clientName(a.c).localeCompare(clientName(b.c), 'cs');
 }
+// The negotiated case volume is independent of the existing contract payment.
+function caseVolumeInput(value) {
+  const text=String(value??'').trim().toLowerCase().replace(/\s/g,'').replace(/kč|czk/g,'').replace(/,-$/,'');
+  if(!text)return null;
+  const match=text.match(/^(\d+(?:[.,]\d+)?)(mil\.?|milionů|miliony|milion|tis\.?|tisíc)?$/);
+  if(!match)throw new Error('Zadejte částku v Kč, například 2500000, 2 500 000 nebo 2,5 mil.');
+  const amount=Number(match[1].replace(',','.'))*(match[2]?.startsWith('mil')?1000000:match[2]?1000:1);
+  if(!Number.isFinite(amount)||amount<0)throw new Error('Zadejte platnou nezápornou částku.');
+  return amount;
+}
+function caseSetVolume(id,value) {
+  const amount=caseVolumeInput(value);
+  const contract=String(id).startsWith('contract_');
+  const item=contract?state.contracts.find(x=>String(x.id)===String(id).slice(9)):state.opportunities.find(x=>String(x.id)===String(id));
+  if(!item)return;
+  if(contract){if(amount===null)delete item.caseVolume;else item.caseVolume=amount;}
+  else item.amount=amount??0;
+  item.updatedAt=today();
+  const history=contract?(item.log ||= []):(item.history ||= []);
+  history.push({d:today(),t:'Objem obchodního případu: '+(amount===null?'výchozí hodnota':money(amount))});
+  persist();renderAll();
+}
+function caseEditVolume(id) {
+  const item=allOpenOpportunities().find(x=>String(x.id)===String(id));if(!item)return;
+  const value=prompt('Objem řešeného obchodního případu v Kč (např. 2 500 000 nebo 2,5 mil). U případu ze smlouvy se původní částka / platba smlouvy nemění.',String(item.amount??''));
+  if(value===null)return;
+  try{caseSetVolume(id,value);}catch(error){alert(error.message);}
+}
 function caseStage(status) {
   return {'Oportunita':'Nabídka','Čekám na podklady':'Kompletace','Ve schvalování':'Schvalování','Schváleno':'Podpis'}[status] || status || 'Nabídka';
 }
@@ -2671,11 +2699,11 @@ function renderOpportunities() {
   const metrics=`<div class="metric"><span class="note">Otevřených případů</span><b>${rows.length}</b></div><div class="metric"><span class="note">Bez aktualizace přes 14 dní</span><b>${rows.filter(x=>caseDays(x.o)>14).length}</b></div><div class="metric"><span class="note">Objem</span><b>${money(total)}</b></div><div class="metric"><span class="note">Očekávaná provize</span><b>${money(cash)}</b></div>`;
   if(byId('oppMetrics'))byId('oppMetrics').innerHTML=metrics;if(byId('pipelineMetrics'))byId('pipelineMetrics').innerHTML=metrics;
   const table=byId('opportunityTable');
-  if(table)table.innerHTML=`<thead><tr><th>Případ / klient</th><th>Kategorie</th><th>Fáze</th><th>Od aktualizace</th><th>Společnost</th><th>Objem</th><th>BJ</th><th>Oček. provize</th><th>Další termín</th><th>Akce</th></tr></thead><tbody>${rows.map(({o,c})=>`<tr data-case-id="${esc(o.id)}"><td><button class="case-title" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">${esc(o.product||o.category||'Obchodní případ')}</button><br><span>${esc(clientName(c))}</span>${o.isContractOpportunity?'<span class="chip">ze smlouvy</span>':''}</td><td>${esc(o.category)}</td><td>${opportunityStatusSelect(o)}</td><td>${caseAgeHtml(o)}<br><small>${esc(caseLastUpdate(o)?dateObj(caseLastUpdate(o)).toLocaleDateString('cs-CZ'):'')}</small></td><td>${esc(o.company)}</td><td class="money">${money(o.amount)}</td><td>${num(o.bj)}</td><td class="money">${money(+o.actualCommission||+o.expectedCommission||opportunityCash(o,new Date().getFullYear()))}</td><td>${esc(o.expectedDate||'')}</td><td><button class="btn slim" onclick="selectedClientId=${Number(o.clientId)};showView('clients')">Klient</button><button class="btn slim" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">Upravit</button></td></tr>`).join('')||'<tr><td colspan="10" class="note">Žádné obchodní případy pro tento výběr.</td></tr>'}</tbody>`;
+  if(table)table.innerHTML=`<thead><tr><th>Případ / klient</th><th>Kategorie</th><th>Fáze</th><th>Od aktualizace</th><th>Společnost</th><th>Objem</th><th>BJ</th><th>Oček. provize</th><th>Další termín</th><th>Akce</th></tr></thead><tbody>${rows.map(({o,c})=>`<tr data-case-id="${esc(o.id)}"><td><button class="case-title" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">${esc(o.product||o.category||'Obchodní případ')}</button><br><span>${esc(clientName(c))}</span>${o.isContractOpportunity?'<span class="chip">ze smlouvy</span>':''}</td><td>${esc(o.category)}</td><td>${opportunityStatusSelect(o)}</td><td>${caseAgeHtml(o)}<br><small>${esc(caseLastUpdate(o)?dateObj(caseLastUpdate(o)).toLocaleDateString('cs-CZ'):'')}</small></td><td>${esc(o.company)}</td><td class="money"><button class="case-title" title="Upravit objem případu" onclick="caseEditVolume(decodeURIComponent('${caseEncodedId(o.id)}'))">${money(o.amount)} ✎</button></td><td>${num(o.bj)}</td><td class="money">${money(+o.actualCommission||+o.expectedCommission||opportunityCash(o,new Date().getFullYear()))}</td><td>${esc(o.expectedDate||'')}</td><td><button class="btn slim" onclick="selectedClientId=${Number(o.clientId)};showView('clients')">Klient</button><button class="btn slim" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">Upravit</button></td></tr>`).join('')||'<tr><td colspan="10" class="note">Žádné obchodní případy pro tento výběr.</td></tr>'}</tbody>`;
   const board=byId('pipelineBoard');
   if(board)board.innerHTML=caseStages().map((stage,index)=>{
     const cards=rows.filter(x=>caseStage(x.o.status)===stage);
-    return `<section class="pipeline-column" data-stage="${esc(stage)}" style="--stage-color:${['#7289bb','#b69a65','#69a69c','#739ac3','#8b7db9','#487aa0'][index]}" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="caseDrop(event,'${esc(stage)}')"><header><h3>${esc(stage)} <span>${cards.length}</span></h3><b>${money(cards.reduce((s,x)=>s+(+x.o.amount||0),0))}</b></header><div class="pipeline-cards">${cards.map(({o,c})=>`<article class="pipeline-card" draggable="true" data-case-id="${esc(o.id)}" ondragstart="event.dataTransfer.setData('application/x-crm-case',decodeURIComponent('${caseEncodedId(o.id)}'))"><button class="case-title" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">${esc(o.product||o.category||'Obchodní případ')}</button><div class="pipeline-client">${esc(clientName(c))}</div><div class="chips"><span class="chip">${esc(o.category)}</span>${caseAgeHtml(o)}</div><div class="pipeline-amount">${money(o.amount)}</div><div class="note">${esc(o.company||'')}</div>${opportunityStatusSelect(o)}<div class="actions"><button class="btn slim" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">Upravit</button><button class="btn slim" onclick="selectedClientId=${Number(o.clientId)};showView('clients')">Klient</button></div></article>`).join('')||'<p class="pipeline-empty">Žádné případy</p>'}</div></section>`;
+    return `<section class="pipeline-column" data-stage="${esc(stage)}" style="--stage-color:${['#7289bb','#b69a65','#69a69c','#739ac3','#8b7db9','#487aa0'][index]}" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="caseDrop(event,'${esc(stage)}')"><header><h3>${esc(stage)} <span>${cards.length}</span></h3><b>${money(cards.reduce((s,x)=>s+(+x.o.amount||0),0))}</b></header><div class="pipeline-cards">${cards.map(({o,c})=>`<article class="pipeline-card" draggable="true" data-case-id="${esc(o.id)}" ondragstart="event.dataTransfer.setData('application/x-crm-case',decodeURIComponent('${caseEncodedId(o.id)}'))"><button class="case-title" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">${esc(o.product||o.category||'Obchodní případ')}</button><div class="pipeline-client">${esc(clientName(c))}</div><div class="chips"><span class="chip">${esc(o.category)}</span>${caseAgeHtml(o)}</div><div class="pipeline-amount"><button class="case-title" title="Upravit objem případu" onclick="caseEditVolume(decodeURIComponent('${caseEncodedId(o.id)}'))">${money(o.amount)} ✎</button></div><div class="note">${esc(o.company||'')}</div>${opportunityStatusSelect(o)}<div class="actions"><button class="btn slim" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">Upravit</button><button class="btn slim" onclick="selectedClientId=${Number(o.clientId)};showView('clients')">Klient</button></div></article>`).join('')||'<p class="pipeline-empty">Žádné případy</p>'}</div></section>`;
   }).join('');
 }
 function renderVersion() {
@@ -5245,6 +5273,7 @@ function openContractModal(clientId = null, id = null) {
   setVal('sNumber', s.number || '');
   setVal('sAnniv', s.anniv || '');
   setVal('sAmount', s.amount || '');
+  setVal('sCaseVolume', s.caseVolume ?? '');
   setVal('sRate', s.rate || '');
   setVal('sCreateDeal', s.createDeal === 'yes' || s.fromDealId ? 'yes' : 'no');
   setVal('sDealDate', s.dealDate || today());
@@ -5263,6 +5292,9 @@ function openContractModal(clientId = null, id = null) {
   openModal('contractModal');
 }
 function fkiSync_before_saveContract() {
+  let caseVolume;
+  try{caseVolume=caseVolumeInput(val('sCaseVolume'));}catch(error){return alert(error.message);}
+
   const clientId = +val('sClient');
   if (!clientId) return alert('Vyber klienta.');
   const number = val('sNumber').trim(),
@@ -5291,6 +5323,7 @@ function fkiSync_before_saveContract() {
     number,
     anniv: val('sAnniv'),
     amount: val('sAmount').trim(),
+    caseVolume,
     rate: val('sRate').trim(),
     createDeal: val('sCreateDeal'),
     dealDate: val('sDealDate') || today(),
@@ -5554,7 +5587,7 @@ function openDealFromContract(s) {
       date: pref.date,
       company: s.company,
       product: s.product || s.type,
-      amount: parseMoney(s.amount),
+      amount: (s.caseVolume ?? parseMoney(s.amount)),
       bj: pref.bj,
       owner: pref.owner,
       ownerType: pref.ownerType,
@@ -5571,7 +5604,7 @@ function openDealFromContract(s) {
   setVal('dDate', d.date || pref.date || today());
   setVal('dCompany', d.company || s.company || '');
   setVal('dProduct', d.product || s.product || s.type || '');
-  setVal('dAmount', d.amount || parseMoney(s.amount) || '');
+  setVal('dAmount', d.amount || (s.caseVolume ?? parseMoney(s.amount)) || '');
   setVal('dBj', d.bj || pref.bj || '');
   setVal('dOwner', d.owner || pref.owner || '');
   setVal('dOwnerType', d.ownerType || pref.ownerType || '');
@@ -6118,6 +6151,7 @@ function opportunityFromForm() {
 }
 function saveOpportunity() {
   const data = opportunityFromForm();
+  try{data.amount=caseVolumeInput(val('oAmount')) ?? 0;}catch(error){return alert(error.message);}
   if (!data.clientId) return alert('Vyber klienta.');
   let o = editingOpportunityId ? state.opportunities.find(x => x.id === editingOpportunityId) : null;
   const oldStatus = o?.status;
@@ -12012,8 +12046,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.09.30-2';
-const VERSION_NOTE = 'Obchodní případy a společná Pipeline: šest fází, filtry kategorií, stáří aktualizací a přesouvání karet.';
+const VERSION = '2026.09.30-3';
+const VERSION_NOTE = 'Samostatný upravitelný objem obchodního případu v tabulce a Pipeline, oddělený od platby smlouvy.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';

@@ -223,6 +223,21 @@ try{
  assert.equal(await page.evaluate(()=>caseDays(state.opportunities[0])),0);
  const linked=await page.evaluate(()=>{const o=contractOpportunities().find(isOpenOpportunity);if(!o)return null;const count=state.opportunities.length;updateOpportunityStatus(o.id,'Scoring');return {status:allOpenOpportunities().find(x=>x.id===o.id)?.status,sameCount:count===state.opportunities.length};});
  assert(linked&&linked.status==='Scoring'&&linked.sameCount);
+ const volumes=await page.evaluate(()=>{
+   const o=contractOpportunities().find(isOpenOpportunity), source=state.contracts.find(x=>String(x.id)===String(o.contractId)),original=source.amount;
+   caseSetVolume(o.id,'2,5 mil');
+   const amount=allOpenOpportunities().find(x=>x.id===o.id).amount;
+   openContractModal(source.clientId,source.id);const form=val('sCaseVolume');closeModal('contractModal');
+   openDealFromContract(source);const deal=val('dAmount');closeModal('dealModal');
+   let invalid=false;try{caseSetVolume(o.id,'2.500.000 chybně')}catch{invalid=true}
+   const untouched=source.amount===original;
+   caseSetVolume(99001,'2 500 000 Kč');
+   openOpportunityModal(1,99001);setVal('oAmount','2,5 mil');saveOpportunity();
+   return {amount,form,deal,untouched,invalid,manual:state.opportunities[0].amount,zero:caseVolumeInput('0')};
+ });
+ assert.deepEqual(volumes,{amount:2500000,form:'2500000',deal:'2500000',untouched:true,invalid:true,manual:2500000,zero:0});
+ results.push('Case volume accepts millions and spaced CZK, preserves contract payment and prefills trade volume');
+
  await page.setViewportSize({width:1600,height:1000});await page.evaluate(()=>showView('pipeline'));await page.screenshot({path:'/private/tmp/crm-pipeline-desktop.png',fullPage:true});
  await page.setViewportSize({width:834,height:1112});await page.screenshot({path:'/private/tmp/crm-pipeline-ipad.png',fullPage:true});
  await page.evaluate(data=>{state=JSON.parse(data);window.businessCaseFilters={query:'',category:'',status:'',sort:'status'};renderAll()},savedCases);
