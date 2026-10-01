@@ -196,46 +196,46 @@ try{
  await page.evaluate(()=>{showView('fki');selectFkClient(1)});await page.screenshot({path:'/private/tmp/crm-unified-fki.png',fullPage:true});
  await page.setViewportSize({width:834,height:1112});await page.screenshot({path:'/private/tmp/crm-unified-ipad.png',fullPage:true});results.push('iPad viewport rendered');
 
- const replacementSession=await session(root);
- const rp=replacementSession.page;
- const original=await rp.evaluate(()=>{
-   state.contracts.push({id:88001,clientId:1,type:'hypotéka',company:'Původní banka',product:'Původní hypotéka',number:'OLD-88',amount:'2500000',status:'reseni',rate:'2.5',note:'Historické podmínky',attachments:[],log:[]});
-   state.deals.push({id:88002,clientId:1,category:'Hypotéka',contractId:88001,amount:2500000,bj:20,date:'2024-01-01'});
-   const count=state.contracts.length;startReplacementCase(88001);setVal('oCompany','Nová banka');setVal('oProduct','Nová hypotéka');setVal('oBj','100');setVal('oContractNumber','NEW-88');saveOpportunity();
-   const o=state.opportunities.find(x=>String(x.replacesContractId)==='88001');
-   const source=state.contracts.find(x=>x.id===88001);
-   return {id:o.id,count,unchanged:source.number==='OLD-88',open:allOpenOpportunities().filter(x=>x.id===o.id||x.id==='contract_88001').length,products:clientContracts(1).filter(x=>x.id===88001).length};
+ const replacementSession=await session(root),rp=replacementSession.page;
+ const replacement=await rp.evaluate(()=>{
+   state.contracts.push({id:88001,clientId:1,type:'hypotéka',company:'Původní banka',product:'Hypotéka',number:'OLD',amount:'2500000',rate:'2.59',anniv:'2027-11-23',status:'',note:'Původní podmínky',log:[]});
+   const count=state.contracts.length;
+   startReplacementCase(88001);setVal('oProduct','Nová hypotéka');setVal('oCompany','Nová banka');setVal('oAmount','2500000');setVal('oBj','100');setVal('oContractRate','5.39');setVal('oContractAnniv','2030-11-23');setVal('oDealDate',today());saveOpportunity();
+   const o=state.opportunities.at(-1),independent=!o.replacesContractId;
+   updateOpportunityStatus(o.id,'Podepsáno');
+   const prefill={rate:val('dContractRate'),fix:val('dContractAnniv'),date:val('dDate'),bj:val('dBj')};
+   setVal('dReplacementContract','88001');setVal('dReplacementEffective','2099-01-01');setVal('dContractNumber','NEW');setVal('dContractStatus','podepsano');setVal('dCreateContract','yes');saveDeal();
+   const d=state.deals.find(x=>x.fromOpportunityId===o.id);
+   const pending={old:state.contracts.find(x=>x.id===88001).number,count:state.contracts.length,scheduled:!!d.pendingContract,trade:!!d};
+   activateDueContractReplacements('2099-01-01');
+   const current=state.contracts.find(x=>x.id===88001);
+   const after={number:current.number,rate:current.rate,fix:current.anniv,count:state.contracts.length,history:current.replacementHistory[0].contract,done:!d.pendingContract};
+   activateDueContractReplacements('2099-01-02');
+   return {independent,prefill,pending,after,count,historyCount:current.replacementHistory.length,today:today()};
  });
- assert(original.unchanged);assert.equal(original.open,1);assert.equal(original.products,1);
- const replacement=await rp.evaluate(id=>{
-   const o=state.opportunities.find(x=>x.id===id);let blocked=false;
-   o.replacementSignedDate=today();o.replacementEffectiveDate='2099-01-01';
-   try{replacementReady(o,1)}catch{blocked=true}
-   const before=state.contracts.find(x=>x.id===88001).number;
-   o.replacementEffectiveDate=today();updateOpportunityStatus(id,'Podepsáno');setVal('dContractNumber','NEW-88');setVal('dCreateContract','yes');setVal('dContractStatus','podepsano');saveDeal();
-   const contract=state.contracts.find(x=>x.id===88001),deal=state.deals.find(x=>x.fromOpportunityId===id),oldDeal=state.deals.find(x=>x.id===88002);
-   return {blocked,before,count:state.contracts.length,number:contract.number,company:contract.company,history:contract.replacementHistory?.[0].contract.number,note:contract.note,dealId:deal?.id,contractId:deal?.contractId,oldBJ:oldDeal.bj,oldVisible:visibleDeals().some(x=>x.id===88002),oldReplaced:oldDeal.portfolioReplacedBy,remaining:state.opportunities.some(x=>x.id===id)};
- },original.id);
- assert(replacement.blocked);assert.equal(replacement.before,'OLD-88');assert.equal(replacement.count,original.count);assert.equal(replacement.number,'NEW-88');assert.equal(replacement.company,'Nová banka');assert.equal(replacement.history,'OLD-88');assert(replacement.note.includes('Historické podmínky'));assert.equal(replacement.contractId,88001);assert.equal(replacement.oldBJ,20);assert(replacement.oldVisible);assert.equal(replacement.oldReplaced,replacement.dealId);assert(!replacement.remaining);
- await rp.reload();await rp.waitForTimeout(800);
- assert.equal(await rp.evaluate(()=>state.contracts.find(x=>x.id===88001).replacementHistory[0].contract.number),'OLD-88');
+ assert(replacement.independent);assert.deepEqual(replacement.prefill,{rate:'5.39',fix:'2030-11-23',date:replacement.today,bj:'100'});
+ assert.deepEqual(replacement.pending,{old:'OLD',count:replacement.count,scheduled:true,trade:true});
+ assert.equal(replacement.after.number,'NEW');assert.equal(replacement.after.count,replacement.count);assert.equal(replacement.after.rate,'5.39');assert.equal(replacement.after.fix,'2030-11-23');assert.equal(replacement.after.history.number,'OLD');assert.equal(replacement.after.history.rate,'2.59');assert.equal(replacement.after.history.anniv,'2027-11-23');assert(replacement.after.done);assert.equal(replacement.historyCount,1);
+ await rp.evaluate(()=>{persist();openContractModal(1,88001)});await rp.screenshot({path:'/private/tmp/crm-new-replacement.png',fullPage:true});
+ await rp.reload();await rp.waitForTimeout(700);assert.equal(await rp.evaluate(()=>state.contracts.find(x=>x.id===88001).replacementHistory.length),1);
 
- const life=await rp.evaluate(()=>{
-   state.contracts.push({id:88003,clientId:1,type:'život',company:'Původní pojišťovna',product:'Životní pojištění',number:'LIFE-OLD',amount:'1500',status:'reseni',note:'Původní pojistné krytí'});
-   const count=state.contracts.length;startReplacementCase(88003);setVal('oCompany','Nová pojišťovna');setVal('oBj','80');setVal('oReplacementSigned',today());setVal('oReplacementEffective',today());saveOpportunity();
-   const o=state.opportunities.find(x=>String(x.replacesContractId)==='88003');
-   const unchanged=state.contracts.find(x=>x.id===88003).number==='LIFE-OLD';
-   updateOpportunityStatus(o.id,'Podepsáno');setVal('dContractNumber','LIFE-NEW');saveDeal();
-   const current=state.contracts.find(x=>x.id===88003);
-   window.businessCaseFilters={query:'',category:'',status:'',sort:'status'};renderOpportunities();
-   return {unchanged,count:state.contracts.length,expectedCount:count,number:current.number,history:current.replacementHistory[0].contract.number,metrics:byId('pipelineMetrics').textContent};
+ const later=await rp.evaluate(()=>{
+   openDealModal(1);setVal('dCategory','Hypotéky');setVal('dCompany','Třetí banka');setVal('dProduct','Nové refinancování');setVal('dAmount','2400000');setVal('dBj','120');setVal('dCreateContract','yes');setVal('dContractType','hypotéka');setVal('dContractStatus','podepsano');setVal('dContractNumber','LATER');saveDeal();
+   const d=state.deals.at(-1),standalone=d.contractId,count=state.contracts.length;
+   openDealModal(1,d.id);setVal('dReplacementContract','88001');setVal('dReplacementEffective',today());saveDeal();
+   return {count:state.contracts.length,expected:count-1,standaloneGone:!state.contracts.some(x=>x.id===standalone),current:state.contracts.find(x=>x.id===88001).number,linked:d.contractId};
  });
- await rp.evaluate(()=>{openContractModal(1,88003)});await rp.screenshot({path:'/private/tmp/crm-replacement-history.png',fullPage:true});
- assert.equal(await rp.evaluate(()=>state.contracts.find(x=>x.id===88003).dealBj),80);
- await rp.evaluate(()=>{closeModal('contractModal');startReplacementCase(88003)});await rp.screenshot({path:'/private/tmp/crm-replacement-form.png',fullPage:true});
- assert(life.unchanged);assert.equal(life.count,life.expectedCount);assert.equal(life.number,'LIFE-NEW');assert.equal(life.history,'LIFE-OLD');assert(life.metrics.includes('Plánované BJ'));assert(!life.metrics.includes('Objem'));
+ assert.equal(later.count,later.expected);assert(later.standaloneGone);assert.equal(later.current,'LATER');assert.equal(later.linked,88001);
+
+ const futureDeal=await rp.evaluate(()=>{
+   openDealModal(1);setVal('dCategory','Hypotéky');setVal('dCompany','Budoucí banka');setVal('dProduct','Budoucí hypotéka');setVal('dAmount','2000000');setVal('dCreateContract','yes');setVal('dContractType','hypotéka');setVal('dContractStatus','podepsano');setVal('dContractNumber','FUTURE');setVal('dContractRate','4.2');setVal('dReplacementContract','88001');setVal('dReplacementEffective','2099-12-01');saveDeal();return state.deals.at(-1).id;
+ });
+ await rp.reload();await rp.waitForTimeout(700);
+ const pendingEdit=await rp.evaluate(id=>{openDealModal(1,id);const fields={rate:val('dContractRate'),number:val('dContractNumber'),status:val('dContractStatus'),date:val('dReplacementEffective')};setVal('dBj','111');saveDeal();return {fields,old:state.contracts.find(x=>x.id===88001).number,pending:!!state.deals.find(x=>x.id===id).pendingContract};},futureDeal);
+ assert.deepEqual(pendingEdit,{fields:{rate:'4.2',number:'FUTURE',status:'podepsano',date:'2099-12-01'},old:'LATER',pending:true});
+ await rp.evaluate(id=>openDealModal(1,id),futureDeal);await rp.screenshot({path:'/private/tmp/crm-independent-trade-form.png',fullPage:true});
  assert.deepEqual(replacementSession.errors,[]);await replacementSession.context.close();
- results.push('Replacement case preserves original until signing/effectiveness, updates one contract, archives history and retains old commissions');
+ results.push('Independent case, replacement chosen on completion, future effective date, preserved original terms and idempotent activation');
  const savedCases=await page.evaluate(()=>JSON.stringify(state));
  await page.evaluate(()=>{
    state.opportunities=[{id:99001,clientId:1,product:'Hypotéka QA',category:'Hypotéka',status:'Oportunita',amount:2500000,updatedAt:'2026-09-01',history:[]},{id:99002,clientId:1,product:'Investice QA',category:'Investice',status:'Schváleno',amount:300000,updatedAt:'2026-09-15',history:[]}];

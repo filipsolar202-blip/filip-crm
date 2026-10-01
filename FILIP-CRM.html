@@ -7,7 +7,7 @@
 <script src="assets/vendor/chart.umd.min.js"></script>
 <script src="assets/vendor/xlsx.full.min.js"></script>
 
-<link rel="stylesheet" href="assets/css/crm.css?v=2026.10.01-1">
+<link rel="stylesheet" href="assets/css/crm.css?v=2026.10.01-2">
 </head>
 <body>
 <div class="app">
@@ -485,11 +485,12 @@
 </div><div class="actions" style="justify-content:space-between;margin-top:12px"><button class="btn red" id="deleteContractBtn" onclick="deleteContract()">Smazat</button><div class="actions"><button class="btn" onclick="markContractDone()">Vyřízeno + posun výročí</button><button class="btn primary" onclick="saveContract()">Uložit smlouvu</button></div></div></div></div>
 
 <div class="modal" id="dealModal"><div class="modal-box"><div class="toolbar"><h2 id="dealModalTitle">Obchod</h2><button class="btn" onclick="closeModal('dealModal')">Zavřít</button></div><div class="form-grid">
-  <div class="field"><label>Klient</label><select id="dClient"></select></div><div class="field"><label>Kategorie</label><select id="dCategory" onchange="syncDealContractDefaults(true);updateDealExpectedCommission()"></select></div><div class="field"><label>Datum</label><input id="dDate" type="date" onchange="syncDealContractDefaults();updateDealExpectedCommission()"></div>
+  <div class="field"><label>Klient</label><select id="dClient" onchange="fillDealReplacement()"></select></div><div class="field"><label>Kategorie</label><select id="dCategory" onchange="syncDealContractDefaults(true);updateDealExpectedCommission()"></select></div><div class="field"><label>Datum</label><input id="dDate" type="date" onchange="syncDealContractDefaults();updateDealExpectedCommission()"></div>
   <div class="field"><label>Společnost</label><input id="dCompany"></div><div class="field"><label>Produkt</label><input id="dProduct" oninput="syncDealContractDefaults()"></div><div class="field"><label>Objem</label><input id="dAmount" type="number" oninput="syncDealContractDefaults()"></div>
   <div class="field"><label>BJ</label><input id="dBj" type="number" oninput="updateDealExpectedCommission()"></div><div class="field"><label>Očekávaná provize</label><input id="dExpectedCommission" type="text" readonly></div><div class="field"><label>Skutečná provize</label><input id="dActualCommission" type="number" placeholder="vyplnit až po výplatě"></div>
   <div class="field"><label>Typař / doporučení</label><input id="dOwner" list="peopleList" oninput="syncDealOwnerDefaults()"></div><div class="field"><label>Typ zdroje</label><select id="dOwnerType" onchange="syncDealOwnerDefaults()"><option value="">Bez zdroje</option><option value="tipar">Typař</option><option value="referral">Doporučení</option></select></div><div class="field"><label>Provize typaři %</label><input id="dOwnerCommissionPct" type="number" min="0" max="100" step="1"></div><div class="field"><label>Typař vyplacen</label><select id="dOwnerPaid"><option value="no">Ne</option><option value="yes">Ano</option></select></div>
   <div class="field"><label>Provize vyplacena</label><select id="dCommissionPaid"><option value="no">Ne</option><option value="yes">Ano</option></select></div>
+  <div class="field full"><label>Nahradit původní smlouvu (volitelné)</label><select id="dReplacementContract" onchange="renderDealReplacementInfo()"></select><small id="dReplacementInfo"></small></div><div class="field"><label>Účinnost náhrady</label><input id="dReplacementEffective" type="date"></div>
   <div class="field"><label>Propsat do smluv</label><select id="dCreateContract" onchange="toggleDealContractFields()"><option value="yes">Ano</option><option value="no">Ne</option></select></div><div class="field"><label>Typ smlouvy</label><select id="dContractType"><option>auto</option><option>majetek</option><option>život</option><option>hypotéka</option><option>úvěr</option><option>investice</option><option>FKI</option><option>DPS</option><option>DIP</option><option>ostatní</option></select></div><div class="field"><label>Číslo smlouvy</label><input id="dContractNumber"></div>
   <div class="field"><label>Výročí / fixace</label><input id="dContractAnniv" type="date"></div><div class="field"><label>Částka / platba</label><input id="dContractAmount"></div><div class="field"><label>Úrok</label><input id="dContractRate"></div>
   <div class="field"><label>Stav smlouvy</label><select id="dContractStatus" onchange="syncSignedDealContractRule()"></select></div><div class="field full"><label>Poznámka ke smlouvě</label><textarea class="contract-note-editor" id="dContractNote" onkeydown="datedTextareaEnter(event,this)" placeholder="Enter = nový datovaný záznam, Shift+Enter = nový řádek"></textarea></div>
@@ -548,7 +549,7 @@
   <div class="field"><label>Klient</label><select id="oClient" onchange="fillReplacementContracts()"></select></div><div class="field"><label>Stav</label><select id="oStatus"></select></div><div class="field"><label>Datum stavu</label><input id="oStatusDate" type="date"></div>
   <div class="field"><label>Oblast</label><select id="oCategory" onchange="toggleOpportunityCustomCategory()"></select></div><div class="field"><label>Vlastní oblast</label><input id="oCategoryCustom" placeholder="např. Nemovitost, Firemní majetek"></div><div class="field"><label>Společnost</label><input id="oCompany"></div>
   <div class="field"><label>Produkt</label><input id="oProduct"></div>
-  <div class="field full"><label>Návaznost na původní smlouvu</label><select id="oReplacesContract"></select><small>Samostatný případ. Náhrada se promítne až při dokončení po podpisu a účinnosti.</small></div><div class="field"><label>Datum podpisu náhrady</label><input id="oReplacementSigned" type="date"></div><div class="field"><label>Datum účinnosti náhrady</label><input id="oReplacementEffective" type="date"></div><div class="field"><label>Očekávaný objem</label><input id="oAmount" inputmode="decimal" placeholder="např. 2 500 000 nebo 2,5 mil"></div><div class="field"><label>Očekávané BJ</label><input id="oBj" type="number"></div><div class="field"><label>Očekávaný podpis</label><input id="oExpectedDate" type="date"></div>
+  <div hidden><select id="oReplacesContract"></select><input id="oReplacementSigned" type="date"><input id="oReplacementEffective" type="date"></div><div class="field"><label>Datum obchodu</label><input id="oDealDate" type="date"></div><div class="field"><label>Očekávaný objem</label><input id="oAmount" inputmode="decimal" placeholder="např. 2 500 000 nebo 2,5 mil"></div><div class="field"><label>Očekávané BJ</label><input id="oBj" type="number"></div><div class="field"><label>Očekávaný podpis</label><input id="oExpectedDate" type="date"></div>
   <div class="field"><label>Typař / zdroj</label><input id="oOwner"></div><div class="field"><label>Propsat po podpisu do smluv</label><select id="oCreateContract"><option value="yes">Ano</option><option value="no">Ne</option></select></div><div class="field"><label>Číslo smlouvy</label><input id="oContractNumber"></div>
   <div class="field"><label>Výročí / fixace</label><input id="oContractAnniv" type="date"></div><div class="field"><label>Úrok</label><input id="oContractRate"></div><div class="field"><label>Skutečná provize</label><input id="oActualCommission" type="number"></div>
   <div class="field full"><label>Poznámka</label><textarea id="oNote"></textarea></div>
@@ -584,6 +585,6 @@
 
 
 
-<script src="assets/js/crm.js?v=2026.10.01-1"></script>
+<script src="assets/js/crm.js?v=2026.10.01-2"></script>
 </body>
 </html>

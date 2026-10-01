@@ -1,5 +1,11 @@
 # Historie verzí
 
+## 2026.10.01-2
+- Nový obchodní případ se zakládá odděleně od původní smlouvy. Výběr náhrady je až u dokončení nebo úpravy obchodu.
+- Samostatné datum obchodu a účinnosti: budoucí náhrada zachová původní smlouvu a aktivuje se při otevření/obnovení CRM od účinnosti.
+- Úprava již dokončeného obchodu umožní přiřadit původní smlouvu bez duplicitního aktuálního produktu.
+- Původní podmínky, poznámky a přílohy zůstávají v historii.
+
 ## 2026.10.01-1
 - Nový obchodní případ lze propojit s původní smlouvou přes akci Nový případ / náhrada nebo výběr ve formuláři.
 - Náhrada je samostatný případ u klienta a v Pipeline, nenavyšuje počet aktuálních produktů; potlačuje duplicitní automatický případ ze stejné smlouvy.

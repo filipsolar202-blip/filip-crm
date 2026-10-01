@@ -2,15 +2,15 @@
 
 Lokální CRM pro klienty, smlouvy, obchody, investice, FKI, poznámky, reporty a zálohu.
 
-## Verze 2026.10.01-1
+## Verze 2026.10.01-2
 
 Hlavní CRM má jednu aplikační logiku a společný modrý glass vzhled. Investiční plán porovnává aktuální portfolio s nejvýše dvěma alternativami A a B. Odprodej lze rozdělit do více nových nákupů. Pro klienta lze stáhnout podrobný investiční návrh ve stylu původní kalkulačky nebo stručné srovnání variant. Přehled změn je v `CHANGELOG.md`, výsledky ověření v `QA-2026-09-16.md`.
 
 ## Náhrada stávající smlouvy
 
-U klienta otevřete smlouvu a zvolte **Nový případ / náhrada**. Případ lze také založit běžným tlačítkem a vybrat původní smlouvu v poli Návaznost. Rozpracovaný návrh je u klienta a v obou obchodních přehledech; aktuální smlouva zůstává nezměněná.
+Nový obchodní případ se zakládá samostatně u klienta. Teprve při dokončení nebo pozdější úpravě obchodu lze v poli **Nahradit původní smlouvu** vybrat původní smlouvu klienta a datum účinnosti. Prázdná volba znamená nový produkt (při úpravě zachování současné vazby).
 
-U návrhu doplňte datum podpisu a účinnosti. Po dosažení obou dat zvolte Dokončit a zadat do obchodů a uložte obchod. Tím se aktualizuje původní záznam smlouvy bez dalšího produktu. Původní údaje, poznámky a přílohy najdete v rozbalovací historii ve správě smlouvy. Budoucí datum samo náhradu neaktivuje; dokončení provádí uživatel. Historické obchody a jejich provize zůstávají zachované.
+Datum obchodu je nezávislé na účinnosti. Obchod je evidovaný hned. Pokud je účinnost budoucí, původní smlouva zůstává aktuální; náhrada se aktivuje při otevření nebo obnovení CRM od data účinnosti. U původní smlouvy je vidět naplánovaná náhrada a odkaz na nový obchod. Původní údaje, poznámky a přílohy zůstanou v historii.
 
 ## Soubory aplikace
 
