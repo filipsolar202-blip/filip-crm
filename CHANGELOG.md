@@ -1,5 +1,12 @@
 # Historie verzí
 
+## 2026.10.01-1
+- Nový obchodní případ lze propojit s původní smlouvou přes akci Nový případ / náhrada nebo výběr ve formuláři.
+- Náhrada je samostatný případ u klienta a v Pipeline, nenavyšuje počet aktuálních produktů; potlačuje duplicitní automatický případ ze stejné smlouvy.
+- Dokončení je možné až po zadaném podpisu a účinnosti. Do té doby zůstává původní smlouva aktuální; k budoucímu datu se náhrada neaktivuje bez dokončení uživatelem.
+- Dokončení aktualizuje stejný záznam smlouvy a uloží historii původních údajů, poznámek a příloh. Historické obchody a provize zůstávají zachované.
+- Souhrny tabulky a Pipeline ukazují plánované BJ místo objemu, očekávaná provize zůstává v Kč. Sloupce Pipeline sčítají BJ.
+
 ## 2026.09.30-3
 - Samostatný objem řešeného případu u smluv, oddělený od částky / platby smlouvy.
 - Úprava objemu kliknutím na částku v tabulce a Pipeline nebo ve formuláři smlouvy; podpora zápisu 2 500 000 a 2,5 mil.

@@ -550,7 +550,7 @@ function sameOpenOpportunity(a, b) {
 }
 function allOpenOpportunities() {
   const manual = [...(state.opportunities || [])].filter(isOpenOpportunity),
-    generated = contractOpportunities().filter(o => !manual.some(m => sameOpenOpportunity(m, o)));
+    generated = contractOpportunities().filter(o => !manual.some(m => String(m.replacesContractId||'')===String(o.contractId) || (!m.replacesContractId && sameOpenOpportunity(m, o))));
   return [...manual, ...generated].map(o=>({...o,status:caseStage(o.status)}));
 }
 function clientOpenOpportunities(id) {
@@ -909,7 +909,7 @@ function clientInvestmentItems(clientId) {
       sourceType: 'record'
     })),
     recordAreas = new Set(records.map(investmentAreaOfItem));
-  const deals = clientDeals(clientId).filter(d => allowed.includes(areaForDeal(d)) && !recordAreas.has(areaForDeal(d))).map(d => ({
+  const deals = clientDeals(clientId).filter(d => !d.portfolioReplacedBy && allowed.includes(areaForDeal(d)) && !recordAreas.has(areaForDeal(d))).map(d => ({
     kind: areaForDeal(d) === 'fki' ? 'FKI obchod' : 'Obchod',
     area: areaForDeal(d),
     clientId: d.clientId,
@@ -1266,7 +1266,7 @@ function investmentRecordsForClient(clientId) {
   if (!c) return [];
   const rc = normalizeStrongId(c.birthId),
     id = String(c.id);
-  return (state.investmentRecords || []).filter(r => rc && (normalizeStrongId(invBirthId(r)) === rc || normalizeStrongId(invClientId(r).replace(/^RC[_-]?/i, '')) === rc) || String(invClientId(r)) === id || clientMatchesName(c, invInvestor(r)));
+  return (state.investmentRecords || []).filter(r=>!r.portfolioReplacedBy).filter(r => rc && (normalizeStrongId(invBirthId(r)) === rc || normalizeStrongId(invClientId(r).replace(/^RC[_-]?/i, '')) === rc) || String(invClientId(r)) === id || clientMatchesName(c, invInvestor(r)));
 }
 function readLocalJson(key, fallback) {
   try {
@@ -2643,6 +2643,46 @@ function caseEditVolume(id) {
   if(value===null)return;
   try{caseSetVolume(id,value);}catch(error){alert(error.message);}
 }
+function fillReplacementContracts(selected='') {
+  const el=byId('oReplacesContract');if(!el)return;
+  const rows=clientContracts(val('oClient'));
+  el.innerHTML='<option value="">Nový produkt bez náhrady smlouvy</option>'+rows.map(s=>`<option value="${esc(s.id)}">${esc([s.type,s.company,s.product,s.number].filter(Boolean).join(' · '))}</option>`).join('');
+  el.value=selected||'';
+}
+function startReplacementCase(id) {
+  const s=state.contracts.find(x=>String(x.id)===String(id));if(!s)return;
+  const existing=state.opportunities.find(o=>String(o.replacesContractId)===String(id)&&isOpenOpportunity(o));
+  if(existing){closeModal('contractModal');openOpportunityModal(s.clientId,existing.id);return;}
+  closeModal('contractModal');openOpportunityModal(s.clientId);
+  fillReplacementContracts(s.id);fillOpportunityCategorySelect('oCategory',contractOpportunityCategory(s));
+  toggleOpportunityCustomCategory();setVal('oProduct',s.product||s.type);setVal('oCompany',s.company||'');
+  setVal('oAmount',s.caseVolume??parseMoney(s.amount));
+  setVal('oNote','Náhrada původní smlouvy: '+[s.company,s.product,s.number].filter(Boolean).join(' · '));
+}
+function replacementBadge(o) {
+  if(!o.replacesContractId)return o.isContractOpportunity?'<span class="chip">Stávající smlouva</span>':'<span class="chip">Nový obchodní případ</span>';
+  const s=state.contracts.find(x=>String(x.id)===String(o.replacesContractId));
+  return `<span class="badge blue">Náhrada smlouvy ${esc(s?.number||s?.product||'')}</span>${o.replacementEffectiveDate?`<span class="chip">Účinnost ${esc(o.replacementEffectiveDate)}</span>`:''}`;
+}
+function replacementReady(o,clientId,asOf=today()) {
+  if(!o?.replacesContractId)return null;
+  const s=state.contracts.find(x=>String(x.id)===String(o.replacesContractId));
+  if(!s||String(s.clientId)!==String(clientId))throw new Error('Původní smlouva musí patřit vybranému klientovi.');
+  if(!o.replacementSignedDate||!o.replacementEffectiveDate)throw new Error('U náhrady doplňte v obchodním případu datum podpisu a účinnosti. Původní smlouva zatím zůstává aktuální.');
+  if(o.replacementEffectiveDate<o.replacementSignedDate)throw new Error('Datum účinnosti nesmí být před datem podpisu.');
+  if(o.replacementSignedDate>asOf||o.replacementEffectiveDate>asOf)throw new Error('Náhradu lze dokončit až po podpisu a od data účinnosti '+o.replacementEffectiveDate+'. Případ zatím ponechte v Pipeline.');
+  return s;
+}
+function downloadReplacementAttachment(contractId,historyIndex,attachmentIndex) {
+  const s=state.contracts.find(x=>String(x.id)===String(contractId)),a=s?.replacementHistory?.[historyIndex]?.contract?.attachments?.[attachmentIndex];
+  if(!a)return;
+  const previous=contractAttachmentDraft;contractAttachmentDraft=[a];
+  try{downloadContractAttachment(0);}finally{contractAttachmentDraft=previous;}
+}
+function replacementHistoryHtml(s) {
+  return (s.replacementHistory||[]).map((h,i)=>`<details><summary>Předchozí smlouva · ${esc(h.contract.company)} · ${esc(h.contract.number)} · nahrazena ${esc(h.effectiveDate)}</summary><p>${esc([h.contract.type,h.contract.product,h.contract.amount,h.contract.rate?'Sazba '+h.contract.rate:'',h.contract.anniv?'Výročí '+h.contract.anniv:''].filter(Boolean).join(' · '))}</p><pre style="white-space:pre-wrap">${esc(h.contract.note||'')}</pre>${(h.contract.attachments||[]).map((a,j)=>`<button class="btn slim" type="button" onclick="downloadReplacementAttachment(${Number(s.id)},${i},${j})">${esc(a.name||'Příloha původní smlouvy')}</button>`).join('')}<div class="note">${(h.contract.log||[]).map(l=>esc([l.d,l.t].filter(Boolean).join(' · '))).join('<br>')}</div></details>`).join('');
+}
+
 function caseStage(status) {
   return {'Oportunita':'Nabídka','Čekám na podklady':'Kompletace','Ve schvalování':'Schvalování','Schváleno':'Podpis'}[status] || status || 'Nabídka';
 }
@@ -2696,14 +2736,14 @@ function renderOpportunities() {
     return caseStages().indexOf(caseStage(b.o.status))-caseStages().indexOf(caseStage(a.o.status))||(caseDays(b.o)??-1)-(caseDays(a.o)??-1);
   });
   const total=rows.reduce((s,x)=>s+(+x.o.amount||0),0),cash=rows.reduce((s,x)=>s+(+x.o.actualCommission||+x.o.expectedCommission||opportunityCash(x.o,new Date().getFullYear())),0);
-  const metrics=`<div class="metric"><span class="note">Otevřených případů</span><b>${rows.length}</b></div><div class="metric"><span class="note">Bez aktualizace přes 14 dní</span><b>${rows.filter(x=>caseDays(x.o)>14).length}</b></div><div class="metric"><span class="note">Objem</span><b>${money(total)}</b></div><div class="metric"><span class="note">Očekávaná provize</span><b>${money(cash)}</b></div>`;
+  const metrics=`<div class="metric"><span class="note">Otevřených případů</span><b>${rows.length}</b></div><div class="metric"><span class="note">Bez aktualizace přes 14 dní</span><b>${rows.filter(x=>caseDays(x.o)>14).length}</b></div><div class="metric"><span class="note">Plánované BJ</span><b>${num(rows.reduce((s,x)=>s+(+x.o.bj||0),0))} BJ</b></div><div class="metric"><span class="note">Očekávaná provize</span><b>${money(cash)}</b></div>`;
   if(byId('oppMetrics'))byId('oppMetrics').innerHTML=metrics;if(byId('pipelineMetrics'))byId('pipelineMetrics').innerHTML=metrics;
   const table=byId('opportunityTable');
-  if(table)table.innerHTML=`<thead><tr><th>Případ / klient</th><th>Kategorie</th><th>Fáze</th><th>Od aktualizace</th><th>Společnost</th><th>Objem</th><th>BJ</th><th>Oček. provize</th><th>Další termín</th><th>Akce</th></tr></thead><tbody>${rows.map(({o,c})=>`<tr data-case-id="${esc(o.id)}"><td><button class="case-title" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">${esc(o.product||o.category||'Obchodní případ')}</button><br><span>${esc(clientName(c))}</span>${o.isContractOpportunity?'<span class="chip">ze smlouvy</span>':''}</td><td>${esc(o.category)}</td><td>${opportunityStatusSelect(o)}</td><td>${caseAgeHtml(o)}<br><small>${esc(caseLastUpdate(o)?dateObj(caseLastUpdate(o)).toLocaleDateString('cs-CZ'):'')}</small></td><td>${esc(o.company)}</td><td class="money"><button class="case-title" title="Upravit objem případu" onclick="caseEditVolume(decodeURIComponent('${caseEncodedId(o.id)}'))">${money(o.amount)} ✎</button></td><td>${num(o.bj)}</td><td class="money">${money(+o.actualCommission||+o.expectedCommission||opportunityCash(o,new Date().getFullYear()))}</td><td>${esc(o.expectedDate||'')}</td><td><button class="btn slim" onclick="selectedClientId=${Number(o.clientId)};showView('clients')">Klient</button><button class="btn slim" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">Upravit</button></td></tr>`).join('')||'<tr><td colspan="10" class="note">Žádné obchodní případy pro tento výběr.</td></tr>'}</tbody>`;
+  if(table)table.innerHTML=`<thead><tr><th>Případ / klient</th><th>Kategorie</th><th>Fáze</th><th>Od aktualizace</th><th>Společnost</th><th>Objem</th><th>BJ</th><th>Oček. provize</th><th>Další termín</th><th>Akce</th></tr></thead><tbody>${rows.map(({o,c})=>`<tr data-case-id="${esc(o.id)}"><td><button class="case-title" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">${esc(o.product||o.category||'Obchodní případ')}</button><br><span>${esc(clientName(c))}</span>${o.isContractOpportunity?'<span class="chip">ze smlouvy</span>':''}${replacementBadge(o)}</td><td>${esc(o.category)}</td><td>${opportunityStatusSelect(o)}</td><td>${caseAgeHtml(o)}<br><small>${esc(caseLastUpdate(o)?dateObj(caseLastUpdate(o)).toLocaleDateString('cs-CZ'):'')}</small></td><td>${esc(o.company)}</td><td class="money"><button class="case-title" title="Upravit objem případu" onclick="caseEditVolume(decodeURIComponent('${caseEncodedId(o.id)}'))">${money(o.amount)} ✎</button></td><td>${num(o.bj)}</td><td class="money">${money(+o.actualCommission||+o.expectedCommission||opportunityCash(o,new Date().getFullYear()))}</td><td>${esc(o.expectedDate||'')}</td><td><button class="btn slim" onclick="selectedClientId=${Number(o.clientId)};showView('clients')">Klient</button><button class="btn slim" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">Upravit</button></td></tr>`).join('')||'<tr><td colspan="10" class="note">Žádné obchodní případy pro tento výběr.</td></tr>'}</tbody>`;
   const board=byId('pipelineBoard');
   if(board)board.innerHTML=caseStages().map((stage,index)=>{
     const cards=rows.filter(x=>caseStage(x.o.status)===stage);
-    return `<section class="pipeline-column" data-stage="${esc(stage)}" style="--stage-color:${['#7289bb','#b69a65','#69a69c','#739ac3','#8b7db9','#487aa0'][index]}" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="caseDrop(event,'${esc(stage)}')"><header><h3>${esc(stage)} <span>${cards.length}</span></h3><b>${money(cards.reduce((s,x)=>s+(+x.o.amount||0),0))}</b></header><div class="pipeline-cards">${cards.map(({o,c})=>`<article class="pipeline-card" draggable="true" data-case-id="${esc(o.id)}" ondragstart="event.dataTransfer.setData('application/x-crm-case',decodeURIComponent('${caseEncodedId(o.id)}'))"><button class="case-title" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">${esc(o.product||o.category||'Obchodní případ')}</button><div class="pipeline-client">${esc(clientName(c))}</div><div class="chips"><span class="chip">${esc(o.category)}</span>${caseAgeHtml(o)}</div><div class="pipeline-amount"><button class="case-title" title="Upravit objem případu" onclick="caseEditVolume(decodeURIComponent('${caseEncodedId(o.id)}'))">${money(o.amount)} ✎</button></div><div class="note">${esc(o.company||'')}</div>${opportunityStatusSelect(o)}<div class="actions"><button class="btn slim" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">Upravit</button><button class="btn slim" onclick="selectedClientId=${Number(o.clientId)};showView('clients')">Klient</button></div></article>`).join('')||'<p class="pipeline-empty">Žádné případy</p>'}</div></section>`;
+    return `<section class="pipeline-column" data-stage="${esc(stage)}" style="--stage-color:${['#7289bb','#b69a65','#69a69c','#739ac3','#8b7db9','#487aa0'][index]}" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="caseDrop(event,'${esc(stage)}')"><header><h3>${esc(stage)} <span>${cards.length}</span></h3><b>${num(cards.reduce((s,x)=>s+(+x.o.bj||0),0))} BJ</b></header><div class="pipeline-cards">${cards.map(({o,c})=>`<article class="pipeline-card" draggable="true" data-case-id="${esc(o.id)}" ondragstart="event.dataTransfer.setData('application/x-crm-case',decodeURIComponent('${caseEncodedId(o.id)}'))"><button class="case-title" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">${esc(o.product||o.category||'Obchodní případ')}</button><div class="pipeline-client">${esc(clientName(c))}</div>${replacementBadge(o)}<div class="chips"><span class="chip">${esc(o.category)}</span>${caseAgeHtml(o)}</div><div class="pipeline-amount">${num(o.bj)} BJ</div><div class="note">Oček. provize ${money(+o.actualCommission||+o.expectedCommission||opportunityCash(o,new Date().getFullYear()))}</div><div class="pipeline-volume"><button class="case-title" title="Upravit objem případu" onclick="caseEditVolume(decodeURIComponent('${caseEncodedId(o.id)}'))">${money(o.amount)} ✎</button></div><div class="note">${esc(o.company||'')}</div>${opportunityStatusSelect(o)}<div class="actions"><button class="btn slim" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">Upravit</button><button class="btn slim" onclick="selectedClientId=${Number(o.clientId)};showView('clients')">Klient</button></div></article>`).join('')||'<p class="pipeline-empty">Žádné případy</p>'}</div></section>`;
   }).join('');
 }
 function renderVersion() {
@@ -3377,13 +3417,13 @@ function opportunityFolderRow(o) {
     contractBadge = o.contractStatusLabel ? `<span class="chip">Smlouva: ${esc(o.contractStatusLabel)}</span>` : '',
     amount = +o.amount || 0 ? money(o.amount) : '',
     bj = +o.bj || 0 ? num(o.bj) + ' BJ' : '';
-  return `<div class="opp-folder-row ${isOpenOpportunity(o) ? 'open' : ''}"><div class="opp-folder-main"><div><b>${esc(o.product || o.category || 'Obchodní případ')}</b><br><span class="note">${esc([o.company, o.statusDate || o.date, o.expectedDate ? 'termín ' + o.expectedDate : ''].filter(Boolean).join(' · '))}</span><div class="chips">${opportunityBadge(o.status)}${o.isContractOpportunity ? '<span class="chip">ze smlouvy</span>' : ''}${contractBadge}${opportunityAttachmentBadge(o)}</div></div><div class="actions"><div class="money">${esc([amount, bj].filter(Boolean).join(' · '))}</div><button class="btn slim" onclick="${edit}">Upravit</button></div></div>${o.note ? `<div class="opp-folder-note note">${esc(o.note)}</div>` : ''}</div>`;
+  return `<div class="opp-folder-row ${isOpenOpportunity(o) ? 'open' : ''}"><div class="opp-folder-main"><div><b>${esc(o.product || o.category || 'Obchodní případ')}</b><br><span class="note">${esc([o.company, o.statusDate || o.date, o.expectedDate ? 'termín ' + o.expectedDate : ''].filter(Boolean).join(' · '))}</span><div class="chips">${opportunityBadge(o.status)}${replacementBadge(o)}${o.isContractOpportunity ? '<span class="chip">ze smlouvy</span>' : ''}${contractBadge}${opportunityAttachmentBadge(o)}</div></div><div class="actions"><div class="money">${esc([amount, bj].filter(Boolean).join(' · '))}</div><button class="btn slim" onclick="${edit}">Upravit</button></div></div>${o.note ? `<div class="opp-folder-note note">${esc(o.note)}</div>` : ''}</div>`;
 }
 function notesMini(rows) {
   return `<div class="table-wrap"><table><thead><tr><th>Název</th><th>Datum</th><th>Štítky</th><th>Typ</th><th></th></tr></thead><tbody>${rows.map(n => `<tr><td><button class="note-title-btn" onclick="openNoteViewModal(${n.id})">▧ ${esc(n.title || 'Poznámka')}</button></td><td>${esc(n.date || '')}</td><td>${noteTags(n).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</td><td><span class="badge blue">${esc(noteType(n))}</span></td><td><button class="icon-btn" onclick="openNoteModal(${n.clientId || 'null'},${n.id})">✎</button></td></tr>`).join('') || '<tr><td colspan="5" class="note">Bez poznámek.</td></tr>'}</tbody></table></div>`;
 }
 function contractsMini(rows, compact = false) {
-  return `<div class="table-wrap"><table><thead><tr><th>Typ</th><th>Produkt</th><th>Společnost</th><th>Výročí/fixace</th><th>Stav</th><th>Akce</th></tr></thead><tbody>${rows.map(s => `<tr class="${rowClassContract(s)}"><td>${esc(s.type)}</td><td><b>${esc(s.product || '')}</b><br><span class="note">${esc(s.number || '')}</span></td><td>${esc(s.company || '')}</td><td>${esc(s.anniv || '')}<br>${daysBadge(contractDays(s))}</td><td>${getStatuses(s).map(statusBadge).join(' ')}${contractAttachmentBadge(s)}</td><td><button class="btn slim" onclick="openContractModal(${s.clientId},${s.id})">Správa</button></td></tr>`).join('') || `<tr><td colspan="6" class="note">Bez smluv.</td></tr>`}</tbody></table></div>`;
+  return `<div class="table-wrap"><table><thead><tr><th>Typ</th><th>Produkt</th><th>Společnost</th><th>Výročí/fixace</th><th>Stav</th><th>Akce</th></tr></thead><tbody>${rows.map(s => `<tr class="${rowClassContract(s)}"><td>${esc(s.type)}</td><td><b>${esc(s.product || '')}</b><br><span class="note">${esc(s.number || '')}</span></td><td>${esc(s.company || '')}</td><td>${esc(s.anniv || '')}<br>${daysBadge(contractDays(s))}</td><td>${getStatuses(s).map(statusBadge).join(' ')}${contractAttachmentBadge(s)}</td><td><button class="btn slim" onclick="openContractModal(${s.clientId},${s.id})">Správa</button> <button class="btn slim" onclick="startReplacementCase(${s.id})">Nový případ / náhrada</button></td></tr>`).join('') || `<tr><td colspan="6" class="note">Bez smluv.</td></tr>`}</tbody></table></div>`;
 }
 function clientPerformanceMini(rows, year) {
   const inv = clientDisplayInvestmentItems(selectedClientId),
@@ -3691,7 +3731,7 @@ function investmentItemKey(x) {
 }
 function latestInvestmentSnapshots(clientId = null) {
   const map = {};
-  (state.investmentSnapshots || []).filter(s => !clientId || String(s.clientId) === String(clientId)).forEach(s => {
+  (state.investmentSnapshots || []).filter(s=>!s.portfolioReplacedBy).filter(s => !clientId || String(s.clientId) === String(clientId)).forEach(s => {
     const key = investmentSnapshotKeyForSnapshot(s);
     if (!map[key] || String(s.date || '').localeCompare(String(map[key].date || '')) >= 0) map[key] = s;
   });
@@ -5289,6 +5329,7 @@ function openContractModal(clientId = null, id = null) {
   renderContractAttachments();
   byId('deleteContractBtn').style.display = id ? 'inline-flex' : 'none';
   byId('contractModalTitle').textContent = id ? 'Správa smlouvy' : 'Nová smlouva';
+  byId('sReplacementActions').innerHTML=id?`<button class="btn primary" type="button" onclick="startReplacementCase(${Number(s.id)})">Nový případ / náhrada</button><div class="note">Původní smlouva zůstane aktuální, dokud náhradu nedokončíte.</div>${replacementHistoryHtml(s)}`:'';
   openModal('contractModal');
 }
 function fkiSync_before_saveContract() {
@@ -5434,6 +5475,7 @@ function linkedContractForDeal(d) {
 }
 function linkedDealForContract(s) {
   if (!s) return null;
+  if(s.fromDealId){const current=state.deals.find(d=>String(d.id)===String(s.fromDealId));if(current)return current;}
   let d = state.deals.find(x => String(x.contractId) === String(s.id) || String(x.fromContractId) === String(s.id));
   if (d) return d;
   if (!s.number) return null;
@@ -5517,6 +5559,8 @@ function openRecurringCommissionModal() {
   byId('dealModalTitle').textContent = 'Následná provize';
 }
 function openDealFromOpportunity(o) {
+  try{replacementReady(o,o.clientId);}catch(error){alert(error.message);return;}
+  pendingContractToDealId=null;
   pendingOpportunityToDealId = o.id;
   fillClientSelect('dClient', o.clientId || selectedClientId);
   byId('dCategory').innerHTML = CATEGORIES.map(c => `<option>${c}</option>`).join('');
@@ -5526,7 +5570,7 @@ function openDealFromOpportunity(o) {
     d = editingDealId ? state.deals.find(x => String(x.id) === String(editingDealId)) : {
       clientId: o.clientId,
       category,
-      date: o.statusDate || today(),
+      date: o.replacementSignedDate || o.statusDate || today(),
       company: o.company,
       product: o.product,
       amount: o.amount,
@@ -5541,7 +5585,7 @@ function openDealFromOpportunity(o) {
   const s = linkedContractForDeal(d) || {};
   setVal('dClient', d.clientId || o.clientId || '');
   setVal('dCategory', d.category || category);
-  setVal('dDate', d.date || o.statusDate || today());
+  setVal('dDate', o.replacementSignedDate || d.date || o.statusDate || today());
   setVal('dCompany', d.company || o.company || '');
   setVal('dProduct', d.product || o.product || '');
   setVal('dAmount', d.amount || o.amount || '');
@@ -5794,6 +5838,7 @@ function saveInvestmentSnapshot() {
   saveToast(redemptionAmount ? 'Odkup a hodnota investice uloženy ✓' : oldIndex >= 0 ? 'Hodnota investice přepsána ✓' : 'Hodnota investice aktualizována ✓');
 }
 function upsertContractFromDeal(d) {
+  if(d.portfolioReplacedBy)return null; // Historical commissions must not overwrite the current contract.
   let s = linkedContractForDeal(d);
   if (val('dCreateContract') === 'no') {
     if (s && (s.fromDealId === d.id || (s.log || []).some(l => String(l.t || '').includes('Smlouva vytvořena z obchodu')))) {
@@ -5913,12 +5958,17 @@ function fkiSync_before_moveDealToOpportunity() {
 function fkiSync_before_saveDeal() {
   const clientId = +val('dClient');
   if (!clientId) return alert('Vyber klienta.');
+  const replacementCase=state.opportunities.find(o=>String(o.id)===String(pendingOpportunityToDealId));
+  let replacementSource;
+  try{replacementSource=replacementReady(replacementCase,clientId);}catch(error){return alert(error.message);}
+  if(replacementSource&&val('dContractStatus')!=='podepsano')return alert('Náhradu dokončete se stavem smlouvy Podepsáno.');
+  if(replacementSource&&val('dCreateContract')==='no')return alert('Náhrada musí být propsána do smluv.');
   if (val('dContractStatus') === 'podepsano' && val('dCreateContract') === 'no') setVal('dCreateContract', 'yes');
   toggleDealContractFields();
   const looksEmpty = !parseMoney(val('dAmount')) && !parseMoney(val('dBj')) && !parseMoney(val('dActualCommission'));
   if (!editingDealId && !pendingOpportunityToDealId && !pendingContractToDealId && looksEmpty && val('dCreateContract') === 'no' && !confirm('Tento obchod nemá objem, BJ ani provizi a nemá se propsat do smluv. Nevypadá jako uzavřený obchod. Opravdu ho chceš uložit do obchodů?')) return;
   const existingDeal = editingDealId ? state.deals.find(x => x.id === editingDealId) : null,
-    ignoreContractId = existingDeal?.contractId || pendingContractToDealId || null;
+    ignoreContractId = replacementSource?.id || existingDeal?.contractId || pendingContractToDealId || null;
   let confirmedContractDup = [];
   if (val('dCreateContract') !== 'no') {
     confirmedContractDup = confirmedContractDuplicates(val('dContractNumber').trim(), ignoreContractId);
@@ -5956,6 +6006,13 @@ function fkiSync_before_saveDeal() {
     d.fromOpportunityId = pendingOpportunityToDealId;
     const o = state.opportunities.find(x => String(x.id) === String(pendingOpportunityToDealId));
     if (o) {
+      if(replacementSource){
+        d.contractId=replacementSource.id;
+        d.replacementEffectiveDate=o.replacementEffectiveDate;
+        d.replacementSignedDate=o.replacementSignedDate;
+        d.replacedContractSnapshot=JSON.parse(JSON.stringify(replacementSource));
+        d.caseHistory=JSON.parse(JSON.stringify(o));
+      }
       o.status = 'Podepsáno';
       o.statusDate = d.date;
       o.dealId = d.id;
@@ -5994,6 +6051,31 @@ function fkiSync_before_saveDeal() {
     }
   }
   const linked = upsertContractFromDeal(d);
+  if(replacementSource&&linked){
+    const previous=d.replacedContractSnapshot;
+    const snapshot={...previous};delete snapshot.replacementHistory;
+    linked.replacementHistory=[...(previous.replacementHistory||[]),{effectiveDate:d.replacementEffectiveDate,signedDate:d.replacementSignedDate,dealId:d.id,contract:snapshot}];
+    linked.effectiveDate=d.replacementEffectiveDate;linked.updatedAt=today();
+    linked.createDeal='yes';linked.dealDate=d.date;linked.dealBj=dealBJ(d);linked.expectedCommission=dealExpectedCommission(d,yearOf(d.date));linked.dealOwner=d.owner;linked.dealOwnerType=d.ownerType;
+    linked.attachments=[];delete linked.caseVolume;
+    const oldDeals=state.deals.filter(old=>old.id!==d.id&&(String(old.contractId)===String(linked.id)||String(old.fromContractId)===String(linked.id)||String(old.id)===String(previous.fromDealId)));
+    oldDeals.forEach(old=>old.portfolioReplacedBy=d.id);
+    const oldIds=new Set(oldDeals.map(old=>String(old.id)));
+    const archivedRecords=(state.investmentRecords||[]).filter(r=>oldIds.has(String(r._crmDealId))||(r._crmSourceType==='contract'&&String(r._crmSourceId)===String(linked.id)));
+    linked.replacementHistory.at(-1).investmentRecords=JSON.parse(JSON.stringify(archivedRecords));
+    state.investmentRecords=(state.investmentRecords||[]).filter(r=>!archivedRecords.includes(r));
+    if(areaForContract(previous)==='investice'){
+      const key=investmentItemKey({clientId:previous.clientId,company:previous.company,product:previous.product,isin:previous.isin,source:previous,sourceType:'contract',sourceId:previous.id});
+      const archivedSnapshots=(state.investmentSnapshots||[]).filter(x=>investmentSnapshotKeyForSnapshot(x)===key);
+      linked.replacementHistory.at(-1).investmentSnapshots=JSON.parse(JSON.stringify(archivedSnapshots));
+      state.investmentSnapshots=(state.investmentSnapshots||[]).filter(x=>!archivedSnapshots.includes(x));
+    }
+
+    linked.note=(linked.note||'')+'\n\nPředchozí smlouva (do '+d.replacementEffectiveDate+'): '+[previous.company,previous.product,previous.number,'částka '+(previous.amount||''),'sazba '+(previous.rate||''),'výročí '+(previous.anniv||'')].join(' · ')+'\n'+(previous.note||'');
+    linked.log.push({d:today(),t:'Nahrazena původní smlouva '+(previous.number||'')+'; historie zachována.'});
+    if(state.contractOpportunityStatuses)delete state.contractOpportunityStatuses[linked.id];
+  }
+
   if (linked && confirmedContractDup.length) markDuplicateVerified('contract', [linked, ...confirmedContractDup]);
   dedupeInvestmentRecordsInState(state);
   selectedClientId = clientId;
@@ -6107,6 +6189,9 @@ function populateOpportunityForm(clientId = null, id = null) {
   };
   fillOpportunityCategorySelect('oCategory', o.category || 'Život');
   setVal('oClient', o.clientId || '');
+  fillReplacementContracts(o.replacesContractId);
+  setVal('oReplacementSigned',o.replacementSignedDate||'');
+  setVal('oReplacementEffective',o.replacementEffectiveDate||'');
   setVal('oStatus', caseStage(o.status));
   setVal('oStatusDate', o.statusDate || today());
   setVal('oCategory', opportunityCategoryOptions().includes(o.category) ? o.category : '__custom');
@@ -6132,6 +6217,9 @@ function opportunityFromForm() {
   const category = val('oCategory') === '__custom' ? val('oCategoryCustom').trim() || 'Ostatní' : val('oCategory');
   return {
     clientId: +val('oClient'),
+    replacesContractId: val('oReplacesContract') || null,
+    replacementSignedDate: val('oReplacementSigned'),
+    replacementEffectiveDate: val('oReplacementEffective'),
     status: val('oStatus') || 'Nabídka',
     statusDate: val('oStatusDate') || today(),
     category,
@@ -6153,6 +6241,8 @@ function saveOpportunity() {
   const data = opportunityFromForm();
   try{data.amount=caseVolumeInput(val('oAmount')) ?? 0;}catch(error){return alert(error.message);}
   if (!data.clientId) return alert('Vyber klienta.');
+  if(data.replacesContractId&&!clientContracts(data.clientId).some(s=>String(s.id)===String(data.replacesContractId)))return alert('Vyberte původní smlouvu tohoto klienta.');
+  if(data.replacesContractId&&state.opportunities.some(o=>String(o.id)!==String(editingOpportunityId)&&String(o.replacesContractId)===String(data.replacesContractId)&&isOpenOpportunity(o)))return alert('K této smlouvě již existuje rozpracovaná náhrada. Upravte tento případ.');
   let o = editingOpportunityId ? state.opportunities.find(x => x.id === editingOpportunityId) : null;
   const oldStatus = o?.status;
   if (!o) {
@@ -7987,7 +8077,7 @@ function fkiSync_upsertCrmFkiSeed(seed) {
 function fkiSync_syncCrmFkiDealsToRecords() {
   state.investmentRecords = state.investmentRecords || [];
   let changed = 0;
-  (state.deals || []).filter(d => !d._fkiExcluded && areaForDeal(d) === 'fki' && dealVolume(d) > 0).forEach(d => {
+  (state.deals || []).filter(d => !d.portfolioReplacedBy && !d._fkiExcluded && areaForDeal(d) === 'fki' && dealVolume(d) > 0).forEach(d => {
     changed += fkiSync_upsertCrmFkiSeed(fkiSync_crmFkiRecordSeed(d.clientId, d, 'deal'));
   });
   (state.contracts || []).filter(s => !s._fkiExcluded && areaForContract(s) === 'fki' && ['podepsano', 'vyrizeno'].includes(String(s.status || '')) && !s.fromDealId && parseMoney(s.amount) > 0).forEach(s => {
@@ -9078,7 +9168,7 @@ function pensions_pStatuses(x) {
   return typeof getStatuses === 'function' ? getStatuses(x) : [x?.status].filter(Boolean);
 }
 function pensions_pIsActive(x) {
-  return !pensions_pStatuses(x).some(s => pensions_pActiveStatusSet.has(pensions_pNorm(s)));
+  return !x.portfolioReplacedBy && !pensions_pStatuses(x).some(s => pensions_pActiveStatusSet.has(pensions_pNorm(s)));
 }
 function pensions_pAmount(x) {
   return typeof parseMoney === 'function' ? parseMoney(x?.amount ?? x?.volume ?? x?.aum ?? x?.current ?? 0) : +String(x?.amount ?? x?.volume ?? x?.aum ?? x?.current ?? 0).replace(/[^\d.-]/g, '') || 0;
@@ -12046,8 +12136,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.09.30-3';
-const VERSION_NOTE = 'Samostatný upravitelný objem obchodního případu v tabulce a Pipeline, oddělený od platby smlouvy.';
+const VERSION = '2026.10.01-1';
+const VERSION_NOTE = 'Samostatné náhrady smluv v obchodních případech a Pipeline, historie původní smlouvy a souhrny plánovaných BJ.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
