@@ -262,12 +262,26 @@ try{
  await page.evaluate(()=>{openOpportunityModal(1,99001);setVal('oStatus','Podepsáno');saveOpportunity();closeModal('dealModal');closeModal('opportunityModal');renderAll()});
  assert.equal(await page.evaluate(()=>state.opportunities[0].status),'Kompletace');
  assert.equal(await page.evaluate(()=>caseDays(state.opportunities[0])),0);
- const linked=await page.evaluate(()=>{const o=contractOpportunities().find(isOpenOpportunity);if(!o)return null;const count=state.opportunities.length;updateOpportunityStatus(o.id,'Scoring');return {status:allOpenOpportunities().find(x=>x.id===o.id)?.status,sameCount:count===state.opportunities.length};});
- assert(linked&&linked.status==='Scoring'&&linked.sameCount);
+ const serviceCases=await page.evaluate(()=>{
+   const before=JSON.stringify(state.contracts);
+   state.contracts.push({id:99881,clientId:1,type:'majetek',product:'QA původní byt',company:'Původní pojišťovna',amount:4269,status:'prepojistit',statuses:['prepojistit'],log:[]});
+   state.contractOpportunityStatuses[99881]='Scoring';
+   state.opportunities.push({id:99882,clientId:1,category:'Nemovitost',product:'QA nový byt',company:'Nová pojišťovna',amount:3800,bj:29,status:'Scoring'});
+   const contract=JSON.stringify(state.contracts.at(-1));renderAll();
+   const result={generated:allOpenOpportunities().some(o=>o.isContractOpportunity),newCount:allOpenOpportunities().filter(o=>o.id===99882).length,clientCount:clientOpenOpportunities(1).filter(o=>o.id===99882).length,serviceActive:isActiveContract(state.contracts.at(-1)),unchanged:JSON.stringify(state.contracts.at(-1))===contract};
+   startReplacementCase(99881);result.category=val('oCategory');result.client=val('oClient');closeModal('opportunityModal');
+   result.cancelCount=state.opportunities.filter(o=>o.id===99882).length;
+   state.contracts=JSON.parse(before);state.opportunities=state.opportunities.filter(o=>o.id!==99882);delete state.contractOpportunityStatuses[99881];renderAll();
+   return result;
+ });
+ assert.deepEqual(serviceCases,{generated:false,newCount:1,clientCount:1,serviceActive:true,unchanged:true,category:'Nemovitost',client:'1',cancelCount:1});
+ assert.equal(await page.locator('#pipelineBoard [data-case-id^="contract_"]').count(),0);
+ assert.equal(await page.locator('#opportunityTable [data-case-id^="contract_"]').count(),0);
+ results.push('Service contracts stay outside pipeline and cases; explicit cases remain once; property category and original contract preserved');
  const volumes=await page.evaluate(()=>{
    const o=contractOpportunities().find(isOpenOpportunity), source=state.contracts.find(x=>String(x.id)===String(o.contractId)),original=source.amount;
    caseSetVolume(o.id,'2,5 mil');
-   const amount=allOpenOpportunities().find(x=>x.id===o.id).amount;
+   const amount=opportunityFromContract(source).amount;
    openContractModal(source.clientId,source.id);const form=val('sCaseVolume');closeModal('contractModal');
    openDealFromContract(source);const deal=val('dAmount');closeModal('dealModal');
    let invalid=false;try{caseSetVolume(o.id,'2.500.000 chybně')}catch{invalid=true}
@@ -282,7 +296,7 @@ try{
  await page.setViewportSize({width:1600,height:1000});await page.evaluate(()=>showView('pipeline'));await page.screenshot({path:'/private/tmp/crm-pipeline-desktop.png',fullPage:true});
  await page.setViewportSize({width:834,height:1112});await page.screenshot({path:'/private/tmp/crm-pipeline-ipad.png',fullPage:true});
  await page.evaluate(data=>{state=JSON.parse(data);window.businessCaseFilters={query:'',category:'',status:'',sort:'status'};renderAll()},savedCases);
- results.push('Business cases: legacy mapping, ordering, age, shared filters, two-way stages, drag/drop, contract stages and cancelled conversion');
+ results.push('Business cases: legacy mapping, ordering, age, shared filters, two-way stages, drag/drop, service separation and cancelled conversion');
  console.log('current errors',errors);assert.deepEqual(errors,[]);
  console.log(JSON.stringify({passed:results},null,2));
  fs.writeFileSync('/private/tmp/crm-regression-results.json',JSON.stringify({passed:results},null,2));

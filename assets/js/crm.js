@@ -483,7 +483,8 @@ function contractOpportunityStatus(s) {
 function contractOpportunityCategory(s) {
   const t = s?.type || '';
   if (t === 'život') return 'Život';
-  if (t === 'auto' || t === 'majetek') return 'Auto';
+  if (t === 'auto') return 'Auto';
+  if (t === 'majetek') return 'Nemovitost';
   if (t === 'hypotéka') return 'Hypotéka';
   if (t === 'úvěr') return 'Úvěry';
   if (t === 'FKI') return 'FKI';
@@ -550,9 +551,10 @@ function sameOpenOpportunity(a, b) {
   return opportunityProductsOverlap(a, b);
 }
 function allOpenOpportunities() {
-  const manual = [...(state.opportunities || [])].filter(isOpenOpportunity),
-    generated = contractOpportunities().filter(o => !manual.some(m => String(m.replacesContractId||'')===String(o.contractId) || (!m.replacesContractId && sameOpenOpportunity(m, o))));
-  return [...manual, ...generated].map(o=>({...o,status:caseStage(o.status)}));
+  // Contract service flags stay with contracts. Only explicitly saved cases
+  // belong in the pipeline, case totals and client business-case views.
+  return (state.opportunities || []).filter(isOpenOpportunity)
+    .map(o => ({...o, status: caseStage(o.status)}));
 }
 function clientOpenOpportunities(id) {
   return allOpenOpportunities().filter(o => String(o.clientId) === String(id));
@@ -5334,7 +5336,7 @@ function openContractModal(clientId = null, id = null) {
   renderContractAttachments();
   byId('deleteContractBtn').style.display = id ? 'inline-flex' : 'none';
   byId('contractModalTitle').textContent = id ? 'Správa smlouvy' : 'Nová smlouva';
-  byId('sReplacementActions').innerHTML=id?`<button class="btn primary" type="button" onclick="startReplacementCase(${Number(s.id)})">Nový obchodní případ</button><div class="note">Původní smlouva zůstane aktuální, dokud náhradu nedokončíte.</div>${state.deals.filter(d=>d.pendingContract&&String(d.contractId)===String(s.id)).map(d=>`<div class="note">Naplánovaná náhrada: ${esc(d.company)} · ${esc(d.product)} · účinnost ${esc(d.replacementEffectiveDate)} <button type="button" class="btn slim" onclick="closeModal('contractModal');openDealModal(${Number(s.clientId)},${Number(d.id)})">Upravit nový obchod</button></div>`).join('')}${replacementHistoryHtml(s)}`:'';
+  byId('sReplacementActions').innerHTML=id?`<button class="btn primary" type="button" onclick="startReplacementCase(${Number(s.id)})">Nový obchodní případ</button><div class="note">Označení smlouvy k řešení ji nepřidá do pipeline. Nový obchod založte tímto tlačítkem, pokud jej ještě nemáte. Původní smlouva zůstane zachovaná; náhradu vyberete při dokončení obchodu.</div>${state.deals.filter(d=>d.pendingContract&&String(d.contractId)===String(s.id)).map(d=>`<div class="note">Naplánovaná náhrada: ${esc(d.company)} · ${esc(d.product)} · účinnost ${esc(d.replacementEffectiveDate)} <button type="button" class="btn slim" onclick="closeModal('contractModal');openDealModal(${Number(s.clientId)},${Number(d.id)})">Upravit nový obchod</button></div>`).join('')}${replacementHistoryHtml(s)}`:'';
   openModal('contractModal');
 }
 function fkiSync_before_saveContract() {
@@ -12129,8 +12131,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.02-1';
-const VERSION_NOTE = 'Písmo Fustat, přehledné částky a data ocenění, vylepšené investiční reporty.';
+const VERSION = '2026.10.02-2';
+const VERSION_NOTE = 'Pipeline obsahuje pouze samostatné obchodní případy. Servisní stavy původních smluv zůstávají ve smlouvách.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';

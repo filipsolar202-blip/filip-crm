@@ -1,3 +1,9 @@
+## 2026.10.02-2
+
+- Pipeline, obchodní případy a jejich součty obsahují pouze explicitně založené případy. Servisní stav smlouvy již nevytváří automatický případ.
+- Původní smlouvy, jejich stavy, historie a nové rozpracované případy zůstávají zachované.
+- Stávající tlačítko Nový obchodní případ vysvětluje oddělený postup; majetková smlouva předvyplní kategorii Nemovitost.
+
 ## 2026.10.02-1
 
 - Písmo Fustat vložené do aplikace a samostatných reportů, včetně licence OFL.
