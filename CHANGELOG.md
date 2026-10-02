@@ -1,3 +1,11 @@
+## 2026.10.02-1
+
+- Písmo Fustat vložené do aplikace a samostatných reportů, včetně licence OFL.
+- Zarovnané číslice, zachování desetinných míst u CP/NAV v reportu.
+- Zvýrazněná data ocenění a termíny odkupů, datum ocenění u každého fondu v souhrnu.
+- Mobilní posouvání transakčních tabulek a úpravy tiskových stylů.
+- Zachované interaktivní grafy, barvy, výpočty, časové testy a všechny funkce verze 2026.10.01-2.
+
 # Historie verzí
 
 ## 2026.10.01-2
