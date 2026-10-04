@@ -1,3 +1,9 @@
+## 2026.10.04-3
+
+- Při přechodu mezi záložkami CRM vykresluje pouze otevřenou část aplikace.
+- Zrychlená práce s klienty, obchodními případy, smlouvami, investicemi a reporty u větší databáze.
+- Úvodní načtení a ukládání dat zůstávají zachované.
+
 ## 2026.10.04-2
 
 - Opravené zamrznutí při obnovení CRM nad větší databází klientů.

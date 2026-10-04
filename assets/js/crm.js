@@ -6,7 +6,29 @@ function renderAll() {
   persist();
   fillYears();
   fillPeopleList();
-  [['Dashboard', renderDashboard], ['Klienti', renderClients], ['Poznámky', renderNotes], ['Kampaně', renderCampaigns], ['Obchodní případy', renderOpportunities], ['Smlouvy', renderContracts], ['Investice', renderInvestments], ['FKI', renderFk], ['Penze', renderPensions], ['Obchody', renderDeals], ['Reporty', renderReports], ['Správa', renderManagement], ['Typaři', renderReferrerHub], ['Roční plán', renderPlanForm], ['Plnění plánu', renderPlanProgress], ['Segmenty plánu', renderPlanSegments], ['Provize plánu', renderPlanCommission], ['Nastavení', renderSettings]].forEach(x => renderPart(x[0], x[1]));
+  renderActiveView();
+}
+function renderActiveView() {
+  const active = document.querySelector('.view.active')?.id || 'dashboard',
+    renders = {
+      dashboard: [['Dashboard', renderDashboard]],
+      clients: [['Klienti', renderClients]],
+      notes: [['Poznámky', renderNotes]],
+      campaigns: [['Kampaně', renderCampaigns]],
+      opportunities: [['Obchodní případy', renderOpportunities]],
+      pipeline: [['Pipeline', renderOpportunities]],
+      contracts: [['Smlouvy', renderContracts]],
+      investments: [['Investice', renderInvestments]],
+      fki: [['FKI', renderFk]],
+      pensions: [['Penze', renderPensions]],
+      deals: [['Obchody', renderDeals]],
+      reports: [['Reporty', renderReports]],
+      management: [['Správa', renderManagement]],
+      referrers: [['Analýza', renderReferrerHub]],
+      plan: [['Roční plán', renderPlanForm], ['Plnění plánu', renderPlanProgress], ['Segmenty plánu', renderPlanSegments], ['Provize plánu', renderPlanCommission]],
+      settings: [['Nastavení', renderSettings]]
+    };
+  (renders[active] || []).forEach(([name, fn]) => renderPart(name, fn));
 }
 // Shared file delivery for all client-facing HTML outputs.
 function downloadHtmlFile(html, filename) {
@@ -2278,7 +2300,7 @@ function renderDuplicateWarnings() {
 function showView(id) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === id));
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === id));
-  renderAll();
+  renderActiveView();
 }
 function noteTags(n) {
   return String(n.tags || '').split(',').map(x => x.trim()).filter(Boolean);
@@ -12246,8 +12268,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.04-2';
-const VERSION_NOTE = 'Opravené rychlé spuštění nad větší databází. Správa dál odděluje vlastní a partnerské klienty, AUM a provize.';
+const VERSION = '2026.10.04-3';
+const VERSION_NOTE = 'Rychlá navigace: CRM při přechodu vykreslí jen otevřenou záložku, takže zůstává použitelné i při růstu databáze.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
