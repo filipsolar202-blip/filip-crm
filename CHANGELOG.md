@@ -1,3 +1,9 @@
+## 2026.10.04-2
+
+- Opravené zamrznutí při obnovení CRM nad větší databází klientů.
+- Investiční a FKI položky se pro správce načtou jedním průchodem a během stejného vykreslení se znovu použijí.
+- Oddělení vlastního AUM a partnerského AUM Mantry zůstává zachované.
+
 ## 2026.10.04-1
 
 - Nová záložka Správa odděluje vlastní klienty Filipa Solára od partnerských klientů Mantry bez vytváření duplicitních karet.

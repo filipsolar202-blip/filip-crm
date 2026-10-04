@@ -2398,14 +2398,34 @@ function reportAumByProvider(sourceItems = reportInvestmentItems()) {
   return Object.values(rows).sort((a, b) => b.total - a.total || a.provider.localeCompare(b.provider, 'cs'));
 }
 
+let managementInvestmentCacheState = null,
+  managementInvestmentRowsCache = new Map();
 function managementInvestmentRows(partnerId) {
-  return state.clients.filter(c => clientManagementId(c) === partnerId).map(c => {
-    const items = clientDisplayInvestmentItems(c.id),
+  if (managementInvestmentCacheState !== state) {
+    managementInvestmentCacheState = state;
+    managementInvestmentRowsCache = new Map();
+  }
+  if (managementInvestmentRowsCache.has(partnerId)) return managementInvestmentRowsCache.get(partnerId);
+  const clients = state.clients.filter(c => clientManagementId(c) === partnerId),
+    clientIds = new Set(clients.map(c => String(c.id))),
+    itemsByClient = new Map(clients.map(c => [String(c.id), []]));
+  classicInvestmentItems().forEach(x => {
+    const id = String(x.clientId || x.client?.id || '');
+    if (clientIds.has(id)) itemsByClient.get(id).push(x);
+  });
+  clients.forEach(c => {
+    const fki = fkItemsForClient(c.id);
+    if (fki.length) itemsByClient.get(String(c.id)).push(...fki);
+  });
+  const rows = clients.map(c => {
+    const items = itemsByClient.get(String(c.id)) || [],
       aum = items.reduce((sum, x) => sum + (+x.amount || 0), 0),
       invested = items.reduce((sum, x) => sum + investmentInvestedAmount(x), 0),
       annualTrailGross = items.reduce((sum, x) => sum + commissions_investmentTrailAnnualForItem(x), 0);
     return {client:c, items, aum, invested, annualTrailGross};
   }).filter(x => x.items.length || x.aum).sort((a,b) => b.aum-a.aum || clientName(a.client).localeCompare(clientName(b.client),'cs'));
+  managementInvestmentRowsCache.set(partnerId, rows);
+  return rows;
 }
 function managementInvestmentItems(partnerId) {
   return managementInvestmentRows(partnerId).flatMap(row => row.items.map(x => ({...x, client:x.client || row.client, clientId:x.clientId || row.client.id})));
@@ -12226,8 +12246,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.04-1';
-const VERSION_NOTE = 'Nová Správa odděluje vlastní a partnerské klienty, obchody, AUM a přijaté provize. Data Mantry nevstupují do osobního AUM.';
+const VERSION = '2026.10.04-2';
+const VERSION_NOTE = 'Opravené rychlé spuštění nad větší databází. Správa dál odděluje vlastní a partnerské klienty, AUM a provize.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
