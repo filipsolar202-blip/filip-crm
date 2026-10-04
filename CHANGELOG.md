@@ -1,3 +1,10 @@
+## 2026.10.04-4
+
+- Podepsaná náhrada smlouvy se ihned propíše na kartu klienta, i když její platnost začíná až v budoucnu.
+- Původní smlouva se nesmaže: přesune se se všemi údaji, poznámkami a přílohami do historie nové smlouvy.
+- Nová smlouva výrazně ukazuje datum budoucí platnosti.
+- Adresář klientů lze filtrovat podle správce: všichni, Filip Solár nebo Mantra.
+
 ## 2026.10.04-3
 
 - Při přechodu mezi záložkami CRM vykresluje pouze otevřenou část aplikace.

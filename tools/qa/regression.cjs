@@ -201,41 +201,30 @@ try{
    state.contracts.push({id:88001,clientId:1,type:'hypotéka',company:'Původní banka',product:'Hypotéka',number:'OLD',amount:'2500000',rate:'2.59',anniv:'2027-11-23',status:'',note:'Původní podmínky',log:[]});
    const count=state.contracts.length;
    startReplacementCase(88001);setVal('oProduct','Nová hypotéka');setVal('oCompany','Nová banka');setVal('oAmount','2500000');setVal('oBj','100');setVal('oContractRate','5.39');setVal('oContractAnniv','2030-11-23');setVal('oDealDate',today());saveOpportunity();
-   const o=state.opportunities.at(-1),independent=!o.replacesContractId;
+   const o=state.opportunities.at(-1),linkedOriginal=String(o.replacesContractId)==='88001';
    updateOpportunityStatus(o.id,'Podepsáno');
    const prefill={rate:val('dContractRate'),fix:val('dContractAnniv'),date:val('dDate'),bj:val('dBj')};
    setVal('dReplacementContract','88001');setVal('dReplacementEffective','2099-01-01');setVal('dContractNumber','NEW');setVal('dContractStatus','podepsano');setVal('dCreateContract','yes');saveDeal();
-   const d=state.deals.find(x=>x.fromOpportunityId===o.id);
-   const pending={old:state.contracts.find(x=>x.id===88001).number,count:state.contracts.length,scheduled:!!d.pendingContract,trade:!!d};
-   activateDueContractReplacements('2099-01-01');
-   const current=state.contracts.find(x=>x.id===88001);
-   const after={number:current.number,rate:current.rate,fix:current.anniv,count:state.contracts.length,history:current.replacementHistory[0].contract,done:!d.pendingContract};
-   activateDueContractReplacements('2099-01-02');
-   return {independent,prefill,pending,after,count,historyCount:current.replacementHistory.length,today:today()};
+   const d=state.deals.find(x=>x.fromOpportunityId===o.id),current=state.contracts.find(x=>String(x.id)===String(d.contractId));
+   const after={number:current.number,rate:current.rate,fix:current.anniv,effective:current.effectiveDate,count:state.contracts.length,history:current.replacementHistory[0].contract,oldRemoved:!state.contracts.some(x=>x.id===88001),done:!d.pendingContract};
+   return {linkedOriginal,prefill,after,count,historyCount:current.replacementHistory.length,today:today(),newContractId:current.id};
  });
- assert(replacement.independent);assert.deepEqual(replacement.prefill,{rate:'5.39',fix:'2030-11-23',date:replacement.today,bj:'100'});
- assert.deepEqual(replacement.pending,{old:'OLD',count:replacement.count,scheduled:true,trade:true});
- assert.equal(replacement.after.number,'NEW');assert.equal(replacement.after.count,replacement.count);assert.equal(replacement.after.rate,'5.39');assert.equal(replacement.after.fix,'2030-11-23');assert.equal(replacement.after.history.number,'OLD');assert.equal(replacement.after.history.rate,'2.59');assert.equal(replacement.after.history.anniv,'2027-11-23');assert(replacement.after.done);assert.equal(replacement.historyCount,1);
- await rp.evaluate(()=>{persist();openContractModal(1,88001)});await rp.screenshot({path:'/private/tmp/crm-new-replacement.png',fullPage:true});
- await rp.reload();await rp.waitForTimeout(700);assert.equal(await rp.evaluate(()=>state.contracts.find(x=>x.id===88001).replacementHistory.length),1);
+ assert(replacement.linkedOriginal);assert.deepEqual(replacement.prefill,{rate:'5.39',fix:'2030-11-23',date:replacement.today,bj:'100'});
+ assert.equal(replacement.after.number,'NEW');assert.equal(replacement.after.count,replacement.count);assert.equal(replacement.after.rate,'5.39');assert.equal(replacement.after.fix,'2030-11-23');assert.equal(replacement.after.effective,'2099-01-01');assert.equal(replacement.after.history.number,'OLD');assert.equal(replacement.after.history.rate,'2.59');assert.equal(replacement.after.history.anniv,'2027-11-23');assert(replacement.after.oldRemoved);assert(replacement.after.done);assert.equal(replacement.historyCount,1);
+ await rp.evaluate(id=>{persist();openContractModal(1,id)},replacement.newContractId);await rp.screenshot({path:'/private/tmp/crm-new-replacement.png',fullPage:true});
+ await rp.reload();await rp.waitForTimeout(700);assert.equal(await rp.evaluate(()=>state.contracts.find(x=>x.number==='NEW').replacementHistory.length),1);
 
- const later=await rp.evaluate(()=>{
+ const later=await rp.evaluate(replacedId=>{
    openDealModal(1);setVal('dCategory','Hypotéky');setVal('dCompany','Třetí banka');setVal('dProduct','Nové refinancování');setVal('dAmount','2400000');setVal('dBj','120');setVal('dCreateContract','yes');setVal('dContractType','hypotéka');setVal('dContractStatus','podepsano');setVal('dContractNumber','LATER');saveDeal();
    const d=state.deals.at(-1),standalone=d.contractId,count=state.contracts.length;
-   openDealModal(1,d.id);setVal('dReplacementContract','88001');setVal('dReplacementEffective',today());saveDeal();
-   return {count:state.contracts.length,expected:count-1,standaloneGone:!state.contracts.some(x=>x.id===standalone),current:state.contracts.find(x=>x.id===88001).number,linked:d.contractId};
- });
- assert.equal(later.count,later.expected);assert(later.standaloneGone);assert.equal(later.current,'LATER');assert.equal(later.linked,88001);
-
- const futureDeal=await rp.evaluate(()=>{
-   openDealModal(1);setVal('dCategory','Hypotéky');setVal('dCompany','Budoucí banka');setVal('dProduct','Budoucí hypotéka');setVal('dAmount','2000000');setVal('dCreateContract','yes');setVal('dContractType','hypotéka');setVal('dContractStatus','podepsano');setVal('dContractNumber','FUTURE');setVal('dContractRate','4.2');setVal('dReplacementContract','88001');setVal('dReplacementEffective','2099-12-01');saveDeal();return state.deals.at(-1).id;
- });
- await rp.reload();await rp.waitForTimeout(700);
- const pendingEdit=await rp.evaluate(id=>{openDealModal(1,id);const fields={rate:val('dContractRate'),number:val('dContractNumber'),status:val('dContractStatus'),date:val('dReplacementEffective')};setVal('dBj','111');saveDeal();return {fields,old:state.contracts.find(x=>x.id===88001).number,pending:!!state.deals.find(x=>x.id===id).pendingContract};},futureDeal);
- assert.deepEqual(pendingEdit,{fields:{rate:'4.2',number:'FUTURE',status:'podepsano',date:'2099-12-01'},old:'LATER',pending:true});
- await rp.evaluate(id=>openDealModal(1,id),futureDeal);await rp.screenshot({path:'/private/tmp/crm-independent-trade-form.png',fullPage:true});
+   openDealModal(1,d.id);setVal('dReplacementContract',String(replacedId));setVal('dReplacementEffective',today());saveDeal();
+   const current=state.contracts.find(x=>x.number==='LATER');
+   return {count:state.contracts.length,expected:count-1,standaloneGone:!state.contracts.some(x=>x.id===standalone),replacedGone:!state.contracts.some(x=>x.id===replacedId),current:current?.number,linked:d.contractId,dealId:d.id,history:current?.replacementHistory?.at(-1)?.contract?.number};
+ },replacement.newContractId);
+ assert.equal(later.count,later.expected);assert(later.standaloneGone);assert(later.replacedGone);assert.equal(later.current,'LATER');assert.equal(later.history,'NEW');assert.notEqual(later.linked,replacement.newContractId);
+ await rp.evaluate(id=>openDealModal(1,id),later.dealId);await rp.screenshot({path:'/private/tmp/crm-independent-trade-form.png',fullPage:true});
  assert.deepEqual(replacementSession.errors,[]);await replacementSession.context.close();
- results.push('Independent case, replacement chosen on completion, future effective date, preserved original terms and idempotent activation');
+ results.push('Replacement case links the original contract, replaces it immediately and preserves its history with a future effective date');
  const savedCases=await page.evaluate(()=>JSON.stringify(state));
  await page.evaluate(()=>{
    state.opportunities=[{id:99001,clientId:1,product:'Hypotéka QA',category:'Hypotéka',status:'Oportunita',amount:2500000,updatedAt:'2026-09-01',history:[]},{id:99002,clientId:1,product:'Investice QA',category:'Investice',status:'Schváleno',amount:300000,updatedAt:'2026-09-15',history:[]}];
@@ -301,9 +290,10 @@ try{
    state.managementPayouts.push({id:99932,partnerId:'mantra',date:'2026-10-04',amount:3000,type:'acquisition'});
    showView('management');renderManagement();
    const result={defaultPartner:normalizeState({...def(),clients:[{id:91,name:'Starý klient'}]}).clients[0].managementPartnerId,ownAum:managementInvestmentItems(ownManagementId()).reduce((s,x)=>s+(+x.amount||0),0),mantraAum:managementInvestmentItems('mantra').reduce((s,x)=>s+(+x.amount||0),0),claim:managementClaimForDeal(state.deals.at(-1),partner),received:(state.managementPayouts||[]).filter(x=>x.partnerId==='mantra').reduce((s,x)=>s+(+x.amount||0),0),clientRows:document.querySelectorAll('#managementClientsTable tbody tr').length,dealRows:document.querySelectorAll('#managementDealsTable tbody tr').length};
+   showView('clients');setVal('clientManagementFilter','mantra');renderClients();result.filteredClientRows=document.querySelectorAll('#clientList .client-row').length;result.filterValue=val('clientManagementFilter');
    state=JSON.parse(original);renderAll();return result;
  });
- assert.equal(management.defaultPartner,'filip');assert.equal(management.claim,4000);assert.equal(management.received,3000);assert(management.clientRows>=1);assert(management.dealRows>=1);assert(management.mantraAum>=0);assert(management.ownAum>=0);
+ assert.equal(management.defaultPartner,'filip');assert.equal(management.claim,4000);assert.equal(management.received,3000);assert(management.clientRows>=1);assert(management.dealRows>=1);assert.equal(management.filteredClientRows,1);assert.equal(management.filterValue,'mantra');assert(management.mantraAum>=0);assert(management.ownAum>=0);
  results.push('Management separates partner clients, trade claims, AUM and received payouts while migrating existing clients to Filip');
 
  await page.setViewportSize({width:1600,height:1000});await page.evaluate(()=>showView('pipeline'));await page.screenshot({path:'/private/tmp/crm-pipeline-desktop.png',fullPage:true});

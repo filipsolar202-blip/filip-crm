@@ -152,7 +152,7 @@ function ownManagementId() {
 function fillManagementSelect(id, selected = '', includeAll = false) {
   const el = byId(id);
   if (!el) return;
-  const current = selected || el.value || ownManagementId();
+  const current = includeAll ? (selected || el.value || '') : selected || el.value || ownManagementId();
   el.innerHTML = (includeAll ? '<option value="">Všichni správci</option>' : '') + managementPartners().map(x => `<option value="${esc(x.id)}">${esc(x.company || x.name)} · ${esc(x.name)}</option>`).join('');
   el.value = includeAll && !current ? '' : managementPartner(current).id;
 }
@@ -1448,6 +1448,11 @@ function statusBadge(s) {
   if (!s) return '';
   const cls = s === 'prepojistit' || s === 'nedovolano' ? 'red' : s === 'vypoved' ? 'purple' : s === 'nabidka' ? 'orange' : s === 'vyrizeno' || s === 'podepsano' || s === 'domluveno' ? 'green' : 'blue';
   return `<span class="badge ${cls}">${esc(STATUS_LABELS[s] || s)}</span>`;
+}
+function contractEffectiveBadge(s) {
+  if (!s?.effectiveDate) return '';
+  const future = String(s.effectiveDate) > today();
+  return `<span class="badge ${future ? 'purple' : 'green'}">${future ? 'Platnost od ' : 'Platná od '}${esc(s.effectiveDate)}</span>`;
 }
 function contractAttachments(s) {
   return Array.isArray(s?.attachments) ? s.attachments : [];
@@ -2784,6 +2789,7 @@ function startReplacementCase(id) {
   const source=state.contracts.find(x=>String(x.id)===String(id));if(!source)return;
   closeModal('contractModal');openOpportunityModal(source.clientId);
   fillOpportunityCategorySelect('oCategory',contractOpportunityCategory(source));toggleOpportunityCustomCategory();
+  fillReplacementContracts(String(source.id));
 }
 function fillDealReplacement(selected='',effective='') {
   const el=byId('dReplacementContract');if(!el)return;
@@ -2792,7 +2798,7 @@ function fillDealReplacement(selected='',effective='') {
 }
 function renderDealReplacementInfo() {
   const source=state.contracts.find(x=>String(x.id)===val('dReplacementContract'));
-  setText('dReplacementInfo',source?'Původní smlouva zůstane zachovaná do účinnosti náhrady. Její údaje a přílohy se uloží do historie.':'Obchod není označen jako náhrada původní smlouvy.');
+  setText('dReplacementInfo',source?'Po podpisu se nová smlouva ihned zobrazí u klienta. Původní smlouva se uloží do historie nové smlouvy včetně údajů a příloh.':'Obchod není označen jako náhrada původní smlouvy.');
 }
 function replacementBadge(o) {
   if(!o.replacesContractId)return o.isContractOpportunity?'<span class="chip">Stávající smlouva</span>':'<span class="chip">Nový obchodní případ</span>';
@@ -2803,9 +2809,8 @@ function replacementReady(o,clientId,asOf=today()) {
   if(!o?.replacesContractId)return null;
   const s=state.contracts.find(x=>String(x.id)===String(o.replacesContractId));
   if(!s||String(s.clientId)!==String(clientId))throw new Error('Původní smlouva musí patřit vybranému klientovi.');
-  if(!o.replacementSignedDate||!o.replacementEffectiveDate)throw new Error('U náhrady doplňte v obchodním případu datum podpisu a účinnosti. Původní smlouva zatím zůstává aktuální.');
+  if(!o.replacementSignedDate||!o.replacementEffectiveDate)throw new Error('U náhrady doplňte v obchodním případu datum podpisu a účinnosti.');
   if(o.replacementEffectiveDate<o.replacementSignedDate)throw new Error('Datum účinnosti nesmí být před datem podpisu.');
-  if(o.replacementSignedDate>asOf||o.replacementEffectiveDate>asOf)throw new Error('Náhradu lze dokončit až po podpisu a od data účinnosti '+o.replacementEffectiveDate+'. Případ zatím ponechte v Pipeline.');
   return s;
 }
 function downloadReplacementAttachment(contractId,historyIndex,attachmentIndex) {
@@ -2943,10 +2948,12 @@ function dashboardContactAction(row) {
   return '';
 }
 function renderClients() {
-  const q = norm(val('clientSearch'));
-  const list = state.clients.filter(c => !q || norm([c.name, c.phone, c.email, c.altEmails, c.birthId, c.address].join(' ')).includes(q)).sort((a, b) => clientName(a).localeCompare(clientName(b), 'cs'));
+  const q = norm(val('clientSearch')),
+    selectedManager = val('clientManagementFilter');
+  fillManagementSelect('clientManagementFilter', selectedManager, true);
+  const list = state.clients.filter(c => !selectedManager || clientManagementId(c) === selectedManager).filter(c => !q || norm([c.name, c.phone, c.email, c.altEmails, c.birthId, c.address].join(' ')).includes(q)).sort((a, b) => clientName(a).localeCompare(clientName(b), 'cs'));
   setText('clientCountLabel', `(${num(list.length)}/${num(state.clients.length)})`);
-  if (!selectedClientId && list[0]) selectedClientId = list[0].id;
+  if ((!selectedClientId || !list.some(c => String(c.id) === String(selectedClientId))) && list[0]) selectedClientId = list[0].id;
   byId('clientList').innerHTML = list.map(c => `<div class="client-row ${String(c.id) === String(selectedClientId) ? 'active' : ''}" onclick="selectClient(${c.id})"><div class="avatar">${esc(initials(c.name))}</div><div><b>${esc(clientName(c))}</b><small>${esc(c.phone || 'bez telefonu')} · ${esc(contactLabel(c))}</small><div>${managementBadge(c)}</div></div></div>`).join('') || '<p class="note">Zatím žádný klient.</p>';
   renderClientDetail();
 }
@@ -3511,7 +3518,7 @@ function clientPortfolio(c, contracts, deals) {
     if (area === 'investice' || area === 'fki') return;
     groups[area].push({
       title: s.product || s.type,
-      sub: [s.company, s.number, s.amount].filter(Boolean).join(' · '),
+      sub: [s.company, s.number, s.amount, s.effectiveDate ? 'platnost od ' + s.effectiveDate : ''].filter(Boolean).join(' · '),
       action: `openContractModal(${s.clientId},${s.id})`
     });
   });
@@ -3558,7 +3565,7 @@ function notesMini(rows) {
   return `<div class="table-wrap"><table><thead><tr><th>Název</th><th>Datum</th><th>Štítky</th><th>Typ</th><th></th></tr></thead><tbody>${rows.map(n => `<tr><td><button class="note-title-btn" onclick="openNoteViewModal(${n.id})">▧ ${esc(n.title || 'Poznámka')}</button></td><td>${esc(n.date || '')}</td><td>${noteTags(n).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</td><td><span class="badge blue">${esc(noteType(n))}</span></td><td><button class="icon-btn" onclick="openNoteModal(${n.clientId || 'null'},${n.id})">✎</button></td></tr>`).join('') || '<tr><td colspan="5" class="note">Bez poznámek.</td></tr>'}</tbody></table></div>`;
 }
 function contractsMini(rows, compact = false) {
-  return `<div class="table-wrap"><table><thead><tr><th>Typ</th><th>Produkt</th><th>Společnost</th><th>Výročí/fixace</th><th>Stav</th><th>Akce</th></tr></thead><tbody>${rows.map(s => `<tr class="${rowClassContract(s)}"><td>${esc(s.type)}</td><td><b>${esc(s.product || '')}</b><br><span class="note">${esc(s.number || '')}</span></td><td>${esc(s.company || '')}</td><td>${esc(s.anniv || '')}<br>${daysBadge(contractDays(s))}</td><td>${getStatuses(s).map(statusBadge).join(' ')}${contractAttachmentBadge(s)}</td><td><button class="btn slim" onclick="openContractModal(${s.clientId},${s.id})">Správa</button> <button class="btn slim" onclick="startReplacementCase(${s.id})">Nový obchodní případ</button></td></tr>`).join('') || `<tr><td colspan="6" class="note">Bez smluv.</td></tr>`}</tbody></table></div>`;
+  return `<div class="table-wrap"><table><thead><tr><th>Typ</th><th>Produkt</th><th>Společnost</th><th>Výročí/fixace</th><th>Stav</th><th>Akce</th></tr></thead><tbody>${rows.map(s => `<tr class="${rowClassContract(s)}"><td>${esc(s.type)}</td><td><b>${esc(s.product || '')}</b><br><span class="note">${esc(s.number || '')}</span></td><td>${esc(s.company || '')}</td><td>${esc(s.anniv || '')}<br>${daysBadge(contractDays(s))}</td><td>${getStatuses(s).map(statusBadge).join(' ')}${contractEffectiveBadge(s)}${contractAttachmentBadge(s)}</td><td><button class="btn slim" onclick="openContractModal(${s.clientId},${s.id})">Správa</button> <button class="btn slim" onclick="startReplacementCase(${s.id})">Nový obchodní případ</button></td></tr>`).join('') || `<tr><td colspan="6" class="note">Bez smluv.</td></tr>`}</tbody></table></div>`;
 }
 function clientPerformanceMini(rows, year) {
   const inv = clientDisplayInvestmentItems(selectedClientId),
@@ -5466,7 +5473,7 @@ function openContractModal(clientId = null, id = null) {
   renderContractAttachments();
   byId('deleteContractBtn').style.display = id ? 'inline-flex' : 'none';
   byId('contractModalTitle').textContent = id ? 'Správa smlouvy' : 'Nová smlouva';
-  byId('sReplacementActions').innerHTML=id?`<button class="btn primary" type="button" onclick="startReplacementCase(${Number(s.id)})">Nový obchodní případ</button><div class="note">Označení smlouvy k řešení ji nepřidá do pipeline. Nový obchod založte tímto tlačítkem, pokud jej ještě nemáte. Původní smlouva zůstane zachovaná; náhradu vyberete při dokončení obchodu.</div>${state.deals.filter(d=>d.pendingContract&&String(d.contractId)===String(s.id)).map(d=>`<div class="note">Naplánovaná náhrada: ${esc(d.company)} · ${esc(d.product)} · účinnost ${esc(d.replacementEffectiveDate)} <button type="button" class="btn slim" onclick="closeModal('contractModal');openDealModal(${Number(s.clientId)},${Number(d.id)})">Upravit nový obchod</button></div>`).join('')}${replacementHistoryHtml(s)}`:'';
+  byId('sReplacementActions').innerHTML=id?`<button class="btn primary" type="button" onclick="startReplacementCase(${Number(s.id)})">Nový obchodní případ</button><div class="note">Označení smlouvy k řešení ji nepřidá do Pipeline. Po podpisu nové smlouvy vyberte tuto původní smlouvu jako náhradu: nová smlouva se ihned zobrazí u klienta a tato se uloží do její historie.</div>${replacementHistoryHtml(s)}`:'';
   openModal('contractModal');
 }
 function fkiSync_before_saveContract() {
@@ -6004,8 +6011,6 @@ function upsertContractFromDeal(d,forceNew=false) {
     };
     state.contracts.push(s);
   }
-  const deferred=!!d.replacementEffectiveDate&&d.replacementEffectiveDate>today();
-  if(deferred)s={id:s.id,log:[]};
   const oldStatus = s.status;
   Object.assign(s, {
     clientId: d.clientId,
@@ -6020,9 +6025,9 @@ function upsertContractFromDeal(d,forceNew=false) {
     amount: val('dContractAmount').trim() || dealContractAmountText(d),
     rate: val('dContractRate').trim(),
     note: val('dContractNote').trim(),
+    effectiveDate: d.replacementEffectiveDate || s.effectiveDate || '',
     fromDealId: d.id
   });
-  if(deferred){d.pendingContract=JSON.parse(JSON.stringify(s));d.portfolioPending=true;d.createContract=true;d.contractNumber=s.number;return null;}
   if (!s.log) s.log = [];
   if (!d.contractId) s.log.push({
     d: today(),
@@ -6199,7 +6204,7 @@ function fkiSync_before_saveDeal() {
   }
   if(replacementSource&&priorContract&&priorContract.id!==replacementSource.id){d.previousStandaloneContract=JSON.parse(JSON.stringify(priorContract));state.contracts=state.contracts.filter(x=>x.id!==priorContract.id);}
   if(replacementSource){d.contractId=replacementSource.id;d.replacementEffectiveDate=replacementDate;d.replacementSignedDate=d.date;d.replacedContractSnapshot=JSON.parse(JSON.stringify(replacementSource));}
-  const linked = upsertContractFromDeal(d,wasNew&&!pendingContractToDealId&&!replacementSource);
+  const linked = upsertContractFromDeal(d,(wasNew&&!pendingContractToDealId)||!!replacementSource);
   if(replacementSource&&linked)finishContractReplacement(d,linked);
 
   if (linked && confirmedContractDup.length) markDuplicateVerified('contract', [linked, ...confirmedContractDup]);
@@ -12268,8 +12273,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.04-3';
-const VERSION_NOTE = 'Rychlá navigace: CRM při přechodu vykreslí jen otevřenou záložku, takže zůstává použitelné i při růstu databáze.';
+const VERSION = '2026.10.04-4';
+const VERSION_NOTE = 'Nová podepsaná náhrada smlouvy je hned na kartě klienta; původní smlouva zůstává bezpečně v historii. Adresář lze filtrovat podle správce.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
@@ -12530,15 +12535,17 @@ function removeFamilyLink(id,otherId) {
 
 function finishContractReplacement(d,linked) {
     const previous=d.replacedContractSnapshot;
+    if(!previous||!linked)return;
     const snapshot={...previous};delete snapshot.replacementHistory;
     linked.replacementHistory=[...(previous.replacementHistory||[]),{effectiveDate:d.replacementEffectiveDate,signedDate:d.replacementSignedDate,dealId:d.id,contract:snapshot}];
     linked.effectiveDate=d.replacementEffectiveDate;linked.updatedAt=today();
     linked.createDeal='yes';linked.dealDate=d.date;linked.dealBj=dealBJ(d);linked.expectedCommission=dealExpectedCommission(d,yearOf(d.date));linked.dealOwner=d.owner;linked.dealOwnerType=d.ownerType;
     linked.attachments=[];delete linked.caseVolume;
-    const oldDeals=state.deals.filter(old=>old.id!==d.id&&(String(old.contractId)===String(linked.id)||String(old.fromContractId)===String(linked.id)||String(old.id)===String(previous.fromDealId)));
+    d.replacedContractId=previous.id;
+    const oldDeals=state.deals.filter(old=>old.id!==d.id&&(String(old.contractId)===String(previous.id)||String(old.fromContractId)===String(previous.id)||String(old.id)===String(previous.fromDealId)));
     oldDeals.forEach(old=>old.portfolioReplacedBy=d.id);
     const oldIds=new Set(oldDeals.map(old=>String(old.id)));
-    const archivedRecords=(state.investmentRecords||[]).filter(r=>oldIds.has(String(r._crmDealId))||(r._crmSourceType==='contract'&&String(r._crmSourceId)===String(linked.id)));
+    const archivedRecords=(state.investmentRecords||[]).filter(r=>oldIds.has(String(r._crmDealId))||(r._crmSourceType==='contract'&&String(r._crmSourceId)===String(previous.id)));
     linked.replacementHistory.at(-1).investmentRecords=JSON.parse(JSON.stringify(archivedRecords));
     state.investmentRecords=(state.investmentRecords||[]).filter(r=>!archivedRecords.includes(r));
     if(areaForContract(previous)==='investice'){
@@ -12549,7 +12556,8 @@ function finishContractReplacement(d,linked) {
     }
 
     linked.note=(linked.note||'')+'\n\nPředchozí smlouva (do '+d.replacementEffectiveDate+'): '+[previous.company,previous.product,previous.number,'částka '+(previous.amount||''),'sazba '+(previous.rate||''),'výročí '+(previous.anniv||'')].join(' · ')+'\n'+(previous.note||'');
-    linked.log.push({d:today(),t:'Nahrazena původní smlouva '+(previous.number||'')+'; historie zachována.'});
+    linked.log.push({d:today(),t:'Nahrazena původní smlouva '+(previous.number||'')+'; historie zachována. Platnost nové smlouvy od '+(d.replacementEffectiveDate||'neuvedeno')+'.'});
+    state.contracts=state.contracts.filter(s=>String(s.id)!==String(previous.id));
     if(state.contractOpportunityStatuses)delete state.contractOpportunityStatuses[linked.id];
 
   delete d.pendingContract;delete d.portfolioPending;
