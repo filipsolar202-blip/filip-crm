@@ -6,7 +6,7 @@ function renderAll() {
   persist();
   fillYears();
   fillPeopleList();
-  [['Dashboard', renderDashboard], ['Klienti', renderClients], ['Poznámky', renderNotes], ['Kampaně', renderCampaigns], ['Obchodní případy', renderOpportunities], ['Smlouvy', renderContracts], ['Investice', renderInvestments], ['FKI', renderFk], ['Penze', renderPensions], ['Obchody', renderDeals], ['Reporty', renderReports], ['Typaři', renderReferrerHub], ['Roční plán', renderPlanForm], ['Plnění plánu', renderPlanProgress], ['Segmenty plánu', renderPlanSegments], ['Provize plánu', renderPlanCommission], ['Nastavení', renderSettings]].forEach(x => renderPart(x[0], x[1]));
+  [['Dashboard', renderDashboard], ['Klienti', renderClients], ['Poznámky', renderNotes], ['Kampaně', renderCampaigns], ['Obchodní případy', renderOpportunities], ['Smlouvy', renderContracts], ['Investice', renderInvestments], ['FKI', renderFk], ['Penze', renderPensions], ['Obchody', renderDeals], ['Reporty', renderReports], ['Správa', renderManagement], ['Typaři', renderReferrerHub], ['Roční plán', renderPlanForm], ['Plnění plánu', renderPlanProgress], ['Segmenty plánu', renderPlanSegments], ['Provize plánu', renderPlanCommission], ['Nastavení', renderSettings]].forEach(x => renderPart(x[0], x[1]));
 }
 // Shared file delivery for all client-facing HTML outputs.
 function downloadHtmlFile(html, filename) {
@@ -40,6 +40,11 @@ function def() {
     activities: [],
     referrals: [],
     referrerPayouts: [],
+    managementPartners: [
+      {id:'filip', name:'Filip Solár', company:'Vlastní správa', own:true, acquisitionSharePct:100, trailSharePct:100},
+      {id:'mantra', name:'Martin Čermák', company:'Mantra', own:false, acquisitionSharePct:0, trailSharePct:0}
+    ],
+    managementPayouts: [],
     notes: [],
     opportunities: [],
     commissionImports: [],
@@ -72,7 +77,10 @@ function normalizeState(s) {
     ...s
   };
   delete s.mailHeaders;
-  ['clients', 'contracts', 'deals', 'activities', 'referrals', 'referrerPayouts', 'notes', 'opportunities', 'investmentRecords', 'investmentSnapshots', 'commissionImports', 'analysisEntries', 'campaigns', 'externalInvestments', 'investmentForecasts'].forEach(k => s[k] = Array.isArray(s[k]) ? s[k] : []);
+  ['clients', 'contracts', 'deals', 'activities', 'referrals', 'referrerPayouts', 'managementPartners', 'managementPayouts', 'notes', 'opportunities', 'investmentRecords', 'investmentSnapshots', 'commissionImports', 'analysisEntries', 'campaigns', 'externalInvestments', 'investmentForecasts'].forEach(k => s[k] = Array.isArray(s[k]) ? s[k] : []);
+  if (!s.managementPartners.length) s.managementPartners = base.managementPartners;
+  if (!s.managementPartners.some(x => x.id === 'filip')) s.managementPartners.unshift(base.managementPartners[0]);
+  s.clients.forEach(c => { if (!c.managementPartnerId) c.managementPartnerId = 'filip'; });
   ['contractOpportunityStatuses', 'verifiedDuplicates', 'fundValues', 'lockedFunds', 'trailSettings', 'analysisPlans', '_syncMeta'].forEach(k => s[k] = s[k] && typeof s[k] === 'object' ? s[k] : {});
   s.settings = {
     ...base.settings,
@@ -82,7 +90,7 @@ function normalizeState(s) {
   Object.values(s.plans).forEach(p => normalizePlan(p, s.settings.bjCoef));
   dedupeInvestmentRecordsInState(s);
   dedupeInvestmentSnapshotsInState(s);
-  let maxId = Math.max(0, ...['clients', 'contracts', 'deals', 'activities', 'referrals', 'referrerPayouts', 'notes', 'opportunities', 'commissionImports', 'investmentSnapshots', 'analysisEntries', 'campaigns', 'externalInvestments', 'investmentForecasts'].flatMap(k => s[k].map(x => +x.id || 0)));
+  let maxId = Math.max(0, ...['clients', 'contracts', 'deals', 'activities', 'referrals', 'referrerPayouts', 'managementPayouts', 'notes', 'opportunities', 'commissionImports', 'investmentSnapshots', 'analysisEntries', 'campaigns', 'externalInvestments', 'investmentForecasts'].flatMap(k => s[k].map(x => +x.id || 0)));
   if (!s.nextId || s.nextId <= maxId) s.nextId = maxId + 1;
   return s;
 }
@@ -102,6 +110,34 @@ function normalizePlan(p, bjCoef = 150) {
   delete p.categories['FKI'];
   p.fki = 0;
   return p;
+}
+function managementPartners() {
+  return (state.managementPartners || []).filter(x => x && x.id && x.name);
+}
+function managementPartner(id) {
+  return managementPartners().find(x => String(x.id) === String(id)) || managementPartners()[0] || {id:'filip',name:'Filip Solár',company:'Vlastní správa',own:true};
+}
+function clientManagementId(clientOrId) {
+  const c = typeof clientOrId === 'object' ? clientOrId : findClient(clientOrId);
+  return c?.managementPartnerId || 'filip';
+}
+function recordManagementId(record) {
+  return record?.managementPartnerId || clientManagementId(record?.clientId);
+}
+function ownManagementId() {
+  return managementPartners().find(x => x.own)?.id || 'filip';
+}
+function fillManagementSelect(id, selected = '', includeAll = false) {
+  const el = byId(id);
+  if (!el) return;
+  const current = selected || el.value || ownManagementId();
+  el.innerHTML = (includeAll ? '<option value="">Všichni správci</option>' : '') + managementPartners().map(x => `<option value="${esc(x.id)}">${esc(x.company || x.name)} · ${esc(x.name)}</option>`).join('');
+  el.value = includeAll && !current ? '' : managementPartner(current).id;
+}
+function managementBadge(clientOrId) {
+  const id = clientOrId && typeof clientOrId === 'object' && 'clientId' in clientOrId ? recordManagementId(clientOrId) : clientManagementId(clientOrId),
+    p = managementPartner(id);
+  return `<span class="badge ${p.own ? 'blue' : 'purple'}">${esc(p.company || p.name)}</span>`;
 }
 function persist() {
   state = normalizeState(state);
@@ -2340,9 +2376,9 @@ function reportInvestmentItems() {
 function reportProviderName(x) {
   return reportProviderCleanName(x.company || x.provider || x.source?.company || invCompany(x.source) || 'Nezařazeno');
 }
-function reportAumByProvider() {
+function reportAumByProvider(sourceItems = reportInvestmentItems()) {
   const rows = {};
-  reportInvestmentItems().forEach(x => {
+  sourceItems.forEach(x => {
     const provider = reportProviderName(x),
       area = investmentAreaOfItem(x) === 'fki' ? 'fki' : 'investice',
       amount = +x.amount || 0;
@@ -2361,6 +2397,56 @@ function reportAumByProvider() {
   });
   return Object.values(rows).sort((a, b) => b.total - a.total || a.provider.localeCompare(b.provider, 'cs'));
 }
+
+function managementInvestmentRows(partnerId) {
+  return state.clients.filter(c => clientManagementId(c) === partnerId).map(c => {
+    const items = clientDisplayInvestmentItems(c.id),
+      aum = items.reduce((sum, x) => sum + (+x.amount || 0), 0),
+      invested = items.reduce((sum, x) => sum + investmentInvestedAmount(x), 0),
+      annualTrailGross = items.reduce((sum, x) => sum + commissions_investmentTrailAnnualForItem(x), 0);
+    return {client:c, items, aum, invested, annualTrailGross};
+  }).filter(x => x.items.length || x.aum).sort((a,b) => b.aum-a.aum || clientName(a.client).localeCompare(clientName(b.client),'cs'));
+}
+function managementInvestmentItems(partnerId) {
+  return managementInvestmentRows(partnerId).flatMap(row => row.items.map(x => ({...x, client:x.client || row.client, clientId:x.clientId || row.client.id})));
+}
+function managementDeals(partnerId, year) {
+  return visibleDeals().filter(d => recordManagementId(d) === partnerId && (!year || yearOf(d.date) === +year));
+}
+function managementClaimForDeal(d, partner) {
+  const gross = dealActualCommissionIsSet(d) ? dealActualCommission(d) : dealCash(d, yearOf(d.date));
+  return gross * (+partner.acquisitionSharePct || 0) / 100;
+}
+function fillManagementYears() {
+  const el = byId('managementYear');
+  if (!el) return;
+  const current = +el.value || new Date().getFullYear(), years = [...new Set([new Date().getFullYear(), ...visibleDeals().map(d=>yearOf(d.date)), ...(state.managementPayouts||[]).map(x=>yearOf(x.date))])].filter(Boolean).sort((a,b)=>b-a);
+  el.innerHTML = years.map(y=>`<option value="${y}">${y}</option>`).join('');el.value=String(current);
+}
+function renderManagement() {
+  if (!byId('managementMetrics')) return;
+  fillManagementSelect('managementPartnerFilter', val('managementPartnerFilter') || 'mantra');
+  fillManagementYears();
+  const partner = managementPartner(val('managementPartnerFilter') || 'mantra'), year=+val('managementYear')||new Date().getFullYear(),
+    clients=state.clients.filter(c=>clientManagementId(c)===partner.id), deals=managementDeals(partner.id,year), investments=managementInvestmentRows(partner.id),
+    aum=investments.reduce((s,x)=>s+x.aum,0), gross=deals.reduce((s,d)=>s+(dealActualCommissionIsSet(d)?dealActualCommission(d):dealCash(d,year)),0),
+    acquisitionClaim=deals.reduce((s,d)=>s+managementClaimForDeal(d,partner),0), trailGross=investments.reduce((s,x)=>s+x.annualTrailGross,0), trailClaim=trailGross*(+partner.trailSharePct||0)/100,
+    payouts=(state.managementPayouts||[]).filter(x=>x.partnerId===partner.id&&yearOf(x.date)===year), received=payouts.reduce((s,x)=>s+(+x.amount||0),0);
+  byId('managementMetrics').innerHTML=`<div class="metric"><span class="note">Klientů</span><b>${num(clients.length)}</b></div><div class="metric"><span class="note">${partner.own?'Moje AUM':'Partnerské AUM mimo moje AUM'}</span><b>${money(aum)}</b></div><div class="metric"><span class="note">Hrubá provize obchodů ${year}</span><b>${money(gross)}</b></div><div class="metric"><span class="note">Můj nárok z obchodů</span><b>${money(acquisitionClaim)}</b><small>${num(partner.acquisitionSharePct||0)} %</small></div><div class="metric"><span class="note">Odhad následných ročně</span><b>${money(trailClaim)}</b><small>${num(partner.trailSharePct||0)} % z ${money(trailGross)}</small></div><div class="metric"><span class="note">Přijato ${year}</span><b>${money(received)}</b></div>`;
+  byId('managementClientsTable').innerHTML=`<thead><tr><th>Klient</th><th>Kontakt</th><th>Případů</th><th>Obchodů ${year}</th><th>AUM</th><th></th></tr></thead><tbody>${clients.map(c=>{const row=investments.find(x=>x.client.id===c.id);return`<tr><td><b>${esc(clientName(c))}</b></td><td>${esc(c.phone||c.email||'')}</td><td class="num">${num(clientOpenOpportunities(c.id).length)}</td><td class="num">${num(deals.filter(d=>String(d.clientId)===String(c.id)).length)}</td><td class="money">${money(row?.aum||0)}</td><td><button class="btn slim" onclick="selectedClientId=${Number(c.id)};showView('clients')">Klient</button></td></tr>`}).join('')||'<tr><td colspan="6" class="note">Tomuto správci zatím není přiřazený žádný klient.</td></tr>'}</tbody>`;
+  byId('managementDealsTable').innerHTML=`<thead><tr><th>Datum</th><th>Klient / produkt</th><th>BJ</th><th>Hrubá provize</th><th>Můj nárok</th><th>Stav</th></tr></thead><tbody>${deals.sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(d=>{const dg=dealActualCommissionIsSet(d)?dealActualCommission(d):dealCash(d,year);return`<tr><td>${esc(d.date||'')}</td><td><b>${esc(clientName(findClient(d.clientId)))}</b><br><span class="note">${esc(d.product||d.category||'')}</span></td><td class="num">${num(dealBJ(d))}</td><td class="money">${money(dg)}</td><td class="money">${money(managementClaimForDeal(d,partner))}</td><td>${d.commissionPaid?'<span class="badge green">vyplaceno producentem</span>':'<span class="badge orange">očekáváno</span>'}</td></tr>`}).join('')||'<tr><td colspan="6" class="note">V tomto roce nejsou obchody tohoto správce.</td></tr>'}</tbody>`;
+  byId('managementAumTable').innerHTML=`<thead><tr><th>Klient</th><th>Fondů / pozic</th><th>Vloženo</th><th>AUM</th><th>Hrubá následná ročně</th><th>Můj odhad</th></tr></thead><tbody>${investments.map(x=>`<tr><td><b>${esc(clientName(x.client))}</b></td><td class="num">${num(x.items.length)}</td><td class="money">${money(x.invested)}</td><td class="money"><b>${money(x.aum)}</b></td><td class="money">${money(x.annualTrailGross)}</td><td class="money">${money(x.annualTrailGross*(+partner.trailSharePct||0)/100)}</td></tr>`).join('')||'<tr><td colspan="6" class="note">Klienti tohoto správce zatím nemají investice ani FKI.</td></tr>'}</tbody>`;
+  byId('managementPayoutsTable').innerHTML=`<thead><tr><th>Datum</th><th>Typ</th><th>Částka</th><th>Poznámka</th><th></th></tr></thead><tbody>${payouts.sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(x=>`<tr><td>${esc(x.date||'')}</td><td>${esc({acquisition:'Počáteční provize',trail:'Následná provize',other:'Ostatní / dorovnání'}[x.type]||x.type||'')}</td><td class="money"><b>${money(x.amount)}</b></td><td>${esc(x.note||'')}</td><td><button class="btn slim red" onclick="deleteManagementPayout(${Number(x.id)})">Smazat</button></td></tr>`).join('')||'<tr><td colspan="5" class="note">Zatím není zaznamenaná žádná přijatá výplata.</td></tr>'}</tbody>`;
+}
+function openManagementPartnerModal() {
+  byId('managementPartnerSettings').innerHTML=managementPartners().map((p,i)=>`<div class="mini-card management-partner-setting" data-partner-index="${i}"><div class="form-grid"><div class="field"><label>Název firmy / skupiny</label><input data-k="company" value="${esc(p.company||'')}"></div><div class="field"><label>Kontaktní osoba</label><input data-k="name" value="${esc(p.name||'')}"></div><div class="field"><label>Můj podíl z počáteční provize %</label><input data-k="acquisitionSharePct" type="number" min="0" max="100" step="0.1" value="${esc(p.acquisitionSharePct??0)}"></div><div class="field"><label>Můj podíl z následné provize %</label><input data-k="trailSharePct" type="number" min="0" max="100" step="0.1" value="${esc(p.trailSharePct??0)}"></div></div><p class="note">${p.own?'Výchozí vlastní správa.':'Partnerské AUM se nezapočítá do vlastního AUM.'}</p></div>`).join('');openModal('managementPartnerModal');
+}
+function saveManagementPartners() {
+  document.querySelectorAll('[data-partner-index]').forEach(row=>{const p=state.managementPartners[+row.dataset.partnerIndex];if(!p)return;row.querySelectorAll('[data-k]').forEach(el=>p[el.dataset.k]=el.type==='number'?Math.max(0,Math.min(100,parseMoney(el.value))):el.value.trim());});persist();closeModal('managementPartnerModal');renderAll();saveToast('Nastavení správců uloženo');
+}
+function openManagementPayoutModal() { fillManagementSelect('managementPayoutPartner',val('managementPartnerFilter')||'mantra');setVal('managementPayoutDate',today());setVal('managementPayoutAmount','');setVal('managementPayoutType','acquisition');setVal('managementPayoutNote','');openModal('managementPayoutModal'); }
+function saveManagementPayout() { const amount=parseMoney(val('managementPayoutAmount'));if(!amount)return alert('Vyplň částku přijaté výplaty.');state.managementPayouts.push({id:uid(),partnerId:val('managementPayoutPartner'),date:val('managementPayoutDate')||today(),amount,type:val('managementPayoutType'),note:val('managementPayoutNote').trim(),createdAt:new Date().toISOString()});persist();closeModal('managementPayoutModal');renderManagement();saveToast('Výplata uložena'); }
+function deleteManagementPayout(id) { if(!confirm('Smazat tuto přijatou výplatu?'))return;state.managementPayouts=state.managementPayouts.filter(x=>String(x.id)!==String(id));persist();renderManagement(); }
 function clientForInvestmentRecord(r) {
   const rc = normalizeStrongId(invBirthId(r));
   return (rc ? state.clients.find(c => normalizeStrongId(c.birthId) === rc) : null) || state.clients.find(c => clientMatchesName(c, invInvestor(r))) || null;
@@ -2448,7 +2534,7 @@ function renderReportDetails() {
   const el = byId('reportDetailGroups');
   if (!el) return;
   const q = norm(val('reportDetailSearch'));
-  const rows = reportDetailItems().filter(x => !q || norm([x.provider, x.client, x.product, x.source, x.kind].join(' ')).includes(q)),
+  const rows = reportDetailItems().filter(x => x.clientId && clientManagementId(x.clientId) === ownManagementId()).filter(x => !q || norm([x.provider, x.client, x.product, x.source, x.kind].join(' ')).includes(q)),
     groups = {};
   rows.forEach(x => {
     groups[x.provider] = groups[x.provider] || [];
@@ -2480,13 +2566,13 @@ function renderCommissionReport() {
 function renderReports() {
   const table = byId('reportProviderTable');
   if (!table) return;
-  const items = reportInvestmentItems(),
+  const items = managementInvestmentItems(ownManagementId()),
     inv = items.filter(x => investmentAreaOfItem(x) === 'investice'),
     fki = items.filter(x => investmentAreaOfItem(x) === 'fki'),
     total = items.reduce((s, x) => s + (+x.amount || 0), 0),
     invTotal = inv.reduce((s, x) => s + (+x.amount || 0), 0),
     fkiTotal = fki.reduce((s, x) => s + (+x.amount || 0), 0),
-    providers = reportAumByProvider(),
+    providers = reportAumByProvider(items),
     monthlyTrail = typeof investmentTrailMonthlyPayout === 'function' ? investmentTrailMonthlyPayout() : fkiTrailEstimate();
   setText('reportTotalAum', money(total));
   setText('reportInvestmentAum', money(invTotal));
@@ -2819,7 +2905,7 @@ function renderClients() {
   const list = state.clients.filter(c => !q || norm([c.name, c.phone, c.email, c.altEmails, c.birthId, c.address].join(' ')).includes(q)).sort((a, b) => clientName(a).localeCompare(clientName(b), 'cs'));
   setText('clientCountLabel', `(${num(list.length)}/${num(state.clients.length)})`);
   if (!selectedClientId && list[0]) selectedClientId = list[0].id;
-  byId('clientList').innerHTML = list.map(c => `<div class="client-row ${String(c.id) === String(selectedClientId) ? 'active' : ''}" onclick="selectClient(${c.id})"><div class="avatar">${esc(initials(c.name))}</div><div><b>${esc(clientName(c))}</b><small>${esc(c.phone || 'bez telefonu')} · ${esc(contactLabel(c))}</small></div></div>`).join('') || '<p class="note">Zatím žádný klient.</p>';
+  byId('clientList').innerHTML = list.map(c => `<div class="client-row ${String(c.id) === String(selectedClientId) ? 'active' : ''}" onclick="selectClient(${c.id})"><div class="avatar">${esc(initials(c.name))}</div><div><b>${esc(clientName(c))}</b><small>${esc(c.phone || 'bez telefonu')} · ${esc(contactLabel(c))}</small><div>${managementBadge(c)}</div></div></div>`).join('') || '<p class="note">Zatím žádný klient.</p>';
   renderClientDetail();
 }
 function selectClient(id) {
@@ -3699,7 +3785,7 @@ function renderDeals() {
   const newClients = newClientsInMonth(y, selectedMonth),
     table = byId('dealsTable');
   table.className = 'compact-table';
-  table.innerHTML = `<thead><tr><th>Klient</th><th>Kategorie</th><th>Společnost</th><th>Produkt</th><th>Datum</th><th>Objem Kč</th><th>BJ</th><th>Oček. provize</th><th class="paid-col">Zapl.</th><th>Skutečná provize</th><th>Typař / doporučení</th><th>Skrýt</th><th></th></tr></thead><tbody>${rows.map(x => `<tr class="${dealRowClass(x.d)}"><td><b>${esc(clientName(x.c))}</b>${x.d.hidden ? '<br><span class="badge">skryto</span>' : isLateUnpaid(x.d) ? '<br><span class="badge red">3+ měsíce bez provize</span>' : ''}</td><td>${esc(x.d.category || areaLabel(areaForDeal(x.d)))}</td><td>${esc(x.d.company || '')}</td><td><b>${esc(x.d.product || '')}</b></td><td>${esc(x.d.date || '')}</td><td class="money">${money(dealVolume(x.d))}</td><td class="num">${num(dealBJ(x.d))}</td><td class="money">${money(dealCash(x.d, y))}</td><td class="paid-col"><input class="paid-check" type="checkbox" ${dealPaid(x.d) ? 'checked' : ''} onchange="toggleDealPaid(${x.d.id},this.checked)"></td><td class="money">${money(dealNetCommission(x.d, y))}</td><td><b>${esc(dealOwnerLabel(x.d) || '')}</b>${dealOwnerType(x.d) === 'tipar' ? `<br><span class="note">${num(dealOwnerPct(x.d))} % · ${money(dealOwnerPayout(x.d, y))} · ${x.d.ownerPaid ? 'vyplaceno' : 'nevyplaceno'}</span>` : ''}</td><td class="paid-col"><input class="paid-check" type="checkbox" ${x.d.hidden ? 'checked' : ''} onchange="toggleDealHidden(${x.d.id},this.checked)"></td><td><button class="icon-btn" title="Upravit obchod" onclick="selectedClientId=${x.c?.id || 'null'};openDealModal(${x.d.clientId},${x.d.id})">✎</button></td></tr>`).join('') || '<tr><td colspan="13" class="note">V tomto měsíci zatím nejsou žádné viditelné obchody.</td></tr>'}<tr><th colspan="5">Celkem za ${MONTHS[selectedMonth]}<br><span class="note">Noví klienti: ${num(newClients)} · skryto: ${num(totalHidden)}</span></th><th class="money">Investice ${money(totals.inv)}<br>Hypotéky ${money(totals.mort)}</th><th class="num">${num(totals.bj)}</th><th class="money">${money(totals.cash)}</th><th></th><th class="money">${money(totals.net)}</th><th colspan="3">Typaři ${money(totals.payout)} · ${num(totals.count)} viditelných obchodů</th></tr></tbody>`;
+  table.innerHTML = `<thead><tr><th>Klient / správa</th><th>Kategorie</th><th>Společnost</th><th>Produkt</th><th>Datum</th><th>Objem Kč</th><th>BJ</th><th>Oček. provize</th><th class="paid-col">Zapl.</th><th>Skutečná provize</th><th>Typař / doporučení</th><th>Skrýt</th><th></th></tr></thead><tbody>${rows.map(x => `<tr class="${dealRowClass(x.d)}"><td><b>${esc(clientName(x.c))}</b><br>${managementBadge(x.d)}${x.d.hidden ? '<br><span class="badge">skryto</span>' : isLateUnpaid(x.d) ? '<br><span class="badge red">3+ měsíce bez provize</span>' : ''}</td><td>${esc(x.d.category || areaLabel(areaForDeal(x.d)))}</td><td>${esc(x.d.company || '')}</td><td><b>${esc(x.d.product || '')}</b></td><td>${esc(x.d.date || '')}</td><td class="money">${money(dealVolume(x.d))}</td><td class="num">${num(dealBJ(x.d))}</td><td class="money">${money(dealCash(x.d, y))}</td><td class="paid-col"><input class="paid-check" type="checkbox" ${dealPaid(x.d) ? 'checked' : ''} onchange="toggleDealPaid(${x.d.id},this.checked)"></td><td class="money">${money(dealNetCommission(x.d, y))}</td><td><b>${esc(dealOwnerLabel(x.d) || '')}</b>${dealOwnerType(x.d) === 'tipar' ? `<br><span class="note">${num(dealOwnerPct(x.d))} % · ${money(dealOwnerPayout(x.d, y))} · ${x.d.ownerPaid ? 'vyplaceno' : 'nevyplaceno'}</span>` : ''}</td><td class="paid-col"><input class="paid-check" type="checkbox" ${x.d.hidden ? 'checked' : ''} onchange="toggleDealHidden(${x.d.id},this.checked)"></td><td><button class="icon-btn" title="Upravit obchod" onclick="selectedClientId=${x.c?.id || 'null'};openDealModal(${x.d.clientId},${x.d.id})">✎</button></td></tr>`).join('') || '<tr><td colspan="13" class="note">V tomto měsíci zatím nejsou žádné viditelné obchody.</td></tr>'}<tr><th colspan="5">Celkem za ${MONTHS[selectedMonth]}<br><span class="note">Noví klienti: ${num(newClients)} · skryto: ${num(totalHidden)}</span></th><th class="money">Investice ${money(totals.inv)}<br>Hypotéky ${money(totals.mort)}</th><th class="num">${num(totals.bj)}</th><th class="money">${money(totals.cash)}</th><th></th><th class="money">${money(totals.net)}</th><th colspan="3">Typaři ${money(totals.payout)} · ${num(totals.count)} viditelných obchodů</th></tr></tbody>`;
   renderOwners(y);
   renderReferrals(y);
 }
@@ -5064,6 +5150,7 @@ function openClientModal(id = null) {
   setVal('cLeadCommissionPct', c.leadCommissionPct || '');
   setVal('cReferrerRole', c.referrerRole || '');
   setVal('cReferrerCommissionPct', c.referrerCommissionPct || '');
+  fillManagementSelect('cManagementPartner', c.managementPartnerId || ownManagementId());
   setVal('cNote', c.note || '');
   toggleLeadFields();
   toggleReferrerFields();
@@ -5111,6 +5198,7 @@ function saveClient() {
     leadCommissionPct: val('cLeadType') === 'tipar' ? parseMoney(val('cLeadCommissionPct')) : 0,
     referrerRole: val('cReferrerRole'),
     referrerCommissionPct: val('cReferrerRole') === 'tipar' ? parseMoney(val('cReferrerCommissionPct')) : 0,
+    managementPartnerId: val('cManagementPartner') || ownManagementId(),
     note: val('cNote').trim()
   });
   const linked = linkInvestmentRecordsToClient(c);
@@ -5436,6 +5524,9 @@ function syncDealOwnerDefaults() {
   }
   if (val('dOwnerType') === 'referral') setVal('dOwnerCommissionPct', '');
 }
+function syncDealManagementDefault() {
+  fillManagementSelect('dManagementPartner', clientManagementId(val('dClient')));
+}
 function dealCategoryCreatesContract(category) {
   return !['FKI', 'Investice', 'Následná provize'].includes(category);
 }
@@ -5514,6 +5605,7 @@ function openDealModal(clientId = null, id = null) {
   const s = linkedContractForDeal(d) || {},
     ownerPct = d.ownerType === 'tipar' ? +d.ownerCommissionPct || referrerCommissionFor(d.owner) : 0;
   setVal('dClient', d.clientId || '');
+  fillManagementSelect('dManagementPartner', d.managementPartnerId || clientManagementId(d.clientId));
   setVal('dCategory', d.category || 'Životní pojištění');
   setVal('dDate', d.date || today());
   setVal('dCompany', d.company || '');
@@ -5592,6 +5684,7 @@ function openDealFromOpportunity(o) {
     };
   const s = editingDealId ? linkedContractForDeal(d) || {} : {};
   setVal('dClient', d.clientId || o.clientId || '');
+  fillManagementSelect('dManagementPartner', d.managementPartnerId || o.managementPartnerId || clientManagementId(d.clientId || o.clientId));
   setVal('dCategory', d.category || category);
   setVal('dDate', o.dealDate || o.replacementSignedDate || d.date || o.statusDate || today());
   setVal('dCompany', d.company || o.company || '');
@@ -6007,6 +6100,7 @@ function fkiSync_before_saveDeal() {
     ownerType = owner ? val('dOwnerType') : '';
   Object.assign(d, {
     clientId,
+    managementPartnerId: val('dManagementPartner') || clientManagementId(clientId),
     category: val('dCategory'),
     date: val('dDate') || today(),
     company: val('dCompany').trim(),
@@ -6208,6 +6302,7 @@ function opportunityFromForm() {
   const category = val('oCategory') === '__custom' ? val('oCategoryCustom').trim() || 'Ostatní' : val('oCategory');
   return {
     clientId: +val('oClient'),
+    managementPartnerId: clientManagementId(+val('oClient')),
     replacesContractId: val('oReplacesContract') || null,
     replacementSignedDate: val('oReplacementSigned'),
     replacementEffectiveDate: val('oReplacementEffective'),
@@ -8253,7 +8348,7 @@ function commissions_investmentTrailAnnualForItem(x) {
   return (+x.amount || 0) * (pct / 100) / 250 * coef;
 }
 function commissions_investmentTrailAnnualGross() {
-  const items = typeof reportInvestmentItems === 'function' ? reportInvestmentItems() : fkiReportItems();
+  const items = typeof managementInvestmentItems === 'function' ? managementInvestmentItems(ownManagementId()) : typeof reportInvestmentItems === 'function' ? reportInvestmentItems() : fkiReportItems();
   return items.reduce((sum, x) => sum + commissions_investmentTrailAnnualForItem(x), 0);
 }
 function commissions_investmentTrailSplit() {
@@ -12131,8 +12226,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.02-2';
-const VERSION_NOTE = 'Pipeline obsahuje pouze samostatné obchodní případy. Servisní stavy původních smluv zůstávají ve smlouvách.';
+const VERSION = '2026.10.04-1';
+const VERSION_NOTE = 'Nová Správa odděluje vlastní a partnerské klienty, obchody, AUM a přijaté provize. Data Mantry nevstupují do osobního AUM.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';

@@ -1,3 +1,11 @@
+## 2026.10.04-1
+
+- Nová záložka Správa odděluje vlastní klienty Filipa Solára od partnerských klientů Mantry bez vytváření duplicitních karet.
+- Správce se eviduje u klienta a ukládá také do obchodu a obchodního případu, aby historické přehledy zůstaly správné.
+- Partnerský přehled ukazuje klienty, produkci, AUM, odhad počátečních a následných provizí i skutečně přijaté výplaty.
+- Investice a FKI klientů Mantry zůstávají dostupné pro sledování vývoje, ale nezvyšují osobní AUM Filipa Solára.
+- Stávající klienti se automaticky zařadí pod správu Filipa Solára; správce lze změnit přímo na kartě klienta.
+
 ## 2026.10.02-2
 
 - Pipeline, obchodní případy a jejich součty obsahují pouze explicitně založené případy. Servisní stav smlouvy již nevytváří automatický případ.

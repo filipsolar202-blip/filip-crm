@@ -293,6 +293,19 @@ try{
  assert.deepEqual(volumes,{amount:2500000,form:'2500000',deal:'2500000',untouched:true,invalid:true,manual:2500000,zero:0});
  results.push('Case volume accepts millions and spaced CZK, preserves contract payment and prefills trade volume');
 
+ const management=await page.evaluate(()=>{
+   const original=JSON.stringify(state),client=state.clients[0];
+   client.managementPartnerId='mantra';
+   state.deals.push({id:99931,clientId:client.id,managementPartnerId:'mantra',category:'Investice',product:'Mantra QA',date:'2026-10-04',amount:100000,bj:20,actualCommission:10000});
+   const partner=managementPartner('mantra');partner.acquisitionSharePct=40;partner.trailSharePct=25;
+   state.managementPayouts.push({id:99932,partnerId:'mantra',date:'2026-10-04',amount:3000,type:'acquisition'});
+   showView('management');renderManagement();
+   const result={defaultPartner:normalizeState({...def(),clients:[{id:91,name:'Starý klient'}]}).clients[0].managementPartnerId,ownAum:managementInvestmentItems(ownManagementId()).reduce((s,x)=>s+(+x.amount||0),0),mantraAum:managementInvestmentItems('mantra').reduce((s,x)=>s+(+x.amount||0),0),claim:managementClaimForDeal(state.deals.at(-1),partner),received:(state.managementPayouts||[]).filter(x=>x.partnerId==='mantra').reduce((s,x)=>s+(+x.amount||0),0),clientRows:document.querySelectorAll('#managementClientsTable tbody tr').length,dealRows:document.querySelectorAll('#managementDealsTable tbody tr').length};
+   state=JSON.parse(original);renderAll();return result;
+ });
+ assert.equal(management.defaultPartner,'filip');assert.equal(management.claim,4000);assert.equal(management.received,3000);assert(management.clientRows>=1);assert(management.dealRows>=1);assert(management.mantraAum>=0);assert(management.ownAum>=0);
+ results.push('Management separates partner clients, trade claims, AUM and received payouts while migrating existing clients to Filip');
+
  await page.setViewportSize({width:1600,height:1000});await page.evaluate(()=>showView('pipeline'));await page.screenshot({path:'/private/tmp/crm-pipeline-desktop.png',fullPage:true});
  await page.setViewportSize({width:834,height:1112});await page.screenshot({path:'/private/tmp/crm-pipeline-ipad.png',fullPage:true});
  await page.evaluate(data=>{state=JSON.parse(data);window.businessCaseFilters={query:'',category:'',status:'',sort:'status'};renderAll()},savedCases);
