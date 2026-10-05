@@ -234,12 +234,14 @@ try{
  assert.equal(await page.evaluate(()=>caseDays({updatedAt:'2026-09-01'},'2026-09-30')),29);
  assert.equal(await page.evaluate(()=>caseDays({})),null);
  assert.equal(await page.evaluate(()=>state.opportunities[0].status),'Oportunita');
- await page.locator('#opportunityTable [data-case-id="99001"] select').selectOption('Scoring');
+ assert.equal(await page.locator('#opportunityTable [data-case-id="99001"] select').inputValue(),'Opportunity');
  await page.evaluate(()=>showView('pipeline'));
- assert.equal(await page.locator('#pipelineBoard .pipeline-column').count(),6);
+ assert.equal(await page.locator('#pipelineBoard .pipeline-column').count(),7);
+ assert.equal(await page.locator('#pipelineBoard [data-stage="Opportunity"] [data-case-id="99001"]').count(),1);
+ await page.locator('#pipelineBoard [data-case-id="99001"] select').selectOption('Scoring');
  assert.equal(await page.locator('#pipelineBoard [data-stage="Scoring"] [data-case-id="99001"]').count(),1);
  await page.locator('#pipelineBoard [data-case-id="99001"] select').selectOption('K zadání (BeTy)');
- assert.equal(await page.locator('#opportunityTable [data-case-id="99001"] select').inputValue(),'K zadání (BeTy)');
+ assert.equal(await page.locator('#pipelineBoard [data-case-id="99001"] select').inputValue(),'K zadání (BeTy)');
  await page.setViewportSize({width:1800,height:1100});
  await page.locator('#pipelineBoard [data-case-id="99001"]').dragTo(page.locator('#pipelineBoard [data-stage="Kompletace"] header'));
  assert.equal(await page.evaluate(()=>state.opportunities[0].status),'Kompletace');
@@ -251,6 +253,13 @@ try{
  await page.evaluate(()=>{openOpportunityModal(1,99001);setVal('oStatus','Podepsáno');saveOpportunity();closeModal('dealModal');closeModal('opportunityModal');renderAll()});
  assert.equal(await page.evaluate(()=>state.opportunities[0].status),'Kompletace');
  assert.equal(await page.evaluate(()=>caseDays(state.opportunities[0])),0);
+ const leadTracking=await page.evaluate(()=>{
+   openOpportunityModal(1);const initial={status:val('oStatus'),next:val('oNextContactDate')};
+   setVal('oProduct','Opportunity QA');setVal('oLastContactDate','2026-10-05');setVal('oLastContactMethod','Telefon');setVal('oNextContactDate','2026-10-12');setVal('oNote','Klient projevil zájem.');saveOpportunity();
+   const o=state.opportunities.find(x=>x.product==='Opportunity QA');return {initial,contact:o.lastContactDate,method:o.lastContactMethod,next:o.nextContactDate,history:o.history.at(-1).t};
+ });
+ assert.deepEqual(leadTracking,{initial:{status:'Opportunity',next:''},contact:'2026-10-05',method:'Telefon',next:'2026-10-12',history:'Kontakt s klientem · Telefon'});
+ results.push('Opportunity starts before an offer and records contact, next term and contact history');
  const serviceCases=await page.evaluate(()=>{
    const before=JSON.stringify(state.contracts);
    state.contracts.push({id:99881,clientId:1,type:'majetek',product:'QA původní byt',company:'Původní pojišťovna',amount:4269,status:'prepojistit',statuses:['prepojistit'],log:[]});

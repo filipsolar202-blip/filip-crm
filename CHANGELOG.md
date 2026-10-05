@@ -1,3 +1,9 @@
+## 2026.10.05-1
+
+- Pipeline začíná novou fází Opportunity před Nabídkou.
+- Opportunity eviduje poslední kontakt, způsob oslovení, další termín a datované poznámky k jednání.
+- Případ bez dalšího termínu se zřetelně označí jako ke kontaktování.
+
 ## 2026.10.04-4
 
 - Podepsaná náhrada smlouvy se ihned propíše na kartu klienta, i když její platnost začíná až v budoucnu.
