@@ -3865,6 +3865,23 @@ function investmentPerformanceGain(current, invested, realized = 0) {
 function investmentPerformancePct(current, invested, realized = 0) {
   return +invested || 0 ? investmentPerformanceGain(current, invested, realized) / (+invested || 0) * 100 : 0;
 }
+function investmentReportedGain(x) {
+  const v = x?.snapshot?.gainAmount;
+  return v !== '' && v != null && Number.isFinite(+v) ? +v : investmentPerformanceGain(+x?.amount || 0, investmentInvestedAmount(x), investmentRealizedAmount(x));
+}
+function investmentReportedPct(x) {
+  const v = x?.snapshot?.gainPct;
+  return v !== '' && v != null && Number.isFinite(+v) ? +v : investmentPerformancePct(+x?.amount || 0, investmentInvestedAmount(x), investmentRealizedAmount(x));
+}
+function investmentReportedAnnualPct(x) {
+  const v = x?.snapshot?.annualReturnPct;
+  return v !== '' && v != null && Number.isFinite(+v) ? +v : null;
+}
+function investmentProviderIdentity(x = {}) {
+  const text = norm([x.providerKey, x.company, x.provider, x.product, x.fond, x.kind].filter(Boolean).join(' '));
+  if (text.includes('edward')) return 'edward';
+  return norm(canonicalInvestmentCompany(x.company || x.provider || 'nezarazeno'));
+}
 function investmentSnapshotKey(clientId, company, product, isin = '', mergeKey = '', type = '') {
   const i = norm(isin),
     m = norm(mergeKey),
@@ -3872,12 +3889,14 @@ function investmentSnapshotKey(clientId, company, product, isin = '', mergeKey =
   return [String(clientId || ''), fund].join('|');
 }
 function investmentSnapshotKeyForSnapshot(s) {
+  if (s?.scope === 'provider-total') return [String(s.clientId || ''), 'investment-provider-total', norm(s.providerKey || investmentProviderIdentity(s))].join('|');
   return investmentSnapshotKey(s?.clientId, s?.company, s?.product, s?.isin, s?.mergeKey, s?.fundType || s?.typ || s?.kind);
 }
 function investmentSnapshotMergeKey(s) {
   return [investmentSnapshotKeyForSnapshot(s), s.date, Math.round((+s.current || 0) * 100), Math.round((+s.invested || 0) * 100)].join('|');
 }
 function investmentItemKey(x) {
+  if (x?.snapshot?.scope === 'provider-total' || x?.scope === 'provider-total') return investmentSnapshotKeyForSnapshot(x.snapshot || x);
   return [String(x.clientId || x.client?.id || ''), investmentFundKey(x)].join('|');
 }
 function latestInvestmentSnapshots(clientId = null) {
@@ -3889,6 +3908,7 @@ function latestInvestmentSnapshots(clientId = null) {
   return Object.values(map).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
 }
 function latestSnapshotForItem(x) {
+  if (x?.snapshot) return x.snapshot;
   const key = investmentItemKey(x);
   return latestInvestmentSnapshots(x.clientId || x.client?.id).find(s => investmentSnapshotKeyForSnapshot(s) === key) || null;
 }
@@ -3909,6 +3929,8 @@ function investmentSnapshotItem(s) {
     source: s,
     sourceType: 'snapshot',
     sourceId: s.id,
+    scope: s.scope || '',
+    providerKey: s.providerKey || '',
     snapshot: s
   };
 }
@@ -3993,9 +4015,12 @@ function baseClassicInvestmentItems() {
   return allInvestmentItems().filter(x => investmentAreaOfItem(x) === 'investice' && !isPensionReportItem(x));
 }
 function classicInvestmentItems() {
-  const base = baseClassicInvestmentItems().map(applyInvestmentSnapshot),
+  const snapshots = latestInvestmentSnapshots(),
+    providerTotals = snapshots.filter(s => s.scope === 'provider-total'),
+    replacedProviders = new Set(providerTotals.map(s => [String(s.clientId), norm(s.providerKey || investmentProviderIdentity(s))].join('|'))),
+    base = baseClassicInvestmentItems().filter(x => !replacedProviders.has([String(x.clientId || x.client?.id || ''), investmentProviderIdentity(x)].join('|'))).map(applyInvestmentSnapshot),
     keys = new Set(base.map(investmentItemKey)),
-    orphans = latestInvestmentSnapshots().filter(s => !keys.has(investmentSnapshotKeyForSnapshot(s)) && !isPensionReportItem(s)).map(investmentSnapshotItem);
+    orphans = snapshots.filter(s => (s.scope === 'provider-total' || !replacedProviders.has([String(s.clientId || ''), investmentProviderIdentity(s)].join('|'))) && !keys.has(investmentSnapshotKeyForSnapshot(s)) && !isPensionReportItem(s)).map(investmentSnapshotItem);
   return mergeClassicInvestmentItems([...base, ...orphans]).filter(x => !isPensionReportItem(x));
 }
 function clientDisplayInvestmentItems(clientId) {
@@ -4144,6 +4169,13 @@ function investmentClientRows() {
   });
   return Object.values(map).map(r => ({
     ...r,
+    gain: r.items.reduce((sum, x) => sum + investmentReportedGain(x), 0),
+    gainPct: r.invested ? r.items.reduce((sum, x) => sum + investmentReportedGain(x), 0) / r.invested * 100 : 0,
+    annualReturnPct: (() => {
+      const annual = r.items.filter(x => investmentReportedAnnualPct(x) != null);
+      const weight = annual.reduce((sum, x) => sum + (+x.amount || 0), 0);
+      return weight ? annual.reduce((sum, x) => sum + investmentReportedAnnualPct(x) * (+x.amount || 0), 0) / weight : null;
+    })(),
     products: r.items.length,
     providers: [...new Set(r.items.map(x => x.company).filter(Boolean))]
   })).sort((a, b) => b.current - a.current || clientName(a.client).localeCompare(clientName(b.client), 'cs'));
@@ -4513,6 +4545,10 @@ function clientClassicInvestmentReportItems(clientId) {
     invested: investmentInvestedAmount(x),
     amount: +x.amount || 0,
     realized: investmentRealizedAmount(x),
+    gainAmount: investmentReportedGain(x),
+    gainPct: investmentReportedPct(x),
+    annualReturnPct: investmentReportedAnnualPct(x),
+    snapshot: x.snapshot || null,
     date: x.snapshot?.date || x.date || '',
     purchaseDate: x.purchaseDate || x.snapshot?.purchaseDate || x.source?.purchaseDate || x.source?.startDate || x.source?.dealDate || (['deal', 'record'].includes(x.sourceType) ? x.source?.date || (!x.snapshot ? x.date : '') : '') || '',
     sourceType: x.sourceType || '',
@@ -5847,7 +5883,9 @@ function fillInvestmentProductSelect(selectedKey = '') {
   const clientId = +val('isClient') || selectedInvestmentClientId || selectedClientId,
     el = byId('isProduct');
   if (!el) return;
-  const items = baseClassicInvestmentItems().filter(x => String(x.clientId) === String(clientId)),
+  const doubledPrefix = String(clientId) + '|' + String(clientId) + '|';
+  if (selectedKey.startsWith(doubledPrefix)) selectedKey = selectedKey.slice(String(clientId).length + 1);
+  const items = classicInvestmentItems().filter(x => String(x.clientId) === String(clientId)),
     seen = new Set();
   const opts = items.map(x => {
     const key = investmentItemKey(x);
@@ -5863,7 +5901,7 @@ function syncInvestmentSnapshotProduct() {
   const key = val('isProduct'),
     clientId = +val('isClient') || selectedInvestmentClientId || selectedClientId;
   if (key && key !== '__custom') {
-    const item = baseClassicInvestmentItems().find(x => investmentItemKey(x) === key);
+    const item = classicInvestmentItems().find(x => investmentItemKey(x) === key);
     if (item) {
       const rawKey = investmentFundRawKey(item),
         fundKey = investmentFundKey(item),
@@ -5878,12 +5916,16 @@ function syncInvestmentSnapshotProduct() {
       setVal('isInvested', snap?.investedBeforeRedemption ?? snap?.invested ?? investmentInvestedAmount(item) ?? '');
       setVal('isGainAmount', snap?.gainAmount || '');
       setVal('isGainPct', snap?.gainPct || '');
+      setVal('isAnnualReturnPct', snap?.annualReturnPct ?? '');
       setVal('isRedemptionAmount', snap?.redemptionAmount || '');
       setVal('isRedemptionDate', snap?.redemptionDate || '');
       setVal('isRegularAmount', snap?.regularAmount || '');
       setVal('isRegularFrequency', snap?.regularFrequency || '');
       setVal('isSource', snap?.source || '');
       setVal('isNote', snap?.note || '');
+      setVal('isSnapshotScope', snap?.scope || '');
+      setVal('isProviderKey', snap?.providerKey || '');
+      if (byId('isManualPerformance')) byId('isManualPerformance').checked = !!snap?.manualPerformanceOverride;
       return;
     }
   }
@@ -5897,12 +5939,16 @@ function syncInvestmentSnapshotProduct() {
   setVal('isInvested', '');
   setVal('isGainAmount', '');
   setVal('isGainPct', '');
+  setVal('isAnnualReturnPct', '');
   setVal('isRedemptionAmount', '');
   setVal('isRedemptionDate', '');
   setVal('isRegularAmount', '');
   setVal('isRegularFrequency', '');
   setVal('isSource', latest.source || '');
   setVal('isNote', '');
+  setVal('isSnapshotScope', '');
+  setVal('isProviderKey', '');
+  if (byId('isManualPerformance')) byId('isManualPerformance').checked = false;
 }
 function openInvestmentSnapshotModal(clientId = null, encodedKey = '') {
   const id = clientId || selectedInvestmentClientId || selectedClientId;
@@ -5932,6 +5978,7 @@ function saveInvestmentSnapshot() {
     invested = investedBefore,
     gainAmount = val('isGainAmount') === '' && invested ? investmentPerformanceGain(current, invested, redemptionAmount) : parseMoney(val('isGainAmount')),
     gainPct = val('isGainPct') === '' && invested ? investmentPerformancePct(current, invested, redemptionAmount) : parseMoney(val('isGainPct')),
+    annualReturnPct = val('isAnnualReturnPct') === '' ? null : parseMoney(val('isAnnualReturnPct')),
     snapshot = {
       id: uid(),
       clientId,
@@ -5949,6 +5996,10 @@ function saveInvestmentSnapshot() {
       redemptionDate,
       gainAmount,
       gainPct,
+      annualReturnPct,
+      manualPerformanceOverride: !!byId('isManualPerformance')?.checked,
+      scope: val('isSnapshotScope') || '',
+      providerKey: val('isProviderKey') || '',
       regularAmount: parseMoney(val('isRegularAmount')),
       regularFrequency: val('isRegularFrequency'),
       source: val('isSource').trim(),
@@ -5997,6 +6048,81 @@ function saveInvestmentSnapshot() {
   persist();
   renderAll();
   saveToast(redemptionAmount ? 'Odkup a hodnota investice uloženy ✓' : oldIndex >= 0 ? 'Hodnota investice přepsána ✓' : 'Hodnota investice aktualizována ✓');
+}
+function edwardCsvField(row, label) {
+  const wanted = norm(label);
+  const key = Object.keys(row || {}).find(k => norm(k) === wanted);
+  return key ? row[key] : '';
+}
+function edwardCsvClient(row) {
+  const birthId = normalizeStrongId(edwardCsvField(row, 'klient - RČ')),
+    email = String(edwardCsvField(row, 'klient - e-mail') || '').trim().toLowerCase(),
+    first = String(edwardCsvField(row, 'klient - jméno') || '').trim(),
+    last = String(edwardCsvField(row, 'klient - příjmení') || '').trim(),
+    names = new Set([norm(`${first} ${last}`), norm(`${last} ${first}`)].filter(Boolean));
+  return state.clients.find(c => birthId && normalizeStrongId(c.birthId) === birthId) || state.clients.find(c => email && clientEmails(c).some(v => String(v).toLowerCase() === email)) || state.clients.find(c => names.has(norm(clientName(c)))) || null;
+}
+function edwardAumGroups(rows) {
+  const groups = new Map(), unmatched = [], skippedZero = [];
+  (rows || []).forEach(row => {
+    const current = parseMoney(edwardCsvField(row, 'total AUM'));
+    if (!(current > 0)) return skippedZero.push(row);
+    const client = edwardCsvClient(row), first = edwardCsvField(row, 'klient - jméno'), last = edwardCsvField(row, 'klient - příjmení');
+    if (!client) return unmatched.push([first, last].filter(Boolean).join(' ') || 'neznámý klient');
+    const gain = parseMoney(edwardCsvField(row, 'total return')),
+      mwrText = edwardCsvField(row, 'MWR %'),
+      rawMwr = parseMoney(mwrText),
+      annual = Math.abs(rawMwr) <= 2 ? rawMwr * 100 : rawMwr,
+      key = String(client.id), old = groups.get(key) || {client, current:0, gainAmount:0, invested:0, regularAmount:0, annualWeighted:0, annualWeight:0, accounts:[]};
+    old.current += current;
+    old.gainAmount += gain;
+    old.invested += current - gain;
+    old.regularAmount += parseMoney(edwardCsvField(row, 'pravidelný vklad'));
+    if (String(mwrText).trim() && Number.isFinite(annual)) old.annualWeighted += annual * current, old.annualWeight += current;
+    old.accounts.push(String(edwardCsvField(row, 'accountId') || edwardCsvField(row, 'název účtu') || '').trim());
+    groups.set(key, old);
+  });
+  return {groups:[...groups.values()], unmatched, skippedZero:skippedZero.length};
+}
+function importEdwardAumRows(rows, reportDate = today()) {
+  const parsed = edwardAumGroups(rows), updated = [];
+  state.investmentSnapshots = state.investmentSnapshots || [];
+  parsed.groups.forEach(g => {
+    const probe = {clientId:g.client.id, scope:'provider-total', providerKey:'edward'},
+      key = investmentSnapshotKeyForSnapshot(probe),
+      index = (state.investmentSnapshots || []).findIndex(s => investmentSnapshotKeyForSnapshot(s) === key),
+      old = index >= 0 ? state.investmentSnapshots[index] : {},
+      importedGainPct = g.invested ? g.gainAmount / g.invested * 100 : 0,
+      importedAnnualPct = g.annualWeight ? g.annualWeighted / g.annualWeight : null,
+      keepManual = !!old.manualPerformanceOverride,
+      snapshot = {
+        ...old, id: old.id || uid(), clientId:g.client.id, scope:'provider-total', providerKey:'edward',
+        company:'Edward', product:'Edward – celkové portfolio', fundType:'Investice', date:reportDate,
+        current:g.current, currentBeforeRedemption:g.current, invested:g.invested, investedBeforeRedemption:g.invested,
+        gainAmount:keepManual ? old.gainAmount : g.gainAmount,
+        gainPct:keepManual ? old.gainPct : importedGainPct,
+        annualReturnPct:keepManual ? old.annualReturnPct : importedAnnualPct,
+        regularAmount:g.regularAmount, regularFrequency:g.regularAmount ? 'Měsíčně' : '', source:'Edward CSV',
+        note:`Souhrn ${g.accounts.filter(Boolean).length} účtů z Edward CSV.`, importedAt:today(), updatedAt:today()
+      };
+    if (index >= 0) state.investmentSnapshots[index] = snapshot; else state.investmentSnapshots.push(snapshot);
+    updated.push(g.client);
+  });
+  return {...parsed, updated};
+}
+async function importEdwardAumCsv(file) {
+  if (!file) return;
+  if (typeof XLSX === 'undefined') return alert('Čtečka CSV se nenačetla. Obnov CRM a zkus to znovu.');
+  try {
+    const wb = XLSX.read(await file.arrayBuffer(), {type:'array', raw:false}), ws = wb.Sheets[wb.SheetNames[0]], rows = XLSX.utils.sheet_to_json(ws, {defval:'', raw:false});
+    if (!rows.length || !Object.keys(rows[0]).some(k => norm(k) === norm('total AUM'))) throw new Error('Soubor neobsahuje sloupec total AUM.');
+    const dateMatch = String(file.name || '').match(/(20\d{2})-(\d{2})-(\d{2})/), reportDate = dateMatch ? `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}` : today(), result = importEdwardAumRows(rows, reportDate);
+    if (!result.updated.length) return alert(`V souboru nebyl nalezen žádný klient s kladným AUM, kterého lze spojit s CRM.${result.unmatched.length ? '\nNenalezení klienti: '+result.unmatched.slice(0,10).join(', ') : ''}`);
+    dedupeInvestmentSnapshotsInState(state);
+    selectedInvestmentClientId = result.updated[0].id;
+    persist(); renderAll();
+    alert(`Edward CSV aktualizováno k ${reportDate}.\nKlientů aktualizováno: ${result.updated.length}\nŘádků s nulovým AUM přeskočeno: ${result.skippedZero}${result.unmatched.length ? '\nNenalezení klienti: '+result.unmatched.slice(0,10).join(', ') : ''}`);
+  } catch (error) { alert('Edward CSV se nepodařilo načíst: ' + (error?.message || error)); }
 }
 function upsertContractFromDeal(d,forceNew=false) {
   if(d.portfolioReplacedBy)return null; // Historical commissions must not overwrite the current contract.
@@ -8057,7 +8183,7 @@ function investmentPosition_enc(v) {
 function investmentPosition_invGroup(items) {
   const map = {};
   (items || []).forEach(x => {
-    const key = investmentFundKey(x),
+    const key = x.snapshot?.scope === 'provider-total' ? investmentItemKey(x) : investmentFundKey(x),
       raw = investmentFundRawKey(x),
       fv = state.fundValues?.[key] || state.fundValues?.[raw] || {},
       company = fv.company || x.company || 'Nezařazeno',
@@ -8076,11 +8202,13 @@ function investmentPosition_invGroup(items) {
       amount: 0,
       invested: 0,
       realized: 0,
+      gain: 0,
       items: []
     };
     map[key].amount += +x.amount || 0;
     map[key].invested += investmentInvestedAmount(x);
     map[key].realized += investmentRealizedAmount(x);
+    map[key].gain += investmentReportedGain(x);
     map[key].items.push(x);
   });
   return Object.values(map).sort((a, b) => b.amount - a.amount);
@@ -8097,8 +8225,8 @@ function investmentPosition_invPositionRows(f, clientId) {
     const put = investmentInvestedAmount(x),
       cur = +x.amount || 0,
       realized = investmentRealizedAmount(x),
-      gain = investmentPerformanceGain(cur, put, realized),
-      pct = investmentPerformancePct(cur, put, realized),
+      gain = investmentReportedGain(x),
+      pct = investmentReportedPct(x),
       valueDate = fundValueDateText('investice', f.key, x.isin, x.snapshot?.date || x.source?.valueDate || x.source?.date || '');
     return `<tr><td><b>${esc(x.product || x.kind || 'Investice')} #${i + 1}</b><br><span class="note">${esc([x.company, x.isin, x.typ || x.kind].filter(Boolean).join(' · '))}</span></td><td class="money">${money(put)}</td><td class="money">${money(cur)}<br><span class="note">k ${valueDate}</span></td><td class="money ${gain >= 0 ? 'green' : 'red'}">${money(gain)}<br><span>${pct.toFixed(1)} %</span></td><td>${esc(x.snapshot?.date || x.date || '')}</td><td>${esc(x.snapshot?.source || x.sourceType || 'CRM')}</td><td>${investmentPosition_invStatus(x)}</td><td>${investmentPosition_invRowAction(x, clientId)}</td></tr>`;
   }).join('') || '<tr><td colspan="8" class="note">Pod fondem není žádná pozice.</td></tr>'}</tbody></table></div>`;
@@ -9090,7 +9218,7 @@ function fundPerformance_storeFundComment(area, key, isin, comment) {
 function fundPerformance_classicGroups(items) {
   const map = {};
   (items || []).forEach(x => {
-    const key = investmentFundKey(x),
+    const key = x.snapshot?.scope === 'provider-total' ? investmentItemKey(x) : investmentFundKey(x),
       raw = typeof investmentFundRawKey === 'function' ? investmentFundRawKey(x) : key,
       fv = state.fundValues?.[key] || state.fundValues?.[raw] || {},
       company = fv.company || x.company || 'Nezařazeno',
@@ -9109,11 +9237,13 @@ function fundPerformance_classicGroups(items) {
       amount: 0,
       invested: 0,
       realized: 0,
+      gain: 0,
       items: []
     };
     map[key].amount += +x.amount || 0;
     map[key].invested += investmentInvestedAmount(x);
     map[key].realized += investmentRealizedAmount(x);
+    map[key].gain += investmentReportedGain(x);
     map[key].items.push(x);
   });
   return Object.values(map).sort((a, b) => b.amount - a.amount);
@@ -9123,21 +9253,25 @@ function fundPerformance_classicPositionRows(f, clientId) {
     const put = investmentInvestedAmount(x),
       cur = +x.amount || 0,
       realized = investmentRealizedAmount(x),
-      gain = investmentPerformanceGain(cur, put, realized),
-      pct = investmentPerformancePct(cur, put, realized),
+      gain = investmentReportedGain(x),
+      pct = investmentReportedPct(x),
       start = liquidity_investmentTaxStart(x),
       valueDate = typeof fundValueDateText === 'function' ? fundValueDateText('investice', f.key, x.isin, x.snapshot?.date || x.source?.valueDate || x.source?.date || '') : x.snapshot?.date || x.date || '',
-      pa = fundPerformance_annualizedPct(put, cur, realized, start, valueDate || new Date()),
+      pa = investmentReportedAnnualPct(x),
       info = liquidity_liquidityInfo('investice', f.key, x.isin || f.isin, start);
-    return `<tr><td><b>${esc(x.product || x.kind || 'Investice')} #${i + 1}</b><br><span class="note">${esc([x.company, x.isin, x.typ || x.kind].filter(Boolean).join(' · '))}</span></td><td class="money">${money(put)}</td><td class="money">${money(cur)}<br><span class="date-highlight">k ${esc(valueDate || '-')}</span></td><td class="money ${gain >= 0 ? 'green' : 'red'}">${money(gain)}<br><span>${pct.toFixed(1)} %</span></td><td class="money ${pa === null || pa >= 0 ? 'green' : 'red'}">${fundPerformance_pctText(pa)}</td><td>${liquidity_taxBadge(info)}<br><span class="note">${info ? `${num(info.rules.taxMonths)} měsíců od ${liquidity_fmtDate(start)}` : 'Doplň datum nákupu'}</span></td><td>${esc(valueDate || '-')}</td><td>${esc(x.snapshot?.source || x.sourceType || 'CRM')}</td><td>${typeof invStatus === 'function' ? invStatus(x) : ''}</td><td>${typeof invRowAction === 'function' ? invRowAction(x, clientId) : ''}</td></tr>`;
+    return `<tr><td><b>${esc(x.product || x.kind || 'Investice')} #${i + 1}</b><br><span class="note">${esc([x.company, x.isin, x.typ || x.kind].filter(Boolean).join(' · '))}</span></td><td class="money">${money(put)}</td><td class="money">${money(cur)}<br><span class="date-highlight">k ${esc(valueDate || '-')}</span></td><td class="money ${gain >= 0 ? 'green' : 'red'}">${money(gain)}<br><span>${pct.toFixed(2)} %</span></td><td class="money ${pa === null || pa >= 0 ? 'green' : 'red'}">${pa === null ? '-' : pa.toFixed(2) + ' %'}</td><td>${liquidity_taxBadge(info)}<br><span class="note">${info ? `${num(info.rules.taxMonths)} měsíců od ${liquidity_fmtDate(start)}` : 'Doplň datum nákupu'}</span></td><td>${esc(valueDate || '-')}</td><td>${esc(x.snapshot?.source || x.sourceType || 'CRM')}</td><td>${typeof invStatus === 'function' ? invStatus(x) : ''}</td><td>${typeof invRowAction === 'function' ? invRowAction(x, clientId) : ''}</td></tr>`;
   }).join('') || '<tr><td colspan="10" class="note">Pod fondem není žádná pozice.</td></tr>'}</tbody></table></div>`;
 }
 function fundPerformance_classicCard(f, clientId) {
-  const gain = investmentPerformanceGain(f.amount, f.invested, f.realized),
-    pct = investmentPerformancePct(f.amount, f.invested, f.realized),
+  const gain = Number.isFinite(+f.gain) ? +f.gain : investmentPerformanceGain(f.amount, f.invested, f.realized),
+    pct = f.invested ? gain / f.invested * 100 : 0,
+    annualItems = (f.items || []).filter(x => investmentReportedAnnualPct(x) != null),
+    annualWeight = annualItems.reduce((sum, x) => sum + (+x.amount || 0), 0),
+    annualPct = annualWeight ? annualItems.reduce((sum, x) => sum + investmentReportedAnnualPct(x) * (+x.amount || 0), 0) / annualWeight : null,
     key = encodeURIComponent(String(f.key || '')),
     fv = state.fundValues?.[f.key] || {},
-    valueDate = typeof fundValueDateText === 'function' ? fundValueDateText('investice', f.key, f.isin, fv.date) : fv.date || '',
+    valueDateFallback = fv.date || f.items?.[0]?.snapshot?.date || f.items?.[0]?.date || '',
+    valueDate = typeof fundValueDateText === 'function' ? fundValueDateText('investice', f.key, f.isin, valueDateFallback) : valueDateFallback,
     locked = isInvestmentFundLocked(f.key),
     comment = fundPerformance_fundComment('investice', f.key, f.isin),
     tax = liquidity_taxSummary((f.items || []).map(x => liquidity_liquidityInfo('investice', f.key, x.isin || f.isin, liquidity_investmentTaxStart(x))));
@@ -9487,6 +9621,10 @@ function clientOutput_xClientInvestments(c) {
       invested: clientOutput_xN(x.invested),
       amount: clientOutput_xN(x.amount),
       realized: clientOutput_xN(x.realized),
+      gainAmount: investmentReportedGain(x),
+      gainPct: investmentReportedPct(x),
+      annualReturnPct: investmentReportedAnnualPct(x),
+      snapshot: x.snapshot || null,
       date: x.date || x.snapshot?.date || '',
       valueDate: clientOutput_xValueDate('investice', key, x.isin, x.date || ''),
       comment: clientOutput_xComment('investice', key, x.isin),
@@ -9539,12 +9677,17 @@ function clientOutput_xOpen(c) {
 function clientOutput_xTotals(items) {
   const invested = items.reduce((s, x) => s + clientOutput_xN(x.invested), 0),
     current = items.reduce((s, x) => s + clientOutput_xN(x.amount), 0),
-    realized = items.reduce((s, x) => s + clientOutput_xN(x.realized), 0);
+    realized = items.reduce((s, x) => s + clientOutput_xN(x.realized), 0),
+    manualGain = items.reduce((s, x) => s + (x.area === 'Investice' && Number.isFinite(+x.gainAmount) ? +x.gainAmount : clientOutput_xPerf(x.amount, x.invested, x.realized).gain), 0),
+    annualItems = items.filter(x => x.area === 'Investice' && x.annualReturnPct != null && Number.isFinite(+x.annualReturnPct)),
+    annualWeight = annualItems.reduce((s, x) => s + clientOutput_xN(x.amount), 0);
   return {
     invested,
     current,
     realized,
-    ...clientOutput_xPerf(current, invested, realized)
+    gain: manualGain,
+    pct: invested ? manualGain / invested * 100 : 0,
+    annualReturnPct: annualWeight ? annualItems.reduce((s, x) => s + (+x.annualReturnPct) * clientOutput_xN(x.amount), 0) / annualWeight : null
   };
 }
 function clientOutput_xSeries(items, years = 10, minmax = false) {
@@ -10852,8 +10995,9 @@ function liquidity_oldRenderInvestmentDetail(row) {
     current = row?.current || 0,
     invested = row?.invested || 0,
     realized = row?.realized || 0,
-    gain = investmentPerformanceGain(current, invested, realized),
-    gainPct = investmentPerformancePct(current, invested, realized),
+    gain = row?.gain ?? items.reduce((sum, x) => sum + investmentReportedGain(x), 0),
+    gainPct = row?.gainPct ?? (invested ? gain / invested * 100 : 0),
+    annualReturnPct = row?.annualReturnPct ?? null,
     snaps = latestInvestmentSnapshots(c?.id).slice(0, 8),
     last = snaps[0],
     funds = investmentPosition_invGroup(items);
@@ -10892,7 +11036,7 @@ function renderInvestments() {
   setText('invTotalVolume', money(funds.reduce((s, x) => s + (+x.rawCurrent || 0), 0)));
   if (rows.length && !rows.some(r => String(r.client?.id) === String(selectedInvestmentClientId))) selectedInvestmentClientId = rows[0].client?.id;
   if (!rows.length) selectedInvestmentClientId = null;
-  list.innerHTML = rows.map(r => `<button class="investment-client ${String(r.client?.id) === String(selectedInvestmentClientId) ? 'active' : ''}" onclick="selectInvestmentClient(${r.client?.id})"><div class="row"><b>${esc(clientName(r.client))}</b><span class="badge blue">${num(r.products)}</span></div><div class="row"><span class="note">AUM</span><span class="money">${money(r.current)}</span></div><div class="row"><span class="note">Vloženo: ${money(r.invested)}</span><span class="${investmentPerformanceGain(r.current, r.invested, r.realized) >= 0 ? 'green' : 'red'}">${investmentPerformancePct(r.current, r.invested, r.realized).toFixed(1)} %</span></div></button>`).join('') || '<div class="investment-empty">Zatím tu nejsou běžné investice.</div>';
+  list.innerHTML = rows.map(r => `<button class="investment-client ${String(r.client?.id) === String(selectedInvestmentClientId) ? 'active' : ''}" onclick="selectInvestmentClient(${r.client?.id})"><div class="row"><b>${esc(clientName(r.client))}</b><span class="badge blue">${num(r.products)}</span></div><div class="row"><span class="note">AUM</span><span class="money">${money(r.current)}</span></div><div class="row"><span class="note">Vloženo: ${money(r.invested)}</span><span class="${r.gain >= 0 ? 'green' : 'red'}">${r.gainPct.toFixed(1)} %</span></div></button>`).join('') || '<div class="investment-empty">Zatím tu nejsou běžné investice.</div>';
   byId('investmentTabClient')?.classList.toggle('active', investmentMode === 'client');
   byId('investmentTabFunds')?.classList.toggle('active', investmentMode === 'funds');
   byId('investmentTabAum')?.classList.toggle('active', investmentMode === 'aum');
@@ -11480,7 +11624,8 @@ function renderInvestmentDetail(row) {
   if(!row?.client)return renderInvestmentDetailContent(row);
   const bar=clientProviderBar('investice',row.client.id,row.items),selected=clientProviderSelection('investice',row.client.id);
   const items=row.items.filter(x=>!selected||(x.company||'Bez společnosti')===selected);
-  const filtered={...row,items,current:items.reduce((s,x)=>s+(+x.amount||0),0),invested:items.reduce((s,x)=>s+investmentInvestedAmount(x),0),realized:items.reduce((s,x)=>s+investmentRealizedAmount(x),0)};
+  const invested=items.reduce((s,x)=>s+investmentInvestedAmount(x),0),gain=items.reduce((s,x)=>s+investmentReportedGain(x),0),annualItems=items.filter(x=>investmentReportedAnnualPct(x)!=null),annualWeight=annualItems.reduce((s,x)=>s+(+x.amount||0),0);
+  const filtered={...row,items,current:items.reduce((s,x)=>s+(+x.amount||0),0),invested,realized:items.reduce((s,x)=>s+investmentRealizedAmount(x),0),gain,gainPct:invested?gain/invested*100:0,annualReturnPct:annualWeight?annualItems.reduce((s,x)=>s+investmentReportedAnnualPct(x)*(+x.amount||0),0)/annualWeight:null};
   return bar+renderInvestmentDetailContent(filtered);
 }
 function renderFkClientDetail(row) {
@@ -11503,8 +11648,9 @@ function renderInvestmentDetailContent(row) {
     current = row?.current || 0,
     invested = row?.invested || 0,
     realized = row?.realized || 0,
-    gain = investmentPerformanceGain(current, invested, realized),
-    gainPct = investmentPerformancePct(current, invested, realized),
+    gain = row?.gain ?? items.reduce((sum, x) => sum + investmentReportedGain(x), 0),
+    gainPct = row?.gainPct ?? (invested ? gain / invested * 100 : 0),
+    annualReturnPct = row?.annualReturnPct ?? null,
     snaps = typeof latestInvestmentSnapshots === 'function' ? latestInvestmentSnapshots(c?.id).slice(0, 8) : [],
     last = snaps[0],
     funds = fundPerformance_classicGroups(items);
@@ -12304,8 +12450,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.05-1';
-const VERSION_NOTE = 'Pipeline začíná fází Opportunity pro první kontakt, poznámky a další termín před odesláním nabídky.';
+const VERSION = '2026.10.05-2';
+const VERSION_NOTE = 'Investice lze hromadně aktualizovat z Edward CSV; ruční zhodnocení má přednost a FKI zůstává automatické.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';

@@ -1,3 +1,10 @@
+## 2026.10.05-2
+
+- Import Edward CSV aktualizuje AUM, vloženou částku, výnos, pravidelný vklad a MWR u spárovaných klientů.
+- Řádky s nulovým AUM se ignorují a souhrn Edwardu nahrazuje starší Edward položky, aby se AUM nezapočítalo dvakrát.
+- Ručně zadaný výnos v Kč, celkové zhodnocení a zhodnocení p.a. mají přednost i při dalším importu.
+- Automatické přepočty FKI z centrálních hodnot fondů zůstávají beze změny.
+
 ## 2026.10.05-1
 
 - Pipeline začíná novou fází Opportunity před Nabídkou.

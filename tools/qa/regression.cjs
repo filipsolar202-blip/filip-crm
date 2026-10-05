@@ -30,6 +30,20 @@ try{
  assert(b.report.includes('Testovací klient Alfa'));results.push('Client report retains released client data');
  console.log('baseline errors',old.errors);
  const {page,context,errors}=current;
+ const edwardImport=await page.evaluate(()=>{
+   const client={id:99001,name:'Lenka Pešková',birthId:'900101/1234',email:'lenka.qa@example.cz'}, beforeFki=(state.investmentRecords||[]).length;
+   state.clients.push(client);state.investmentSnapshots=state.investmentSnapshots||[];
+   state.investmentSnapshots.push({id:99002,clientId:client.id,company:'Wood',product:'Edward stará pozice',current:12345,invested:10000,date:'2026-09-01'});
+   const positive={'klient - příjmení':'Pešková','klient - jméno':'Lenka','klient - RČ':'900101/1234','klient - e-mail':'lenka.qa@example.cz','název účtu':'Investiční účet','accountId':'QA-1','pravidelný vklad':'30000,00','total AUM':'728227,97','total return':'133327,97','MWR %':'0,12'},zero={...positive,accountId:'QA-0','total AUM':'0,00','total return':'0,00'};
+   const first=importEdwardAumRows([positive,zero],'2026-10-05'),items=classicInvestmentItems().filter(x=>String(x.clientId)===String(client.id)),snap=items[0]?.snapshot;
+   const importedAnnual=snap?.annualReturnPct;snap.manualPerformanceOverride=true;snap.annualReturnPct=11.74;snap.gainPct=22.4;
+   importEdwardAumRows([{...positive,'total AUM':'730000,00','total return':'135100,00','MWR %':'0,13'}],'2026-11-05');
+   const after=classicInvestmentItems().filter(x=>String(x.clientId)===String(client.id)),final=after[0]?.snapshot;
+   state.clients=state.clients.filter(x=>x.id!==client.id);state.investmentSnapshots=state.investmentSnapshots.filter(x=>x.clientId!==client.id);
+   return {updated:first.updated.length,skipped:first.skippedZero,count:items.length,current:snap?.current,invested:snap?.invested,gain:snap?.gainAmount,importedAnnual,finalCurrent:final?.current,finalAnnual:final?.annualReturnPct,finalPct:final?.gainPct,fkiUnchanged:beforeFki===(state.investmentRecords||[]).length};
+ });
+ assert.deepEqual(edwardImport,{updated:1,skipped:1,count:1,current:728227.97,invested:594900,gain:133327.97,importedAnnual:12,finalCurrent:730000,finalAnnual:11.74,finalPct:22.4,fkiUnchanged:true});
+ results.push('Edward CSV skips zero AUM, replaces older Edward positions and preserves manual performance overrides');
  const redemptionReport=await page.evaluate(()=>{
    const key='qa-liquidity-report';state.fundValues[key]={area:'investice',taxMonths:36,redemptionFrequency:'quarterly',settlementMonths:2};
    const fund={area:'Investice',key,product:'Test likvidity',amount:100000,invested:100000};
