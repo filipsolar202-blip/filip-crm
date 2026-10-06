@@ -1,3 +1,8 @@
+## 2026.10.06-2
+
+- Párování klientů z WOOD a Codya toleruje tituly, obrácené pořadí jména a doplňující označení v CRM, například „Novotný Jiří - Jílové“.
+- Rodné číslo nebo datum narození zůstává rozhodující kontrolou; při více možných klientech import nikoho automaticky nepřiřadí.
+
 ## 2026.10.06-1
 
 - Import WOOD klientského CSV aktualizuje Realitní OPF podle ISIN CZ0008477551 a zachovává ruční zhodnocení.

@@ -45,7 +45,7 @@ try{
  assert.deepEqual(edwardImport,{updated:1,skipped:1,count:1,current:728227.97,invested:594900,gain:133327.97,importedAnnual:12,finalCurrent:730000,finalAnnual:11.74,finalPct:22.4,fkiUnchanged:true});
  results.push('Edward CSV skips zero AUM, replaces older Edward positions and preserves manual performance overrides');
  const producerImports=await page.evaluate(()=>{
-   const client={id:99011,name:'Jan Testovací',birthId:'800101/1234'};state.clients.push(client);state.investmentSnapshots=state.investmentSnapshots||[];state.investmentRecords=state.investmentRecords||[];
+   const client={id:99011,name:'Ing. Testovací Jan - Praha',birthId:'800101/1234'};state.clients.push(client);state.investmentSnapshots=state.investmentSnapshots||[];state.investmentRecords=state.investmentRecords||[];
    const wood=woodImportRows([{'Příjmení, Jméno':'Testovací, Jan','Datum narození':'01.01.1980','Objem aktiv':'125000.50','Čistý objem vkladů':'100000','Zisk / ztráta':'25000.50'}],'2026-10-06');
    const fki={Investor:client.name,'RČ':normalizeStrongId(client.birthId),ClientID:'RC_'+normalizeStrongId(client.birthId),'Investiční společnost':'Codya',Fond:'PENTA RE tř.D_CZK','Typ produktu':'FKI','Typ transakce':'Platba','Čistá investice':100,'Počet vydaných CP':10,'Datum emise':'2025-01-01'};state.investmentRecords.push(fki);state.fundValues[invPositionKey(fki)]={area:'fki',nav:10,date:'2026-09-30'};
    const row={'RODNÉ ČÍSLO':'8001011234','JMÉNO':'Jan','PŘIJMENÍ':'Testovací','VIGO PUBLIC I.PODFOND tř.A_CZK':'777','PENTA RE tř.D_CZK':'250'};

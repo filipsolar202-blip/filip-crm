@@ -6151,9 +6151,27 @@ function birthDateFromStrongId(v) {
   if (month > 70) month -= 70; else if (month > 50) month -= 50; else if (month > 20) month -= 20;
   return `${year}-${String(month).padStart(2,'0')}-${id.slice(4,6)}`;
 }
+function importPersonNameTokens(v) {
+  const titles=new Set(['bc','ing','mgr','mudr','judr','rndr','phdr','phd','mba','dis']);
+  return norm(v).split(' ').filter(x=>x&&!titles.has(x));
+}
+function importNamesCompatible(a,b) {
+  const aa=importPersonNameTokens(a),bb=importPersonNameTokens(b);
+  if(aa.length<2||bb.length<2)return false;
+  const as=new Set(aa),bs=new Set(bb);
+  return aa.every(x=>bs.has(x))||bb.every(x=>as.has(x));
+}
 function importClientMatch({birthId='', first='', last='', name='', birthDate=''}) {
-  const strong = normalizeStrongId(birthId), full = String(name || `${first} ${last}`).trim(), reversed = String(name || `${last} ${first}`).trim(), wantedNames = new Set([norm(full),norm(reversed)].filter(Boolean)), dob = importDateIso(birthDate);
-  return state.clients.find(c => strong && normalizeStrongId(c.birthId) === strong) || state.clients.find(c => wantedNames.has(norm(clientName(c))) && (!dob || !c.birthId || birthDateFromStrongId(c.birthId) === dob)) || null;
+  const strong=normalizeStrongId(birthId),full=String(name||`${first} ${last}`).trim(),dob=importDateIso(birthDate),byStrong=state.clients.find(c=>strong&&normalizeStrongId(c.birthId)===strong);
+  if(byStrong)return byStrong;
+  const candidates=state.clients.filter(c=>importNamesCompatible(clientName(c),full));
+  if(dob){
+    const exactDob=candidates.filter(c=>c.birthId&&birthDateFromStrongId(c.birthId)===dob);
+    if(exactDob.length===1)return exactDob[0];
+    const withoutDob=candidates.filter(c=>!normalizeStrongId(c.birthId));
+    return exactDob.length===0&&withoutDob.length===1?withoutDob[0]:null;
+  }
+  return candidates.length===1?candidates[0]:null;
 }
 function upsertImportedInvestmentSnapshot(data) {
   state.investmentSnapshots = state.investmentSnapshots || [];
@@ -12576,8 +12594,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.06-1';
-const VERSION_NOTE = 'WOOD OPF a Codya lze aktualizovat z exportů; Codya odděluje běžné investice a FKI podle otevřené záložky.';
+const VERSION = '2026.10.06-2';
+const VERSION_NOTE = 'Importy WOOD a Codya bezpečně poznají klienta i při titulu, obráceném pořadí nebo doplňujícím označení ve jménu.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
