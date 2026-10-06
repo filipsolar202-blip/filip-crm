@@ -1142,6 +1142,10 @@ function invWithdrawalValue(r) {
 }
 function invCurrentValue(r) {
   if (invIsWithdrawal(r)) return invIsFutureWithdrawal(r) ? 0 : -invWithdrawalValue(r);
+  const imported = r?.codyaImportedCurrent,
+    importedDate = String(r?.codyaImportDate || ''),
+    fundDate = String(state.fundValues?.[invPositionKey(r)]?.date || '');
+  if (imported !== '' && imported != null && Number.isFinite(+imported) && (!fundDate || importedDate >= fundDate)) return +imported;
   const qty = invEffectiveQty(r),
     nav = invCurrentNav(r);
   if (qty && nav) return qty * nav;
@@ -6123,6 +6127,128 @@ async function importEdwardAumCsv(file) {
     persist(); renderAll();
     alert(`Edward CSV aktualizováno k ${reportDate}.\nKlientů aktualizováno: ${result.updated.length}\nŘádků s nulovým AUM přeskočeno: ${result.skippedZero}${result.unmatched.length ? '\nNenalezení klienti: '+result.unmatched.slice(0,10).join(', ') : ''}`);
   } catch (error) { alert('Edward CSV se nepodařilo načíst: ' + (error?.message || error)); }
+}
+function importDateIso(v) {
+  const s = String(v || '').trim();
+  if (/^20\d{2}-\d{2}-\d{2}$/.test(s)) return s;
+  let m = s.match(/^(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{2,4})$/);
+  if (m) {
+    const y = +m[3] < 100 ? 2000 + (+m[3]) : +m[3];
+    return `${y}-${String(+m[2]).padStart(2,'0')}-${String(+m[1]).padStart(2,'0')}`;
+  }
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (m) {
+    const y = +m[3] < 100 ? 2000 + (+m[3]) : +m[3], a=+m[1], b=+m[2], day=a>12?a:b, month=a>12?b:a;
+    return `${y}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+  }
+  return '';
+}
+function birthDateFromStrongId(v) {
+  const id = normalizeStrongId(v).replace(/\D/g,'');
+  if (id.length < 6) return '';
+  const yy = +id.slice(0,2), current = +(today().slice(2,4)), year = yy <= current ? 2000 + yy : 1900 + yy;
+  let month = +id.slice(2,4);
+  if (month > 70) month -= 70; else if (month > 50) month -= 50; else if (month > 20) month -= 20;
+  return `${year}-${String(month).padStart(2,'0')}-${id.slice(4,6)}`;
+}
+function importClientMatch({birthId='', first='', last='', name='', birthDate=''}) {
+  const strong = normalizeStrongId(birthId), full = String(name || `${first} ${last}`).trim(), reversed = String(name || `${last} ${first}`).trim(), wantedNames = new Set([norm(full),norm(reversed)].filter(Boolean)), dob = importDateIso(birthDate);
+  return state.clients.find(c => strong && normalizeStrongId(c.birthId) === strong) || state.clients.find(c => wantedNames.has(norm(clientName(c))) && (!dob || !c.birthId || birthDateFromStrongId(c.birthId) === dob)) || null;
+}
+function upsertImportedInvestmentSnapshot(data) {
+  state.investmentSnapshots = state.investmentSnapshots || [];
+  const key = investmentSnapshotKeyForSnapshot(data), index = state.investmentSnapshots.findIndex(s => investmentSnapshotKeyForSnapshot(s) === key), old = index >= 0 ? state.investmentSnapshots[index] : {}, keepManual = !!old.manualPerformanceOverride;
+  const snapshot = {...old,...data,id:old.id||uid(),gainAmount:keepManual?old.gainAmount:data.gainAmount,gainPct:keepManual?old.gainPct:data.gainPct,annualReturnPct:keepManual?old.annualReturnPct:(data.annualReturnPct??old.annualReturnPct??null),updatedAt:today()};
+  if (index >= 0) state.investmentSnapshots[index] = snapshot; else state.investmentSnapshots.push(snapshot);
+  return snapshot;
+}
+function woodImportRows(rows, reportDate=today()) {
+  const result={updated:0,skippedZero:0,unmatched:[]}, isin='CZ0008477551', product='WOOD & Company Realitní – OPF CZK';
+  (rows||[]).forEach(row=>{
+    const current=parseMoney(edwardCsvField(row,'Objem aktiv'));
+    if(!(current>0)){result.skippedZero++;return;}
+    const label=String(edwardCsvField(row,'Příjmení, Jméno')||''), parts=label.split(',').map(x=>x.trim()), client=importClientMatch({first:parts[1]||'',last:parts[0]||'',birthDate:edwardCsvField(row,'Datum narození')});
+    if(!client){result.unmatched.push(label||'neznámý klient');return;}
+    const existing=classicInvestmentItems().filter(x=>String(x.clientId||x.client?.id)===String(client.id)).find(x=>norm(x.isin)===norm(isin)||(/wood/.test(norm([x.company,x.product].join(' ')))&&/realit|nemovit|opf/.test(norm(x.product))));
+    if(existing){const rawKey=investmentFundRawKey(existing);state.fundValues[rawKey]={...(state.fundValues[rawKey]||{}),area:'investice',company:'WOOD & Company / OPF',fond:product,isin,typ:'OPF',date:reportDate};}
+    const invested=parseMoney(edwardCsvField(row,'Čistý objem vkladů')), gainRaw=edwardCsvField(row,'Zisk / ztráta'), gain=String(gainRaw).trim()?parseMoney(gainRaw):current-invested;
+    upsertImportedInvestmentSnapshot({clientId:client.id,company:'WOOD & Company / OPF',product,isin,fundType:'OPF',date:reportDate,current,currentBeforeRedemption:current,invested,investedBeforeRedemption:invested,gainAmount:gain,gainPct:invested?gain/invested*100:0,source:'WOOD klientský export',note:'Aktualizováno podle ISIN '+isin,woodImported:true});
+    result.updated++;
+  });
+  return result;
+}
+async function importWoodAumCsv(file) {
+  if(!file)return;
+  if(typeof XLSX==='undefined')return alert('Čtečka CSV se nenačetla. Obnov CRM a zkus to znovu.');
+  try{
+    const wb=XLSX.read(await file.arrayBuffer(),{type:'array',raw:true}),ws=wb.Sheets[wb.SheetNames[0]],rows=XLSX.utils.sheet_to_json(ws,{defval:'',raw:true});
+    if(!rows.length||!Object.keys(rows[0]).some(k=>norm(k)===norm('Objem aktiv')))throw new Error('Soubor neobsahuje sloupec Objem aktiv.');
+    const result=woodImportRows(rows,today());dedupeInvestmentSnapshotsInState(state);persist();renderAll();
+    alert(`WOOD OPF aktualizován podle ISIN CZ0008477551.\nKlientů aktualizováno: ${result.updated}\nŘádků bez AUM přeskočeno: ${result.skippedZero}${result.unmatched.length?'\nNenalezení klienti: '+result.unmatched.slice(0,12).join(', '):''}`);
+  }catch(error){alert('WOOD CSV se nepodařilo načíst: '+(error?.message||error));}
+}
+function codyaFundArea(name) {
+  const n=norm(name);
+  return /vigo public|retail opf|otevreny podilovy|\bopf\b/.test(n)?'investice':'fki';
+}
+function codyaFundDisplay(name) {
+  return String(name||'').replace(/\s+tř\.[^ ]+$/i,'').replace(/_((CZK)|(EUR)|(USD))$/i,'').trim();
+}
+function codyaFundTokens(name) {
+  const stop=new Set(['tr','czk','eur','usd','sicav','podfond','sub','fund','i','ii','a','b','c','d','e','f','g','r','re','pia','pria','dia','gia','ia']);
+  return norm(codyaFundDisplay(name)).split(' ').filter(x=>x&&!stop.has(x));
+}
+function codyaFundScore(a,b) {
+  const aa=new Set(codyaFundTokens(a)),bb=new Set(codyaFundTokens(b));if(!aa.size||!bb.size)return 0;
+  const common=[...aa].filter(x=>bb.has(x)).length;return common/Math.max(aa.size,bb.size);
+}
+function codyaRowClient(row) {
+  return importClientMatch({birthId:edwardCsvField(row,'RODNÉ ČÍSLO'),first:edwardCsvField(row,'JMÉNO'),last:edwardCsvField(row,'PŘIJMENÍ')});
+}
+function codyaMetaHeader(key) {
+  return ['rodne cislo','jmeno','prijmeni','datum smlouvy','majetek v czk','posledni transakce','datum posledni transakce'].includes(norm(key));
+}
+function codyaBestClassic(clientId,fundName) {
+  return classicInvestmentItems().filter(x=>String(x.clientId||x.client?.id)===String(clientId)).map(x=>({x,score:codyaFundScore(fundName,x.product||x.kind)})).sort((a,b)=>b.score-a.score)[0];
+}
+function codyaFkiMatches(clientId,fundName) {
+  const scored=investmentRecordsForClient(clientId).filter(r=>!invIsWithdrawal(r)&&invProductGroup(r)==='FKI').map(r=>({r,score:codyaFundScore(fundName,invFund(r))})),best=scored.reduce((m,x)=>Math.max(m,x.score),0);
+  return best>=0.5?scored.filter(x=>x.score===best).map(x=>x.r):[];
+}
+function importCodyaRows(rows,area,reportDate=today()) {
+  const result={clients:0,updated:0,created:0,zeroed:0,unmatchedClients:[]};state.investmentRecords=state.investmentRecords||[];state.investmentSnapshots=state.investmentSnapshots||[];
+  (rows||[]).forEach(row=>{
+    const first=edwardCsvField(row,'JMÉNO'),last=edwardCsvField(row,'PŘIJMENÍ'),client=codyaRowClient(row);
+    if(!client){result.unmatchedClients.push([first,last].filter(Boolean).join(' ')||'neznámý klient');return;} result.clients++;
+    Object.entries(row).forEach(([header,raw])=>{
+      if(codyaMetaHeader(header)||codyaFundArea(header)!==area)return;
+      const current=parseMoney(raw),positive=current>0;
+      if(area==='investice'){
+        const found=codyaBestClassic(client.id,header),existing=found&&found.score>=0.5?found.x:null;
+        if(!positive&&!existing)return;
+        const product=existing?.product||codyaFundDisplay(header),company=existing?.company||'Codya',isin=existing?.isin||existing?.snapshot?.isin||'',mergeKey=existing?.mergeKey||existing?.snapshot?.mergeKey||('codya-'+norm(codyaFundDisplay(header))),invested=existing?investmentInvestedAmount(existing):0,gain=current-invested;
+        upsertImportedInvestmentSnapshot({clientId:client.id,company,product,isin,mergeKey,fundType:'Retail / OPF',date:reportDate,current,currentBeforeRedemption:current,invested,investedBeforeRedemption:invested,gainAmount:gain,gainPct:invested?gain/invested*100:0,source:'Codya export · Investice',note:'Hodnota fondu z producentova XLSX.',codyaImported:true});
+        result.updated++;if(!existing&&positive)result.created++;if(!positive)result.zeroed++;
+      }else{
+        let matches=codyaFkiMatches(client.id,header);
+        if(!positive&&!matches.length)return;
+        if(!matches.length){const rc=normalizeStrongId(client.birthId);const rec={Investor:clientName(client),'RČ':rc,ClientID:rc?'RC_'+rc:String(client.id),'Investiční společnost':'Codya',Fond:codyaFundDisplay(header),'Typ produktu':'FKI','Typ transakce':'Platba','Čistá investice':0,'Aktuální hodnota investice':current,'Datum připsání platby':reportDate,'Datum emise':reportDate,_source:'codya-import'};state.investmentRecords.push(rec);matches=[rec];result.created++;}
+        const weights=matches.map(r=>Math.max(0,invCurrent(r)||invDeposit(r))),total=weights.reduce((s,x)=>s+x,0);
+        matches.forEach((r,i)=>{r.codyaImportedCurrent=total?current*weights[i]/total:current/matches.length;r.codyaImportDate=reportDate;r.codyaImportFund=header;r._updatedAt=new Date().toISOString();});
+        result.updated++;if(!positive)result.zeroed++;
+      }
+    });
+  });
+  dedupeInvestmentRecordsInState(state);dedupeInvestmentSnapshotsInState(state);return result;
+}
+async function importCodyaWorkbook(file,area) {
+  if(!file)return;if(typeof XLSX==='undefined')return alert('Čtečka Excelu se nenačetla. Obnov CRM a zkus to znovu.');
+  try{
+    const wb=XLSX.read(await file.arrayBuffer(),{type:'array',raw:true}),ws=wb.Sheets[wb.SheetNames[0]],rows=XLSX.utils.sheet_to_json(ws,{defval:'',raw:true});
+    if(!rows.length||!Object.keys(rows[0]).some(k=>norm(k)===norm('RODNÉ ČÍSLO')))throw new Error('Soubor neobsahuje očekávaný sloupec RODNÉ ČÍSLO.');
+    const result=importCodyaRows(rows,area,today());persist();renderAll();
+    alert(`Codya ${area==='fki'?'FKI':'Investice'} aktualizováno.\nKlientů v exportu nalezeno: ${result.clients}\nFondů aktualizováno: ${result.updated}\nNových pozic: ${result.created}\nVynulovaných pozic: ${result.zeroed}${result.unmatchedClients.length?'\nNenalezení klienti: '+[...new Set(result.unmatchedClients)].slice(0,12).join(', '):''}`);
+  }catch(error){alert('Codya XLSX se nepodařilo načíst: '+(error?.message||error));}
 }
 function upsertContractFromDeal(d,forceNew=false) {
   if(d.portfolioReplacedBy)return null; // Historical commissions must not overwrite the current contract.
@@ -12450,8 +12576,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.05-2';
-const VERSION_NOTE = 'Investice lze hromadně aktualizovat z Edward CSV; ruční zhodnocení má přednost a FKI zůstává automatické.';
+const VERSION = '2026.10.06-1';
+const VERSION_NOTE = 'WOOD OPF a Codya lze aktualizovat z exportů; Codya odděluje běžné investice a FKI podle otevřené záložky.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';

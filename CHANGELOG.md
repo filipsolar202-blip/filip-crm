@@ -1,3 +1,10 @@
+## 2026.10.06-1
+
+- Import WOOD klientského CSV aktualizuje Realitní OPF podle ISIN CZ0008477551 a zachovává ruční zhodnocení.
+- Codya XLSX lze nahrát samostatně v Investicích a samostatně ve FKI; v Investicích se zpracují veřejné OPF a ve FKI ostatní fondy.
+- Codya aktualizuje pouze klienty obsažené v nahraném souboru a při novější centrální valuaci FKI znovu dostane přednost automatický výpočet z NAV.
+- Importy vypíšou počet aktualizovaných, nových, vynulovaných a nespárovaných položek.
+
 ## 2026.10.05-2
 
 - Import Edward CSV aktualizuje AUM, vloženou částku, výnos, pravidelný vklad a MWR u spárovaných klientů.
