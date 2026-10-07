@@ -1,3 +1,10 @@
+## 2026.10.07-2
+
+- Investiční pozice klienta nově eviduje datum investice, vloženou částku, počet cenných papírů a nákupní hodnotu CP v jednoduchém formuláři.
+- Aktuální hodnota CP a datum ocenění se ukládají jednou k fondu a automaticky přepočítají pozice všech klientů se stejným fondem.
+- Ruční AUM zůstává jako volitelná výjimka pro Edward a další souhrnné platformy bez počtu CP.
+- Tlačítka v investiční kartě jsou přejmenována na „Pozice klienta“ a „Hodnota fondu“, aby bylo jasné, které údaje jsou klientské a které společné.
+
 ## 2026.10.07-1
 
 - VIGO PUBLIC z Codya XLSX se eviduje pod společností Vigo Public; Codya zůstává pouze zdrojem importu.

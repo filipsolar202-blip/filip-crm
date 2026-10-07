@@ -3916,6 +3916,22 @@ function latestSnapshotForItem(x) {
   const key = investmentItemKey(x);
   return latestInvestmentSnapshots(x.clientId || x.client?.id).find(s => investmentSnapshotKeyForSnapshot(s) === key) || null;
 }
+function investmentSnapshotFundValue(s = {}) {
+  const key = s.isin ? ['investment-isin', norm(s.isin)].join('|') : s.mergeKey ? ['investment-merge', norm(s.mergeKey)].join('|') : investmentFundKeyFromParts(s.company, s.product, '', s.fundType || s.typ || 'Investice');
+  const direct = state.fundValues?.[key];
+  if (direct) return direct;
+  const isin = norm(s.isin || '');
+  if (isin) return Object.values(state.fundValues || {}).find(v => v?.area === 'investice' && norm(v.isin || '') === isin) || {};
+  return {};
+}
+function investmentSnapshotLiveCurrent(s = {}) {
+  const manual = s.manualAumOverride === true || s.scope === 'provider-total';
+  const qty = parseMoney(s.quantity ?? s.qty),
+    fv = investmentSnapshotFundValue(s),
+    nav = parseMoney(fv.nav);
+  if (!manual && qty > 0 && nav > 0) return Math.max(0, qty * nav - parseMoney(s.redemptionAmount));
+  return +s.current || 0;
+}
 function investmentSnapshotItem(s) {
   return {
     kind: 'Aktualizace',
@@ -3926,7 +3942,7 @@ function investmentSnapshotItem(s) {
     isin: s.isin || '',
     mergeKey: s.mergeKey || '',
     typ: s.fundType || s.typ || '',
-    amount: +s.current || 0,
+    amount: investmentSnapshotLiveCurrent(s),
     invested: +(s.investedBeforeRedemption ?? s.invested) || 0,
     realized: +s.redemptionAmount || 0,
     date: s.date,
@@ -4007,7 +4023,7 @@ function applyInvestmentSnapshot(x) {
   return {
     ...x,
     purchaseDate: x.purchaseDate || x.snapshot?.purchaseDate || x.source?.purchaseDate || x.source?.startDate || x.source?.dealDate || (['deal', 'record'].includes(x.sourceType) ? x.source?.date || x.date : ''),
-    amount: s.current === '' || s.current == null ? +x.amount || 0 : +s.current,
+    amount: s.current === '' || s.current == null && !(+s.quantity > 0) ? +x.amount || 0 : investmentSnapshotLiveCurrent(s),
     invested: originalInvested === '' || originalInvested == null ? investmentInvestedAmount(x) : +originalInvested,
     realized: +s.redemptionAmount || 0,
     date: s.date || x.date,
@@ -5916,6 +5932,12 @@ function syncInvestmentSnapshotProduct() {
       setVal('isIsin', snap?.isin || fv.isin || item.isin || item.source?.isin || '');
       setVal('isMergeKey', snap?.mergeKey || fv.mergeKey || item.mergeKey || '');
       setVal('isFundType', snap?.fundType || fv.typ || item.typ || item.kind || investmentFundProductType(item));
+      setVal('isPurchaseDate', snap?.purchaseDate || item.purchaseDate || item.source?.purchaseDate || item.source?.startDate || item.source?.dealDate || (['deal', 'record'].includes(item.sourceType) ? item.source?.date || item.date : '') || '');
+      setVal('isQty', snap?.quantity ?? snap?.qty ?? item.source?.quantity ?? item.source?.qty ?? '');
+      setVal('isSubscribeValue', snap?.subscribeValue ?? item.source?.subscribeValue ?? '');
+      setVal('isFundNav', fv.nav || '');
+      setVal('isFundNavDate', fv.date || snap?.date || today());
+      setVal('isDate', fv.date || snap?.date || today());
       setVal('isCurrent', snap?.currentBeforeRedemption ?? snap?.current ?? item.amount ?? '');
       setVal('isInvested', snap?.investedBeforeRedemption ?? snap?.invested ?? investmentInvestedAmount(item) ?? '');
       setVal('isGainAmount', snap?.gainAmount || '');
@@ -5929,6 +5951,7 @@ function syncInvestmentSnapshotProduct() {
       setVal('isNote', snap?.note || '');
       setVal('isSnapshotScope', snap?.scope || '');
       setVal('isProviderKey', snap?.providerKey || '');
+      if (byId('isManualAum')) byId('isManualAum').checked = snap?.manualAumOverride === true || snap?.scope === 'provider-total' || !(parseMoney(snap?.quantity ?? snap?.qty) > 0 && parseMoney(fv.nav) > 0);
       if (byId('isManualPerformance')) byId('isManualPerformance').checked = !!snap?.manualPerformanceOverride;
       return;
     }
@@ -5939,6 +5962,12 @@ function syncInvestmentSnapshotProduct() {
   setVal('isIsin', '');
   setVal('isMergeKey', '');
   setVal('isFundType', '');
+  setVal('isPurchaseDate', '');
+  setVal('isQty', '');
+  setVal('isSubscribeValue', '');
+  setVal('isFundNav', '');
+  setVal('isFundNavDate', today());
+  setVal('isDate', today());
   setVal('isCurrent', '');
   setVal('isInvested', '');
   setVal('isGainAmount', '');
@@ -5952,6 +5981,7 @@ function syncInvestmentSnapshotProduct() {
   setVal('isNote', '');
   setVal('isSnapshotScope', '');
   setVal('isProviderKey', '');
+  if (byId('isManualAum')) byId('isManualAum').checked = false;
   if (byId('isManualPerformance')) byId('isManualPerformance').checked = false;
 }
 function openInvestmentSnapshotModal(clientId = null, encodedKey = '') {
@@ -5960,6 +5990,7 @@ function openInvestmentSnapshotModal(clientId = null, encodedKey = '') {
   fillClientSelect('isClient', id);
   setVal('isClient', id);
   setVal('isDate', today());
+  setVal('isFundNavDate', today());
   const key = encodedKey ? decodeURIComponent(encodedKey) : '';
   fillInvestmentProductSelect(key);
   openModal('investmentSnapshotModal');
@@ -5972,9 +6003,15 @@ function saveInvestmentSnapshot() {
     isin = val('isIsin').trim(),
     mergeKey = val('isMergeKey').trim(),
     fundType = val('isFundType').trim() || 'Investice',
+    quantity = parseMoney(val('isQty')),
+    subscribeValue = parseMoney(val('isSubscribeValue')),
+    nav = parseMoney(val('isFundNav')),
+    navDate = val('isFundNavDate') || today(),
+    manualAumOverride = !!byId('isManualAum')?.checked,
     currentRaw = val('isCurrent');
-  if (String(currentRaw).trim() === '') return alert('Vyplň hodnotu před odkupem / AUM.');
-  const currentBefore = parseMoney(currentRaw),
+  if (!manualAumOverride && !(quantity > 0 && nav > 0)) return alert('Pro automatický výpočet vyplň počet cenných papírů a aktuální hodnotu CP. U souhrnného produktu můžeš otevřít „Ruční AUM a další údaje“ a zapnout ruční AUM.');
+  if (manualAumOverride && String(currentRaw).trim() === '') return alert('Vyplň ruční AUM / aktuální hodnotu.');
+  const currentBefore = manualAumOverride ? parseMoney(currentRaw) : quantity * nav,
     investedBefore = parseMoney(val('isInvested')),
     redemptionAmount = parseMoney(val('isRedemptionAmount')),
     redemptionDate = val('isRedemptionDate') || '',
@@ -5991,7 +6028,12 @@ function saveInvestmentSnapshot() {
       isin,
       mergeKey,
       fundType,
-      date: val('isDate') || redemptionDate || today(),
+      date: navDate,
+      purchaseDate: val('isPurchaseDate') || '',
+      quantity,
+      qty: quantity,
+      subscribeValue,
+      manualAumOverride,
       current,
       invested,
       currentBeforeRedemption: currentBefore,
@@ -6030,7 +6072,10 @@ function saveInvestmentSnapshot() {
       mergeKey,
       typ: fundType,
       product: fundType,
-      date: snapshot.date
+      ...(nav > 0 ? {
+        nav,
+        date: navDate
+      } : {})
     };
   state.fundValues[fundKey] = {
     ...(state.fundValues[fundKey] || {}),
@@ -6047,11 +6092,13 @@ function saveInvestmentSnapshot() {
   selectedInvestmentClientId = clientId;
   selectedClientId = clientId;
   dedupeInvestmentSnapshotsInState(state);
-  addActivity(clientId, 'Investice', 'Aktualizována hodnota portfolia: ' + product + ' · ' + money(current) + (redemptionAmount ? ' · odkup ' + money(redemptionAmount) : ''), true);
+  const affectedClients = new Set(classicInvestmentItems().filter(x => investmentFundKey(x) === fundKey || investmentFundRawKey(x) === rawKey).map(x => String(x.clientId || x.client?.id || '')).filter(Boolean));
+  affectedClients.add(String(clientId));
+  addActivity(clientId, 'Investice', 'Aktualizována investiční pozice: ' + product + ' · ' + money(current) + (manualAumOverride ? ' · ruční AUM' : ` · ${num(quantity)} CP × ${num(nav)}`) + (redemptionAmount ? ' · odkup ' + money(redemptionAmount) : ''), true);
   closeModal('investmentSnapshotModal');
   persist();
   renderAll();
-  saveToast(redemptionAmount ? 'Odkup a hodnota investice uloženy ✓' : oldIndex >= 0 ? 'Hodnota investice přepsána ✓' : 'Hodnota investice aktualizována ✓');
+  saveToast(manualAumOverride ? 'Ruční AUM klienta uloženo ✓' : `Hodnota CP uložena pro ${num(affectedClients.size)} klientů ✓`);
 }
 function edwardCsvField(row, label) {
   const wanted = norm(label);
@@ -8368,7 +8415,7 @@ function investmentPosition_invStatus(x) {
 }
 function investmentPosition_invRowAction(x, clientId) {
   const key = investmentPosition_enc(investmentItemKey(x));
-  return `${investmentEditButton(x)} <button class="btn slim" onclick="openInvestmentSnapshotModal(${clientId},'${esc(key)}')">Hodnota</button>`;
+  return `${investmentEditButton(x)} <button class="btn slim" onclick="openInvestmentSnapshotModal(${clientId},'${esc(key)}')">Pozice</button>`;
 }
 function investmentPosition_invPositionRows(f, clientId) {
   return `<div class="table-wrap" style="margin-top:12px"><table class="compact-table"><thead><tr><th>Pozice / záznam</th><th>Vloženo</th><th>Aktuální</th><th>Výnos</th><th>Datum</th><th>Zdroj</th><th>Stav</th><th>Akce</th></tr></thead><tbody>${f.items.sort((a, b) => String(b.snapshot?.date || b.date || '').localeCompare(String(a.snapshot?.date || a.date || ''))).map((x, i) => {
@@ -8388,7 +8435,7 @@ function investmentPosition_invCard(f, clientId) {
     fv = state.fundValues?.[f.key] || {},
     valueDate = fundValueDateText('investice', f.key, f.isin, fv.date),
     locked = isInvestmentFundLocked(f.key);
-  return `<details class="fki-work-card ${gain < 0 ? 'loss' : ''} ${locked ? 'locked' : ''}"><summary class="fki-work-head"><div class="fki-work-name"><b>${esc(f.label)}</b><div class="chips"><span class="chip">${esc(f.company)}</span><span class="badge blue">Investice</span><span class="chip">${num(f.items.length)} pozic</span>${locked ? '<span class="badge orange">zamčeno</span>' : ''}</div></div><div class="fki-work-metric"><small>Vloženo</small><strong>${money(f.invested)}</strong></div><div class="fki-work-metric"><small>Aktuální</small><strong class="${gain >= 0 ? 'green' : 'red'}">${money(f.amount)}</strong><small>k ${valueDate}</small></div><div class="fki-work-metric"><small>Výnos</small><strong class="${gain >= 0 ? 'green' : 'red'}">${pct.toFixed(1)} %</strong></div><div class="actions"><button class="btn slim primary" onclick="event.preventDefault();openInvestmentScenarioModal(${clientId},'Investice')">+ Nová investice</button><button class="btn slim" onclick="event.preventDefault();openInvestmentSnapshotModal(${clientId},'${esc(investmentPosition_enc(String(clientId) + '|' + f.key))}')">Hodnota</button><button class="btn slim" onclick="event.preventDefault();openInvestmentFundModal('${esc(key)}')">Fond</button><button class="icon-btn ${locked ? 'primary' : ''}" onclick="event.preventDefault();toggleInvestmentFundLock('${esc(key)}')" title="Zámek reportu">${locked ? '🔒' : '🔓'}</button></div></summary><div class="fki-work-detail"><div class="fki-detail-grid"><div><small>Investováno</small><b>${money(f.invested)}</b></div><div><small>Výnos</small><b class="${gain >= 0 ? 'green' : 'red'}">${money(gain)}</b></div><div><small>Poslední hodnota</small><b>${money(f.amount)}</b></div><div><small>Hodnota CP / NAV</small><b>${fv.nav ? num(fv.nav) : '-'}</b></div><div><small>Hodnota fondu k datu</small><b>${valueDate}</b></div><div><small>ISIN</small><b>${esc(f.isin || '-')}</b></div><div><small>Typ</small><b>${esc(f.typ || '-')}</b></div><div><small>Pozic</small><b>${num(f.items.length)}</b></div></div>${investmentPosition_invPositionRows(f, clientId)}</div></details>`;
+  return `<details class="fki-work-card ${gain < 0 ? 'loss' : ''} ${locked ? 'locked' : ''}"><summary class="fki-work-head"><div class="fki-work-name"><b>${esc(f.label)}</b><div class="chips"><span class="chip">${esc(f.company)}</span><span class="badge blue">Investice</span><span class="chip">${num(f.items.length)} pozic</span>${locked ? '<span class="badge orange">zamčeno</span>' : ''}</div></div><div class="fki-work-metric"><small>Vloženo</small><strong>${money(f.invested)}</strong></div><div class="fki-work-metric"><small>Aktuální</small><strong class="${gain >= 0 ? 'green' : 'red'}">${money(f.amount)}</strong><small>k ${valueDate}</small></div><div class="fki-work-metric"><small>Výnos</small><strong class="${gain >= 0 ? 'green' : 'red'}">${pct.toFixed(1)} %</strong></div><div class="actions"><button class="btn slim primary" onclick="event.preventDefault();openInvestmentScenarioModal(${clientId},'Investice')">+ Nová investice</button><button class="btn slim" onclick="event.preventDefault();openInvestmentSnapshotModal(${clientId},'${esc(investmentPosition_enc(String(clientId) + '|' + f.key))}')">Pozice klienta</button><button class="btn slim" onclick="event.preventDefault();openInvestmentFundModal('${esc(key)}')">Hodnota fondu</button><button class="icon-btn ${locked ? 'primary' : ''}" onclick="event.preventDefault();toggleInvestmentFundLock('${esc(key)}')" title="Zámek reportu">${locked ? '🔒' : '🔓'}</button></div></summary><div class="fki-work-detail"><div class="fki-detail-grid"><div><small>Investováno</small><b>${money(f.invested)}</b></div><div><small>Výnos</small><b class="${gain >= 0 ? 'green' : 'red'}">${money(gain)}</b></div><div><small>Poslední hodnota</small><b>${money(f.amount)}</b></div><div><small>Hodnota CP / NAV</small><b>${fv.nav ? num(fv.nav) : '-'}</b></div><div><small>Hodnota fondu k datu</small><b>${valueDate}</b></div><div><small>ISIN</small><b>${esc(f.isin || '-')}</b></div><div><small>Typ</small><b>${esc(f.typ || '-')}</b></div><div><small>Pozic</small><b>${num(f.items.length)}</b></div></div>${investmentPosition_invPositionRows(f, clientId)}</div></details>`;
 }
 function fkiPortfolio_dec(v) {
   return decodeURIComponent(String(v || ''));
@@ -9425,7 +9472,7 @@ function fundPerformance_classicCard(f, clientId) {
     locked = isInvestmentFundLocked(f.key),
     comment = fundPerformance_fundComment('investice', f.key, f.isin),
     tax = liquidity_taxSummary((f.items || []).map(x => liquidity_liquidityInfo('investice', f.key, x.isin || f.isin, liquidity_investmentTaxStart(x))));
-  return `<details class="fki-work-card ${gain < 0 ? 'loss' : ''} ${locked ? 'locked' : ''}"><summary class="fki-work-head"><div class="fki-work-name"><b>${esc(f.label)}</b><div class="chips"><span class="chip">${esc(f.company)}</span><span class="badge blue">Investice</span><span class="chip">${num(f.items.length)} pozic</span>${tax ? tax.html : '<span class="badge orange">datum nákupu chybí</span>'}${locked ? '<span class="badge orange">zamčeno</span>' : ''}</div></div><div class="fki-work-metric"><small>Vloženo</small><strong>${money(f.invested)}</strong></div><div class="fki-work-metric"><small>Aktuální</small><strong class="${gain >= 0 ? 'green' : 'red'}">${money(f.amount)}</strong><small class="date-highlight">k ${esc(valueDate || '-')}</small></div><div class="fki-work-metric"><small>Výnos celkem</small><strong class="${gain >= 0 ? 'green' : 'red'}">${pct.toFixed(1)} %</strong></div><div class="actions"><button class="btn slim primary" onclick="event.preventDefault();openInvestmentScenarioModal(${clientId},'Investice')">+ Nová investice</button><button class="btn slim" onclick="event.preventDefault();openInvestmentSnapshotModal(${clientId},'${esc(encodeURIComponent(String(clientId) + '|' + f.key))}')">Hodnota</button><button class="btn slim" onclick="event.preventDefault();openInvestmentFundModal('${esc(key)}')">Fond</button><button class="icon-btn ${locked ? 'primary' : ''}" onclick="event.preventDefault();toggleInvestmentFundLock('${esc(key)}')" title="Zámek reportu">${locked ? '🔒' : '🔓'}</button><span class="fund-transactions-label">Transakce ▾</span></div></summary><div class="fki-work-detail"><div class="fki-detail-grid"><div><small>Investováno</small><b>${money(f.invested)}</b></div><div><small>Výnos Kč</small><b class="${gain >= 0 ? 'green' : 'red'}">${money(gain)}</b></div><div><small>Celkový výnos</small><b class="${gain >= 0 ? 'green' : 'red'}">${pct.toFixed(1)} %</b></div><div><small>Časový test všech pozic</small><b>${tax ? liquidity_fmtDate(tax.latest.taxReady) : 'datum nákupu chybí'}</b></div><div><small>Hodnota CP / NAV</small><b>${fv.nav ? num(fv.nav) : '-'}</b></div><div><small>Hodnota fondu k datu</small><b class="date-highlight">${esc(valueDate || '-')}</b></div><div><small>ISIN</small><b>${esc(f.isin || '-')}</b></div><div><small>Typ</small><b>${esc(f.typ || '-')}</b></div><div><small>Pozic</small><b>${num(f.items.length)}</b></div></div>${comment ? `<div class="notice small"><b>Komentář fondu:</b> ${esc(comment)}</div>` : ''}${fundPerformance_classicPositionRows(f, clientId)}</div></details>`;
+  return `<details class="fki-work-card ${gain < 0 ? 'loss' : ''} ${locked ? 'locked' : ''}"><summary class="fki-work-head"><div class="fki-work-name"><b>${esc(f.label)}</b><div class="chips"><span class="chip">${esc(f.company)}</span><span class="badge blue">Investice</span><span class="chip">${num(f.items.length)} pozic</span>${tax ? tax.html : '<span class="badge orange">datum nákupu chybí</span>'}${locked ? '<span class="badge orange">zamčeno</span>' : ''}</div></div><div class="fki-work-metric"><small>Vloženo</small><strong>${money(f.invested)}</strong></div><div class="fki-work-metric"><small>Aktuální</small><strong class="${gain >= 0 ? 'green' : 'red'}">${money(f.amount)}</strong><small class="date-highlight">k ${esc(valueDate || '-')}</small></div><div class="fki-work-metric"><small>Výnos celkem</small><strong class="${gain >= 0 ? 'green' : 'red'}">${pct.toFixed(1)} %</strong></div><div class="actions"><button class="btn slim primary" onclick="event.preventDefault();openInvestmentScenarioModal(${clientId},'Investice')">+ Nová investice</button><button class="btn slim" onclick="event.preventDefault();openInvestmentSnapshotModal(${clientId},'${esc(encodeURIComponent(String(clientId) + '|' + f.key))}')">Pozice klienta</button><button class="btn slim" onclick="event.preventDefault();openInvestmentFundModal('${esc(key)}')">Hodnota fondu</button><button class="icon-btn ${locked ? 'primary' : ''}" onclick="event.preventDefault();toggleInvestmentFundLock('${esc(key)}')" title="Zámek reportu">${locked ? '🔒' : '🔓'}</button><span class="fund-transactions-label">Transakce ▾</span></div></summary><div class="fki-work-detail"><div class="fki-detail-grid"><div><small>Investováno</small><b>${money(f.invested)}</b></div><div><small>Výnos Kč</small><b class="${gain >= 0 ? 'green' : 'red'}">${money(gain)}</b></div><div><small>Celkový výnos</small><b class="${gain >= 0 ? 'green' : 'red'}">${pct.toFixed(1)} %</b></div><div><small>Časový test všech pozic</small><b>${tax ? liquidity_fmtDate(tax.latest.taxReady) : 'datum nákupu chybí'}</b></div><div><small>Hodnota CP / NAV</small><b>${fv.nav ? num(fv.nav) : '-'}</b></div><div><small>Hodnota fondu k datu</small><b class="date-highlight">${esc(valueDate || '-')}</b></div><div><small>ISIN</small><b>${esc(f.isin || '-')}</b></div><div><small>Typ</small><b>${esc(f.typ || '-')}</b></div><div><small>Pozic</small><b>${num(f.items.length)}</b></div></div>${comment ? `<div class="notice small"><b>Komentář fondu:</b> ${esc(comment)}</div>` : ''}${fundPerformance_classicPositionRows(f, clientId)}</div></details>`;
 }
 function fundPerformance_fkiRowsFor(clientId, key) {
   return (typeof investmentRecordsForClient === 'function' ? investmentRecordsForClient(clientId) : []).filter(r => invPositionKey(r) === key && isFkiReportRecord(r)).sort((a, b) => String(invEmissionDate(a) || invPaymentDate(a)).localeCompare(String(invEmissionDate(b) || invPaymentDate(b))));
@@ -11169,7 +11216,7 @@ function liquidity_oldRenderInvestmentDetail(row) {
     last = snaps[0],
     funds = investmentPosition_invGroup(items);
   if (!c) return '<div class="investment-empty"><h2>Vyber klienta</h2><p>Vlevo klikni na klienta s běžnou investicí.</p></div>';
-  return `<div class="investment-detail-head"><div class="avatar">${esc(initials(c.name))}</div><div><div class="eyebrow">Investiční karta klienta</div><h2>${esc(clientName(c))}</h2><div class="chips"><span class="badge blue">${num(funds.length)} fondů</span><span class="chip">${row.providers.length ? esc(row.providers.join(' · ')) : 'bez společnosti'}</span>${last ? `<span class="badge green">ověřeno ${esc(last.date || '')}</span>` : '<span class="badge orange">čeká na aktualizaci</span>'}</div></div><div class="actions"><button class="btn slim" onclick="selectedClientId=${c.id};showView('clients');clientSection='portfolio';renderClients()">Klient</button><button class="btn slim" onclick="openInvestmentSnapshotModal(${c.id})">Aktualizovat hodnoty</button><button class="btn slim primary" onclick="openInvestmentScenarioModal(${c.id},'Investice')">+ Nová investice</button></div></div><div class="investment-summary"><div class="metric"><span class="note">AUM / hodnota</span><b>${money(current)}</b></div><div class="metric"><span class="note">Vloženo</span><b>${money(invested)}</b></div><div class="metric"><span class="note">Rozdíl</span><b class="${gain >= 0 ? 'green' : 'red'}">${money(gain)}</b></div><div class="metric"><span class="note">Zhodnocení</span><b class="${gain >= 0 ? 'green' : 'red'}">${gainPct.toFixed(1)} %</b></div></div>${renderInvestmentAllocation(items, current)}<div class="mini-card"><div class="toolbar"><div><div class="eyebrow">Detail investičních fondů</div><h3>Fondy klienta, pozice a hodnoty</h3></div><button class="btn" onclick="openInvestmentFundModal()">Fondy</button></div><div class="fki-work-list">${funds.map(f => investmentPosition_invCard(f, c.id)).join('') || '<p class="note">Klient zatím nemá evidované investice.</p>'}</div></div>${snaps.length ? `<div class="mini-card" style="margin-top:12px"><h3>Poslední ruční aktualizace</h3><div class="table-wrap"><table class="compact-table"><thead><tr><th>Datum</th><th>Produkt</th><th>Zdroj</th><th>Vloženo</th><th>AUM</th><th>Výnos</th><th>Pravidelně</th></tr></thead><tbody>${snaps.map(s => `<tr><td>${esc(s.date || '')}</td><td><b>${esc(s.product || 'Investice')}</b><br><span class="note">${esc(s.company || '')}</span></td><td>${esc(s.source || '')}${s.redemptionAmount ? `<br><span class="badge orange">${esc(investmentRedemptionText(s))}</span>` : ''}</td><td class="money">${money(s.invested)}</td><td class="money">${money(s.current)}</td><td class="money">${money(s.gainAmount)}${s.gainPct ? `<br><span class="${(+s.gainPct || 0) >= 0 ? 'green' : 'red'}">${num(s.gainPct)} %</span>` : ''}</td><td>${s.regularAmount ? `${money(s.regularAmount)}<br><span class="note">${esc(s.regularFrequency || '')}</span>` : '<span class="note">nezadáno</span>'}</td></tr>`).join('')}</tbody></table></div></div>` : ''}`;
+  return `<div class="investment-detail-head"><div class="avatar">${esc(initials(c.name))}</div><div><div class="eyebrow">Investiční karta klienta</div><h2>${esc(clientName(c))}</h2><div class="chips"><span class="badge blue">${num(funds.length)} fondů</span><span class="chip">${row.providers.length ? esc(row.providers.join(' · ')) : 'bez společnosti'}</span>${last ? `<span class="badge green">ověřeno ${esc(last.date || '')}</span>` : '<span class="badge orange">čeká na aktualizaci</span>'}</div></div><div class="actions"><button class="btn slim" onclick="selectedClientId=${c.id};showView('clients');clientSection='portfolio';renderClients()">Klient</button><button class="btn slim" onclick="openInvestmentSnapshotModal(${c.id})">Upravit pozici</button><button class="btn slim primary" onclick="openInvestmentScenarioModal(${c.id},'Investice')">+ Nová investice</button></div></div><div class="investment-summary"><div class="metric"><span class="note">AUM / hodnota</span><b>${money(current)}</b></div><div class="metric"><span class="note">Vloženo</span><b>${money(invested)}</b></div><div class="metric"><span class="note">Rozdíl</span><b class="${gain >= 0 ? 'green' : 'red'}">${money(gain)}</b></div><div class="metric"><span class="note">Zhodnocení</span><b class="${gain >= 0 ? 'green' : 'red'}">${gainPct.toFixed(1)} %</b></div></div>${renderInvestmentAllocation(items, current)}<div class="mini-card"><div class="toolbar"><div><div class="eyebrow">Detail investičních fondů</div><h3>Fondy klienta, pozice a hodnoty</h3></div><button class="btn" onclick="openInvestmentFundModal()">Fondy</button></div><div class="fki-work-list">${funds.map(f => investmentPosition_invCard(f, c.id)).join('') || '<p class="note">Klient zatím nemá evidované investice.</p>'}</div></div>${snaps.length ? `<div class="mini-card" style="margin-top:12px"><h3>Poslední ruční aktualizace</h3><div class="table-wrap"><table class="compact-table"><thead><tr><th>Datum</th><th>Produkt</th><th>Zdroj</th><th>Vloženo</th><th>AUM</th><th>Výnos</th><th>Pravidelně</th></tr></thead><tbody>${snaps.map(s => `<tr><td>${esc(s.date || '')}</td><td><b>${esc(s.product || 'Investice')}</b><br><span class="note">${esc(s.company || '')}</span></td><td>${esc(s.source || '')}${s.redemptionAmount ? `<br><span class="badge orange">${esc(investmentRedemptionText(s))}</span>` : ''}</td><td class="money">${money(s.invested)}</td><td class="money">${money(s.current)}</td><td class="money">${money(s.gainAmount)}${s.gainPct ? `<br><span class="${(+s.gainPct || 0) >= 0 ? 'green' : 'red'}">${num(s.gainPct)} %</span>` : ''}</td><td>${s.regularAmount ? `${money(s.regularAmount)}<br><span class="note">${esc(s.regularFrequency || '')}</span>` : '<span class="note">nezadáno</span>'}</td></tr>`).join('')}</tbody></table></div></div>` : ''}`;
 }
 function renderInvestmentFunds(funds) {
   if (funds.length && !funds.some(f => f.key === selectedInvestmentFundKey)) selectedInvestmentFundKey = null;
@@ -11742,8 +11789,11 @@ function fundPerformance_prevRenderFkDetail(row) {
 function loadInvestmentFundToForm() {
   if (typeof fundPerformance_oldLoadInvFund === 'function') fundPerformance_oldLoadInvFund.apply(this, arguments);
   const key = val('invFundSelect'),
-    isin = val('invFundIsin');
+    isin = val('invFundIsin'),
+    fund = investmentFundItems().find(x => x.key === key),
+    clients = fund?.clients?.size || 0;
   setVal('invFundComment', fundPerformance_fundComment('investice', key, isin));
+  setText('invFundPropagationNote', clients ? `Hodnota CP a datum ocenění se po uložení použijí u ${num(clients)} klientů s tímto fondem.` : 'Hodnota CP a datum ocenění se po uložení použijí u všech klientů s tímto fondem.');
 }
 function loadFkFundToForm() {
   if (typeof fundPerformance_oldLoadFkFund === 'function') fundPerformance_oldLoadFkFund.apply(this, arguments);
@@ -11822,7 +11872,7 @@ function renderInvestmentDetailContent(row) {
     last = snaps[0],
     funds = fundPerformance_classicGroups(items);
   if (!c) return typeof fundPerformance_prevRenderInvestmentDetail === 'function' ? fundPerformance_prevRenderInvestmentDetail.apply(this, arguments) : '<div class="investment-empty"><h2>Vyber klienta</h2></div>';
-  return `<div class="investment-detail-head"><div class="avatar">${esc(initials(c.name))}</div><div><div class="eyebrow">Investiční karta klienta</div><h2>${esc(clientName(c))}</h2><div class="chips"><span class="badge blue">${num(funds.length)} fondů</span><span class="chip">${row.providers.length ? esc(row.providers.join(' · ')) : 'bez společnosti'}</span>${last ? `<span class="badge green">ověřeno ${esc(last.date || '')}</span>` : '<span class="badge orange">čeká na aktualizaci</span>'}</div></div><div class="actions"><button class="btn slim" onclick="selectedClientId=${c.id};showView('clients');clientSection='portfolio';renderClients()">Klient</button><button class="btn slim" onclick="openInvestmentSnapshotModal(${c.id})">Aktualizovat hodnoty</button><button class="btn slim primary" onclick="openInvestmentScenarioModal(${c.id},'Investice')">+ Nová investice</button></div></div><div class="investment-summary"><div class="metric"><span class="note">AUM / hodnota</span><b>${money(current)}</b></div><div class="metric"><span class="note">Vloženo</span><b>${money(invested)}</b></div><div class="metric"><span class="note">Výnos Kč</span><b class="${gain >= 0 ? 'green' : 'red'}">${money(gain)}</b></div><div class="metric"><span class="note">Zhodnocení celkem</span><b class="${gain >= 0 ? 'green' : 'red'}">${gainPct.toFixed(1)} %</b></div></div>${clientPortfolioTimeline(c.id,'Investice',items)}<div class="mini-card"><div class="toolbar"><div><div class="eyebrow">Detail investičních fondů</div><h3>Fondy klienta, pozice a hodnoty</h3></div><button class="btn" onclick="openInvestmentFundModal()">Fondy</button></div><div class="fki-work-list">${funds.map(f => fundPerformance_classicCard(f, c.id)).join('') || '<p class="note">Klient zatím nemá evidované investice.</p>'}</div></div>`;
+  return `<div class="investment-detail-head"><div class="avatar">${esc(initials(c.name))}</div><div><div class="eyebrow">Investiční karta klienta</div><h2>${esc(clientName(c))}</h2><div class="chips"><span class="badge blue">${num(funds.length)} fondů</span><span class="chip">${row.providers.length ? esc(row.providers.join(' · ')) : 'bez společnosti'}</span>${last ? `<span class="badge green">ověřeno ${esc(last.date || '')}</span>` : '<span class="badge orange">čeká na aktualizaci</span>'}</div></div><div class="actions"><button class="btn slim" onclick="selectedClientId=${c.id};showView('clients');clientSection='portfolio';renderClients()">Klient</button><button class="btn slim" onclick="openInvestmentSnapshotModal(${c.id})">Upravit pozici</button><button class="btn slim primary" onclick="openInvestmentScenarioModal(${c.id},'Investice')">+ Nová investice</button></div></div><div class="investment-summary"><div class="metric"><span class="note">AUM / hodnota</span><b>${money(current)}</b></div><div class="metric"><span class="note">Vloženo</span><b>${money(invested)}</b></div><div class="metric"><span class="note">Výnos Kč</span><b class="${gain >= 0 ? 'green' : 'red'}">${money(gain)}</b></div><div class="metric"><span class="note">Zhodnocení celkem</span><b class="${gain >= 0 ? 'green' : 'red'}">${gainPct.toFixed(1)} %</b></div></div>${clientPortfolioTimeline(c.id,'Investice',items)}<div class="mini-card"><div class="toolbar"><div><div class="eyebrow">Detail investičních fondů</div><h3>Fondy klienta, pozice a hodnoty</h3></div><button class="btn" onclick="openInvestmentFundModal()">Fondy</button></div><div class="fki-work-list">${funds.map(f => fundPerformance_classicCard(f, c.id)).join('') || '<p class="note">Klient zatím nemá evidované investice.</p>'}</div></div>`;
 }
 function renderFkClientDetailContent(row) {
   const c = row?.client,
@@ -12617,8 +12667,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.07-1';
-const VERSION_NOTE = 'Klientský report odděluje běžné investice a FKI; FKI seskupuje podle investičních společností.';
+const VERSION = '2026.10.07-2';
+const VERSION_NOTE = 'Hodnota CP a datum ocenění se u investičního fondu zadávají jednou a přepočítají všechny klientské pozice.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';

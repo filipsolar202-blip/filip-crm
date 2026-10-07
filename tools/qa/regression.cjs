@@ -46,8 +46,22 @@ try{
    state.clients=state.clients.filter(x=>x.id!==client.id);state.investmentSnapshots=state.investmentSnapshots.filter(x=>x.clientId!==client.id);
    return {updated:first.updated.length,skipped:first.skippedZero,count:items.length,current:snap?.current,invested:snap?.invested,gain:snap?.gainAmount,importedAnnual,finalCurrent:final?.current,finalAnnual:final?.annualReturnPct,finalPct:final?.gainPct,fkiUnchanged:beforeFki===(state.investmentRecords||[]).length};
  });
- assert.deepEqual(edwardImport,{updated:1,skipped:1,count:1,current:728227.97,invested:594900,gain:133327.97,importedAnnual:12,finalCurrent:730000,finalAnnual:11.74,finalPct:22.4,fkiUnchanged:true});
+ assert(Math.abs(edwardImport.importedAnnual-12)<1e-9);delete edwardImport.importedAnnual;
+ assert.deepEqual(edwardImport,{updated:1,skipped:1,count:1,current:728227.97,invested:594900,gain:133327.97,finalCurrent:730000,finalAnnual:11.74,finalPct:22.4,fkiUnchanged:true});
  results.push('Edward CSV skips zero AUM, replaces older Edward positions and preserves manual performance overrides');
+ const sharedInvestmentNav=await page.evaluate(()=>{
+   const first={company:'QA invest',product:'Sdílený fond',isin:'QA-SHARED-NAV',fundType:'Investice',quantity:10,current:900,manualAumOverride:false,purchaseDate:'2025-01-15'},key=investmentFundKeyFromParts(first.company,first.product,first.isin,first.fundType),original=state.fundValues[key];
+   const second={...first,quantity:20,purchaseDate:'2025-02-20'};
+   const manual={...first,quantity:30,current:777,manualAumOverride:true};
+   state.fundValues[key]={area:'investice',nav:100,date:'2026-09-30'};
+   const before=[investmentSnapshotLiveCurrent(first),investmentSnapshotLiveCurrent(second),investmentSnapshotLiveCurrent(manual)];
+   state.fundValues[key]={area:'investice',nav:125,date:'2026-10-07'};
+   const after=[investmentSnapshotLiveCurrent(first),investmentSnapshotLiveCurrent(second),investmentSnapshotLiveCurrent(manual)];
+   if(original)state.fundValues[key]=original;else delete state.fundValues[key];
+   return{before,after,purchaseDates:[first.purchaseDate,second.purchaseDate]};
+ });
+ assert.deepEqual(sharedInvestmentNav,{before:[1000,2000,777],after:[1250,2500,777],purchaseDates:['2025-01-15','2025-02-20']});
+ results.push('One classic-fund NAV update recalculates every client position while manual AUM remains unchanged');
  const producerImports=await page.evaluate(()=>{
    const client={id:99011,name:'Ing. Testovací Jan - Praha',birthId:'800101/1234'};state.clients.push(client);state.investmentSnapshots=state.investmentSnapshots||[];state.investmentRecords=state.investmentRecords||[];state.contracts.push({id:99012,clientId:client.id,category:'Investice',company:'Vigo Public',product:'OPF',volume:700,date:'2025-01-01'});
    const wood=woodImportRows([{'Příjmení, Jméno':'Testovací, Jan','Datum narození':'01.01.1980','Objem aktiv':'125000.50','Čistý objem vkladů':'100000','Zisk / ztráta':'25000.50'}],'2026-10-06');
@@ -189,6 +203,11 @@ try{
  const campaign=await page.evaluate(()=>{showView('campaigns');setVal('campaignSenderEmail','advisor@example.test');setVal('campaignName','Test investiční kampaně');setVal('campaignSubject','Test investiční novinky');setVal('campaignBody','Dobrý den, toto je testovací zpráva.');setVal('campaignSegment','investice');renderCampaignRecipients(true);const candidates=campaignRecipientRows.map(x=>x.client.id);window.__campaignMailto='';campaignLaunchMailto=url=>window.__campaignMailto=url;confirmCampaignEmail();const saved=state.campaigns.at(-1);return{candidates,saved,activity:state.activities.find(x=>x.campaignId===saved?.id),mailto:window.__campaignMailto,history:byId('campaignHistory').innerText}});
  assert.deepEqual(campaign.candidates,[1]);assert.deepEqual(campaign.saved.recipientIds,[1]);assert.equal(campaign.activity.type,'Smart emailing');assert(campaign.mailto.startsWith('mailto:advisor%40example.test?'));assert(campaign.mailto.includes('bcc=alfa%40example.test'));assert(campaign.history.includes('Test investiční kampaně'));results.push('Campaign selection, BCC handoff and client history');
  await page.screenshot({path:'/private/tmp/crm-unified-campaigns.png',fullPage:true});
+ await page.evaluate(()=>openInvestmentSnapshotModal(1));
+ assert(await page.locator('#investmentSnapshotModal').innerText().then(t=>t.includes('Datum investice klienta')&&t.includes('Aktuální hodnota CP')&&t.includes('Ruční AUM')));
+ assert.equal(await page.locator('#isFundNavDate').getAttribute('type'),'date');
+ await page.screenshot({path:'/private/tmp/crm-investment-position-modal.png',fullPage:true});
+ await page.evaluate(()=>closeModal('investmentSnapshotModal'));
  for(const expr of ["selectClient(1)","selectInvestmentClient(1)","selectFkClient(1)","selectPensionClient(1)","openClientModal(1)","openContractModal(1,10)","openDealModal(1,20)","openOpportunityModal(1,30)","openActivityModal(1,40)","openInvestmentFundModal()","openFkFundModal()","openInvestmentScenarioModal(1,'FKI')"]){await page.evaluate(expr);await page.evaluate(()=>document.querySelectorAll('.modal.show').forEach(x=>x.classList.remove('show')))}
  results.push('Client, investment, pension and editing dialogs');
  // Exercise real downloads; generated reports must be usable as independent files.
