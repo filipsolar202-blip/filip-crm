@@ -1,3 +1,10 @@
+## 2026.10.07-1
+
+- VIGO PUBLIC z Codya XLSX se eviduje pod společností Vigo Public; Codya zůstává pouze zdrojem importu.
+- Opakovaný import odstraní dříve vytvořenou oddělenou Codya pozici a spojí aktuální hodnotu s existujícím Vigo Public OPF klienta.
+- Klientský report rozděluje úvodní souhrn na portfolio celkem, běžné investice a FKI.
+- Běžné investice jsou v reportu první; FKI následují odděleně a jsou seskupené do bloků podle investičních společností.
+
 ## 2026.10.06-2
 
 - Párování klientů z WOOD a Codya toleruje tituly, obrácené pořadí jména a doplňující označení v CRM, například „Novotný Jiří - Jílové“.

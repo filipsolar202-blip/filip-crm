@@ -28,6 +28,10 @@ try{
  assert.deepEqual({...b,report:undefined},{...a,report:undefined});results.push('Portfolio, totals and commissions match released version');
  // Report rendering must retain the released client data while allowing corrected calculations and presentation.
  assert(b.report.includes('Testovací klient Alfa'));results.push('Client report retains released client data');
+ assert(b.report.includes('Investiční portfolio celkem')&&b.report.includes('Běžné investice')&&b.report.includes('Fondy kvalifikovaných investorů'));
+ assert(b.report.indexOf('Přehled běžných investic')<b.report.indexOf('Souhrn všech FKI'));
+ assert(b.report.includes('Investiční společnost')&&b.report.includes('Test FKI'));
+ results.push('Client report separates total, classic investments and FKI grouped by investment company');
  console.log('baseline errors',old.errors);
  const {page,context,errors}=current;
  const edwardImport=await page.evaluate(()=>{
@@ -45,15 +49,15 @@ try{
  assert.deepEqual(edwardImport,{updated:1,skipped:1,count:1,current:728227.97,invested:594900,gain:133327.97,importedAnnual:12,finalCurrent:730000,finalAnnual:11.74,finalPct:22.4,fkiUnchanged:true});
  results.push('Edward CSV skips zero AUM, replaces older Edward positions and preserves manual performance overrides');
  const producerImports=await page.evaluate(()=>{
-   const client={id:99011,name:'Ing. Testovací Jan - Praha',birthId:'800101/1234'};state.clients.push(client);state.investmentSnapshots=state.investmentSnapshots||[];state.investmentRecords=state.investmentRecords||[];
+   const client={id:99011,name:'Ing. Testovací Jan - Praha',birthId:'800101/1234'};state.clients.push(client);state.investmentSnapshots=state.investmentSnapshots||[];state.investmentRecords=state.investmentRecords||[];state.contracts.push({id:99012,clientId:client.id,category:'Investice',company:'Vigo Public',product:'OPF',volume:700,date:'2025-01-01'});
    const wood=woodImportRows([{'Příjmení, Jméno':'Testovací, Jan','Datum narození':'01.01.1980','Objem aktiv':'125000.50','Čistý objem vkladů':'100000','Zisk / ztráta':'25000.50'}],'2026-10-06');
    const fki={Investor:client.name,'RČ':normalizeStrongId(client.birthId),ClientID:'RC_'+normalizeStrongId(client.birthId),'Investiční společnost':'Codya',Fond:'PENTA RE tř.D_CZK','Typ produktu':'FKI','Typ transakce':'Platba','Čistá investice':100,'Počet vydaných CP':10,'Datum emise':'2025-01-01'};state.investmentRecords.push(fki);state.fundValues[invPositionKey(fki)]={area:'fki',nav:10,date:'2026-09-30'};
    const row={'RODNÉ ČÍSLO':'8001011234','JMÉNO':'Jan','PŘIJMENÍ':'Testovací','VIGO PUBLIC I.PODFOND tř.A_CZK':'777','PENTA RE tř.D_CZK':'250'};
-   const inv=importCodyaRows([row],'investice','2026-10-06'),fk=importCodyaRows([row],'fki','2026-10-06'),woodItem=classicInvestmentItems().find(x=>String(x.clientId)===String(client.id)&&norm(x.isin)===norm('CZ0008477551')),codyaItem=classicInvestmentItems().find(x=>String(x.clientId)===String(client.id)&&norm(x.product).includes('vigo public')),override=invCurrentValue(fki);state.fundValues[invPositionKey(fki)]={area:'fki',nav:30,date:'2026-10-07'};const automatic=invCurrentValue(fki);
+   const inv=importCodyaRows([row],'investice','2026-10-06'),fk=importCodyaRows([row],'fki','2026-10-06'),woodItem=classicInvestmentItems().find(x=>String(x.clientId)===String(client.id)&&norm(x.isin)===norm('CZ0008477551')),codyaItem=classicInvestmentItems().find(x=>String(x.clientId)===String(client.id)&&norm(x.company).includes('vigo public')),clientClassicCount=classicInvestmentItems().filter(x=>String(x.clientId)===String(client.id)&&/vigo public/.test(norm([x.company,x.product].join(' ')))).length,override=invCurrentValue(fki);state.fundValues[invPositionKey(fki)]={area:'fki',nav:30,date:'2026-10-07'};const automatic=invCurrentValue(fki);
    state.clients=state.clients.filter(x=>x.id!==client.id);state.investmentSnapshots=state.investmentSnapshots.filter(x=>String(x.clientId)!==String(client.id));state.investmentRecords=state.investmentRecords.filter(x=>String(invClientIdentity(x))!==normalizeStrongId(client.birthId));delete state.fundValues[invPositionKey(fki)];
-   return {woodUpdated:wood.updated,woodAum:woodItem?.amount,woodIsin:woodItem?.isin,invUpdated:inv.updated,invAum:codyaItem?.amount,fkiUpdated:fk.updated,fkiOverride:override,fkiAutomatic:automatic};
+   state.contracts=state.contracts.filter(x=>x.id!==99012);return {woodUpdated:wood.updated,woodAum:woodItem?.amount,woodIsin:woodItem?.isin,invUpdated:inv.updated,invAum:codyaItem?.amount,invCompany:codyaItem?.company,clientClassicCount,fkiUpdated:fk.updated,fkiOverride:override,fkiAutomatic:automatic};
  });
- assert.deepEqual(producerImports,{woodUpdated:1,woodAum:125000.5,woodIsin:'CZ0008477551',invUpdated:1,invAum:777,fkiUpdated:1,fkiOverride:250,fkiAutomatic:300});
+ assert.deepEqual(producerImports,{woodUpdated:1,woodAum:125000.5,woodIsin:'CZ0008477551',invUpdated:1,invAum:777,invCompany:'Vigo Public',clientClassicCount:1,fkiUpdated:1,fkiOverride:250,fkiAutomatic:300});
  results.push('WOOD matches by ISIN and Codya separates OPF/FKI while newer FKI NAV regains priority');
  const redemptionReport=await page.evaluate(()=>{
    const key='qa-liquidity-report';state.fundValues[key]={area:'investice',taxMonths:36,redemptionFrequency:'quarterly',settlementMonths:2};
