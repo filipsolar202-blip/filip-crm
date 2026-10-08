@@ -1,3 +1,10 @@
+## 2026.10.08-2
+
+- FKI lze jedním krokem zkontrolovat a sjednotit podle ISIN; u rozdílných názvů CRM vyžádá výběr správné varianty.
+- Po sloučení zůstane v databázi jediný kanonický fond a duplicitní fondové klíče se skutečně odstraní.
+- Správný název, společnost, typ a ISIN se propíší ke všem klientským pozicím, obchodům, smlouvám, případům a uloženým investičním variantám.
+- Sloučení zachová NAV, pravidla odkupu, rozšířené informace do reportu, komentáře, následné provize a zámky fondu.
+
 ## 2026.10.08-1
 
 - Investiční návrh zobrazuje konkrétní zdrojový fond odkupu a cílový fond reinvestice.
