@@ -92,7 +92,7 @@ try{
  results.push('FKI merge keeps one canonical ISIN fund and rewrites clients, business records and saved forecasts');
  const fkiSharedFundNotConflict=await page.evaluate(()=>{
    const isin='QA0000000002',key='isin|qa0000000002',backup={fundValues:state.fundValues,records:state.investmentRecords};
-   state.fundValues={[key]:{area:'fki',company:'Správná společnost',fond:'Jeden fond',product:'FKI',isin,typ:'Investiční akcie'}};
+   state.fundValues={[key]:{area:'fki',company:'Správná společnost',fond:'Jeden fond',product:'Investiční akcie',isin,typ:'Investiční akcie'}};
    state.investmentRecords=[{Investor:'Klient A',ClientID:'A',Fond:'Jeden fond','Investiční společnost':'Správná společnost','Typ produktu':'FKI','Typ CP':'Investiční akcie','Čistá investice':100,'Datum emise':'2025-01-01','rp.ISIN':isin},{Investor:'Klient B',ClientID:'B',Fond:'Jeden fond','Investiční společnost':'Správná společnost','Typ produktu':'FKI','Typ CP':'Investiční akcie','Čistá investice':200,'Datum emise':'2025-02-01','rp.ISIN':isin}];
    const conflicts=fkiIsinConflicts().map(x=>x.isin);Object.assign(state,{fundValues:backup.fundValues,investmentRecords:backup.records});return conflicts;
  });

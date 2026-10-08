@@ -8919,7 +8919,7 @@ function commissions_applyFkFundMerge(keys, newKey, data) {
 }
 function fkiIsinConflicts() {
   const groups={};
-  const add=(isin,item,key='')=>{const id=commissions_cNorm(isin);if(!id)return;groups[id] ||= {isin:String(isin).trim(),items:[],keys:new Set()};if(key)groups[id].keys.add(key);const sig=[item.company,item.fond||item.product,item.product,item.typ].map(commissions_cNorm).join('|');if(!groups[id].items.some(x=>x.sig===sig))groups[id].items.push({...item,isin:String(isin).trim(),sig});};
+  const add=(isin,item,key='')=>{const id=commissions_cNorm(isin);if(!id)return;groups[id] ||= {isin:String(isin).trim(),items:[],keys:new Set()};if(key)groups[id].keys.add(key);const sig=[item.company,item.fond||item.product,item.typ].map(commissions_cNorm).join('|');if(!groups[id].items.some(x=>x.sig===sig))groups[id].items.push({...item,isin:String(isin).trim(),sig});};
   Object.entries(state.fundValues||{}).forEach(([key,v])=>{if(v?.area==='investice')return;add(v?.isin,v||{},key);});
   (state.investmentRecords||[]).filter(isFkiReportRecord).forEach(r=>add(invIsin(r),{area:'fki',company:invCompany(r),fond:cleanInvFundName(invFund(r),invCompany(r)),product:invProductType(r)||'FKI',typ:invType(r),nav:invCurrentNav(r),date:r['Poslední schválená hodnota do']||'',trailPct:''}));
   return Object.values(groups).filter(g=>g.items.length>1||g.keys.size>1).sort((a,b)=>a.isin.localeCompare(b.isin,'cs'));
@@ -12763,7 +12763,7 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.08-3';
+const VERSION = '2026.10.08-4';
 const VERSION_NOTE = 'FKI fondy lze bezpečně sjednotit podle ISIN do jediného názvu napříč klienty, obchody a reporty.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';

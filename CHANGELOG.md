@@ -1,3 +1,7 @@
+## 2026.10.08-4
+
+- Interní označení produktu „FKI“ a „investiční akcie“ u stejného ISIN, názvu, společnosti a třídy už nevytváří falešnou duplicitu fondu.
+
 ## 2026.10.08-3
 
 - Opravená kontrola duplicit FKI: více klientů ve stejném fondu se už nepovažuje za více fondů se stejným ISIN.
