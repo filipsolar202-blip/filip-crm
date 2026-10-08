@@ -8901,9 +8901,96 @@ function investmentIsinConflicts() {
   }));
   return Object.values(groups).filter(g => g.items.length > 1 || g.keys.size > 1).sort((a, b) => a.isin.localeCompare(b.isin, 'cs'));
 }
+function investmentIsRealIsin(value) {
+  return /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(String(value || '').trim().toUpperCase());
+}
+function investmentCompanyFamily(value) {
+  const n = commissions_cNorm(value);
+  if (n.includes('atris')) return 'atris';
+  if (n.includes('codya') || n.includes('vigo public') || n.includes('vigo pulic')) return 'codya-vigo';
+  if (n.includes('cyrrus') || n.includes('csnf')) return 'cyrrus-csnf';
+  if (n.includes('wood')) return 'wood';
+  if (n === 'j t' || n === 'jt' || n.includes('j t banka')) return 'jt';
+  return n;
+}
+function investmentAliasName(value, company = '') {
+  return commissions_cNorm(cleanInvFundName(value || '', company)).replace(/\b(trida|tr|class|czk|eur|usd)\b/g, ' ').replace(/\s+/g, ' ').trim();
+}
+function investmentCanonicalFundsByIsin() {
+  const map = {};
+  Object.entries(state.fundValues || {}).forEach(([key, v]) => {
+    if (v?.area !== 'investice' || !investmentIsRealIsin(v.isin)) return;
+    const id = commissions_cNorm(v.isin), current = map[id];
+    if (!current || String(v.date || '').localeCompare(String(current.date || '')) >= 0) map[id] = {key: ['investment-isin', id].join('|'), sourceKey: key, company: v.company || '', fond: v.fond || v.product || 'Investice', product: v.product || 'Investice', isin: String(v.isin).trim(), typ: v.typ || '', mergeKey: v.mergeKey || '', nav: v.nav || '', date: v.date || '', trailPct: v.trailPct};
+  });
+  (state.investmentSnapshots || []).forEach(s => {
+    if (s.scope === 'provider-total' || !investmentIsRealIsin(s.isin)) return;
+    const id = commissions_cNorm(s.isin);
+    if (!map[id]) map[id] = {key: ['investment-isin', id].join('|'), sourceKey: '', company: s.company || '', fond: s.product || 'Investice', product: s.fundType || s.typ || 'Investice', isin: String(s.isin).trim(), typ: s.fundType || s.typ || '', mergeKey: s.mergeKey || '', nav: '', date: s.date || ''};
+  });
+  return Object.values(map);
+}
+function investmentCanonicalTarget(item, canonicals = investmentCanonicalFundsByIsin()) {
+  if (!item || investmentIsRealIsin(item.isin || item.fundIsin || invIsin(item))) return null;
+  const company = item.company || item.provider || invCompany(item), fond = item.fond || item.product || item.label || invFund(item), family = investmentCompanyFamily(company), name = investmentAliasName(fond, company);
+  if (!family || !name || name.includes('edward') || /penz|dps|dip|stavebni/.test(name)) return null;
+  const familyRows = canonicals.filter(c => investmentCompanyFamily(c.company) === family), exact = familyRows.filter(c => investmentAliasName(c.fond, c.company) === name);
+  if (exact.length === 1) return exact[0];
+  const close = familyRows.filter(c => {
+    const cn = investmentAliasName(c.fond, c.company);
+    return name.length >= 5 && cn.length >= 5 && (name.includes(cn) || cn.includes(name));
+  });
+  if (close.length === 1) return close[0];
+  const generic = ['opf', 'investice', 'fond', 'smlouva', 'aktualizace', 'obchod', 'retail opf'].includes(name);
+  return generic && familyRows.length === 1 ? familyRows[0] : null;
+}
+function investmentMissingIsinMergePlans() {
+  const canonicals = investmentCanonicalFundsByIsin(), groups = {};
+  const add = (item, key = '') => {
+    const target = investmentCanonicalTarget(item, canonicals);
+    if (!target) return;
+    const group = groups[target.key] ||= {target, keys: new Set([target.key, target.sourceKey].filter(Boolean)), count: 0};
+    if (key) group.keys.add(key);
+    group.count++;
+  };
+  Object.entries(state.fundValues || {}).forEach(([key, v]) => {
+    if (v?.area === 'investice' && !investmentIsRealIsin(v.isin)) add(v, key);
+  });
+  (state.investmentSnapshots || []).filter(s => s.scope !== 'provider-total' && !investmentIsRealIsin(s.isin)).forEach(s => add(s));
+  (state.investmentRecords || []).filter(r => invProductGroup(r) !== 'FKI' && !investmentIsRealIsin(invIsin(r))).forEach(r => add(r));
+  ['deals', 'contracts', 'opportunities'].forEach(arr => (state[arr] || []).forEach(x => {
+    const area = arr === 'deals' ? areaForDeal(x) : arr === 'contracts' ? areaForContract(x) : opportunityArea(x);
+    if (area === 'investice' && !investmentIsRealIsin(x.isin || x.fundIsin)) add(x);
+  }));
+  return Object.values(groups).filter(g => g.count > 0);
+}
+function investmentApplyMissingIsinPlan(plan) {
+  const data = {area: 'investice', company: plan.target.company, fond: plan.target.fond, product: plan.target.product, isin: plan.target.isin, typ: plan.target.typ, mergeKey: plan.target.mergeKey, nav: plan.target.nav, date: plan.target.date, trailPct: plan.target.trailPct}, canonicals = [plan.target];
+  let changed = 0;
+  const targetFor = item => investmentCanonicalTarget(item, canonicals)?.key === plan.target.key;
+  (state.investmentSnapshots || []).forEach(s => {
+    if (s.scope === 'provider-total' || investmentIsRealIsin(s.isin) || !targetFor(s)) return;
+    s.company = data.company; s.product = data.fond; s.isin = data.isin; s.mergeKey = data.mergeKey || s.mergeKey || ''; s.fundType = data.typ || s.fundType || ''; s.typ = data.typ || s.typ || ''; s.updatedAt = today(); changed++;
+  });
+  (state.investmentRecords || []).filter(r => invProductGroup(r) !== 'FKI').forEach(r => {
+    if (investmentIsRealIsin(invIsin(r)) || !targetFor(r)) return;
+    r['Investiční společnost'] = data.company; r.Fond = data.fond; r['rp.ISIN'] = data.isin; if (data.typ) r['Typ CP'] = data.typ; r._updatedAt = today(); changed++;
+  });
+  ['deals', 'contracts', 'opportunities'].forEach(arr => (state[arr] || []).forEach(x => {
+    const area = arr === 'deals' ? areaForDeal(x) : arr === 'contracts' ? areaForContract(x) : opportunityArea(x);
+    if (area !== 'investice' || investmentIsRealIsin(x.isin || x.fundIsin) || !targetFor(x)) return;
+    x.company = data.company; x.product = data.fond; x.isin = data.isin; x.fundIsin = data.isin; x.fundType = data.typ || x.fundType || ''; x.updatedAt = today(); changed++;
+  }));
+  (state.investmentForecasts || []).forEach(f => [...(f.proposalRows || []), ...(f.managedRows || []), ...(f.externalRows || []), ...(f.variants || []).flatMap(v => v.rows || [])].forEach(x => {
+    if (investmentIsRealIsin(x.isin) || !targetFor(x)) return;
+    x.company = data.company; x.product = data.fond; x.isin = data.isin; x.typ = data.typ || x.typ || ''; changed++;
+  }));
+  return changed + commissions_applyInvestmentFundCanonicalMerge(plan.keys, plan.target.key, data);
+}
 function cleanupInvestmentFundsByIsin() {
   const conflicts = investmentIsinConflicts();
-  if (!conflicts.length) return saveToast('Investiční fondy jsou podle ISIN sjednocené');
+  const missingPlans = investmentMissingIsinMergePlans();
+  if (!conflicts.length && !missingPlans.length) return saveToast('Investiční fondy jsou podle ISIN sjednocené');
   const plans = [];
   for (const group of conflicts) {
     const current = group.items[0], candidates = group.items.slice(1), master = candidates.length ? commissions_cPickMaster('Investice', current, candidates) : current;
@@ -8920,6 +9007,10 @@ function cleanupInvestmentFundsByIsin() {
     });
     removed += Math.max(0, keys.size - 1);
     changed += commissions_applyInvestmentFundCanonicalMerge(keys, newKey, data);
+  });
+  missingPlans.forEach(plan => {
+    removed += Math.max(0, plan.keys.size - 1);
+    changed += investmentApplyMissingIsinPlan(plan);
   });
   dedupeInvestmentRecordsInState(state);
   selectedInvestmentFundKey = null;
@@ -11414,8 +11505,8 @@ function renderInvestmentFunds(funds) {
     groups[k] = groups[k] || [];
     groups[k].push(f);
   });
-  const conflicts = investmentIsinConflicts();
-  return `<div class="toolbar"><div><div class="eyebrow">Fondy</div><h2>Centrální hodnoty a klienti</h2><p class="note">Jeden ISIN představuje právě jeden fond. Sjednocení přepíše vybraný název ke všem klientům a zachová hodnoty, historii i nastavení.</p></div><div class="actions"><button class="btn ${conflicts.length ? 'orange' : ''}" onclick="cleanupInvestmentFundsByIsin()">Sjednotit investice podle ISIN${conflicts.length ? ` · ${num(conflicts.length)}` : ''}</button><button class="btn primary" onclick="openInvestmentFundModal()">+ Fond / hodnota</button></div></div>${Object.entries(groups).map(([company, rows]) => `<div class="mini-card" style="margin-bottom:10px"><div class="toolbar"><h3>${esc(company)}</h3><span class="badge blue">${num(rows.length)} fondů</span></div><div class="table-wrap"><table class="compact-table fki-fund-table"><thead><tr><th>Fond</th><th>AUM</th><th>V reportu</th><th>Hodnota/NAV</th><th>Klientů</th><th>Akce</th></tr></thead><tbody>${rows.map(f => {
+  const conflicts = investmentIsinConflicts(), missingPlans = investmentMissingIsinMergePlans(), cleanupCount = conflicts.length + missingPlans.length;
+  return `<div class="toolbar"><div><div class="eyebrow">Fondy</div><h2>Centrální hodnoty a klienti</h2><p class="note">Jeden ISIN představuje právě jeden fond. Sjednocení doplní ISIN i starším pozicím, přepíše správný název ke všem klientům a zachová hodnoty, historii i nastavení.</p></div><div class="actions"><button class="btn ${cleanupCount ? 'orange' : ''}" onclick="cleanupInvestmentFundsByIsin()">Sjednotit investice podle ISIN${cleanupCount ? ` · ${num(cleanupCount)}` : ''}</button><button class="btn primary" onclick="openInvestmentFundModal()">+ Fond / hodnota</button></div></div>${Object.entries(groups).map(([company, rows]) => `<div class="mini-card" style="margin-bottom:10px"><div class="toolbar"><h3>${esc(company)}</h3><span class="badge blue">${num(rows.length)} fondů</span></div><div class="table-wrap"><table class="compact-table fki-fund-table"><thead><tr><th>Fond</th><th>AUM</th><th>V reportu</th><th>Hodnota/NAV</th><th>Klientů</th><th>Akce</th></tr></thead><tbody>${rows.map(f => {
     const fv = investmentFundStoredValue(f),
       locked = isInvestmentFundLocked(f.key);
     return `<tr class="${locked ? 'row-soon' : ''}"><td><b>${esc(f.label || investmentFundLabel(f))}</b>${locked ? ' <span class="badge orange">zamčeno</span>' : ''}<br><span class="note">${esc([f.isin || 'ISIN chybí', f.mergeKey ? 'sloučeno: ' + f.mergeKey : '', f.typ || 'typ neuveden'].filter(Boolean).join(' · '))}</span></td><td class="money">${money(f.rawCurrent)}</td><td class="money">${money(f.amount)}</td><td>${fv.nav ? num(fv.nav) : '—'}<br><span class="note">${esc(fv.date || f.date || '')}</span></td><td><button class="btn slim" onclick="selectInvestmentFund('${esc(investmentPosition_enc(f.key))}')">${num(f.clients.size)} klientů</button></td><td><div class="actions"><button class="btn slim" onclick="openInvestmentFundModal('${esc(investmentPosition_enc(f.key))}')">Upravit</button><button class="btn slim" onclick="selectInvestmentFund('${esc(investmentPosition_enc(f.key))}')">Klienti</button><button class="icon-btn ${locked ? 'primary' : ''}" onclick="toggleInvestmentFundLock('${esc(investmentPosition_enc(f.key))}')">${locked ? '🔒' : '🔓'}</button></div></td></tr>`;
@@ -12868,8 +12959,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.08-5';
-const VERSION_NOTE = 'FKI i běžné investice lze bezpečně sjednotit podle ISIN do jediného fondu napříč klienty, obchody a reporty.';
+const VERSION = '2026.10.08-6';
+const VERSION_NOTE = 'Sjednocení investic doplní ISIN i starším pozicím a obnoví jeden fond napříč všemi klienty.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
