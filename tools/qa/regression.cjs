@@ -90,6 +90,14 @@ try{
  });
  assert.deepEqual(fkiCanonicalMerge.keys,['isin|qa0000000001']);assert.equal(fkiCanonicalMerge.fund.comment,'Zachovaný komentář');assert.equal(fkiCanonicalMerge.fund.exitFee,'5 %');assert.deepEqual(fkiCanonicalMerge.recordNames,['Správný fond','Správný fond']);assert.equal(fkiCanonicalMerge.deal.product,'Správný fond');assert.equal(fkiCanonicalMerge.opportunity.product,'Správný fond');assert.equal(fkiCanonicalMerge.forecast.product,'Správný fond');assert.equal(fkiCanonicalMerge.oldTrail,undefined);assert.equal(fkiCanonicalMerge.locked,true);
  results.push('FKI merge keeps one canonical ISIN fund and rewrites clients, business records and saved forecasts');
+ const fkiSharedFundNotConflict=await page.evaluate(()=>{
+   const isin='QA0000000002',key='isin|qa0000000002',backup={fundValues:state.fundValues,records:state.investmentRecords};
+   state.fundValues={[key]:{area:'fki',company:'Správná společnost',fond:'Jeden fond',product:'FKI',isin,typ:'Investiční akcie'}};
+   state.investmentRecords=[{Investor:'Klient A',ClientID:'A',Fond:'Jeden fond','Investiční společnost':'Správná společnost','Typ produktu':'FKI','Typ CP':'Investiční akcie','Čistá investice':100,'Datum emise':'2025-01-01','rp.ISIN':isin},{Investor:'Klient B',ClientID:'B',Fond:'Jeden fond','Investiční společnost':'Správná společnost','Typ produktu':'FKI','Typ CP':'Investiční akcie','Čistá investice':200,'Datum emise':'2025-02-01','rp.ISIN':isin}];
+   const conflicts=fkiIsinConflicts().map(x=>x.isin);Object.assign(state,{fundValues:backup.fundValues,investmentRecords:backup.records});return conflicts;
+ });
+ assert.deepEqual(fkiSharedFundNotConflict,[]);
+ results.push('Multiple FKI clients sharing one canonical ISIN are not reported as duplicate funds');
  const redemptionReport=await page.evaluate(()=>{
    const key='qa-liquidity-report';state.fundValues[key]={area:'investice',taxMonths:36,redemptionFrequency:'quarterly',settlementMonths:2};
    const fund={area:'Investice',key,product:'Test likvidity',amount:100000,invested:100000};

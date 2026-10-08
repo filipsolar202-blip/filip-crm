@@ -1,3 +1,8 @@
+## 2026.10.08-3
+
+- Opravená kontrola duplicit FKI: více klientů ve stejném fondu se už nepovažuje za více fondů se stejným ISIN.
+- Kontrola nyní nabízí sloučení jen tehdy, když skutečně existuje více fondových záznamů nebo odlišné názvy či třídy.
+
 ## 2026.10.08-2
 
 - FKI lze jedním krokem zkontrolovat a sjednotit podle ISIN; u rozdílných názvů CRM vyžádá výběr správné varianty.
