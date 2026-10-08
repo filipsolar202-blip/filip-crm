@@ -1,3 +1,10 @@
+## 2026.10.08-1
+
+- Investiční návrh zobrazuje konkrétní zdrojový fond odkupu a cílový fond reinvestice.
+- Reinvestované peníze se již nezapočítávají jako nový vklad; report odděluje nové peníze, přesuny a dopad na celé portfolio.
+- Klientský výstup obsahuje u fondů rozšířené informace, včetně výstupních a vstupních poplatků, likvidity, horizontu, rizika a odkazu na oficiální informace.
+- Údaje fondu se ukládají a sdílejí podle ISIN, takže stejný fond používá v CRM jednotné informace.
+
 ## 2026.10.07-2
 
 - Investiční pozice klienta nově eviduje datum investice, vloženou částku, počet cenných papírů a nákupní hodnotu CP v jednoduchém formuláři.
