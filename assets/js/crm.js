@@ -8904,8 +8904,12 @@ function investmentIsinConflicts() {
 function investmentIsRealIsin(value) {
   return /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(String(value || '').trim().toUpperCase());
 }
+function investmentIsCanonicalIdentity(value) {
+  return investmentIsRealIsin(value) || commissions_cNorm(value) === 'cz edward wood';
+}
 function investmentCompanyFamily(value) {
   const n = commissions_cNorm(value);
+  if (n.includes('edward')) return 'edward';
   if (n.includes('atris')) return 'atris';
   if (n.includes('codya') || n.includes('vigo public') || n.includes('vigo pulic')) return 'codya-vigo';
   if (n.includes('cyrrus') || n.includes('csnf')) return 'cyrrus-csnf';
@@ -8919,21 +8923,25 @@ function investmentAliasName(value, company = '') {
 function investmentCanonicalFundsByIsin() {
   const map = {};
   Object.entries(state.fundValues || {}).forEach(([key, v]) => {
-    if (v?.area !== 'investice' || !investmentIsRealIsin(v.isin)) return;
+    if (v?.area !== 'investice' || !investmentIsCanonicalIdentity(v.isin)) return;
     const id = commissions_cNorm(v.isin), current = map[id];
     if (!current || String(v.date || '').localeCompare(String(current.date || '')) >= 0) map[id] = {key: ['investment-isin', id].join('|'), sourceKey: key, company: v.company || '', fond: v.fond || v.product || 'Investice', product: v.product || 'Investice', isin: String(v.isin).trim(), typ: v.typ || '', mergeKey: v.mergeKey || '', nav: v.nav || '', date: v.date || '', trailPct: v.trailPct};
   });
   (state.investmentSnapshots || []).forEach(s => {
-    if (s.scope === 'provider-total' || !investmentIsRealIsin(s.isin)) return;
+    if (s.scope === 'provider-total' || !investmentIsCanonicalIdentity(s.isin)) return;
     const id = commissions_cNorm(s.isin);
     if (!map[id]) map[id] = {key: ['investment-isin', id].join('|'), sourceKey: '', company: s.company || '', fond: s.product || 'Investice', product: s.fundType || s.typ || 'Investice', isin: String(s.isin).trim(), typ: s.fundType || s.typ || '', mergeKey: s.mergeKey || '', nav: '', date: s.date || ''};
   });
   return Object.values(map);
 }
 function investmentCanonicalTarget(item, canonicals = investmentCanonicalFundsByIsin()) {
-  if (!item || investmentIsRealIsin(item.isin || item.fundIsin || invIsin(item))) return null;
+  if (!item || investmentIsCanonicalIdentity(item.isin || item.fundIsin || invIsin(item))) return null;
   const company = item.company || item.provider || invCompany(item), fond = item.fond || item.product || item.label || invFund(item), family = investmentCompanyFamily(company), name = investmentAliasName(fond, company);
-  if (!family || !name || name.includes('edward') || /penz|dps|dip|stavebni/.test(name)) return null;
+  if (!family || !name || /penz|dps|dip|stavebni/.test(name)) return null;
+  if (name.includes('edward') || family === 'edward') {
+    const edwardRows = canonicals.filter(c => commissions_cNorm(c.isin) === 'cz edward wood' || investmentAliasName(c.fond, c.company).includes('edward'));
+    return edwardRows.length === 1 ? edwardRows[0] : null;
+  }
   const familyRows = canonicals.filter(c => investmentCompanyFamily(c.company) === family), exact = familyRows.filter(c => investmentAliasName(c.fond, c.company) === name);
   if (exact.length === 1) return exact[0];
   const close = familyRows.filter(c => {
@@ -8941,6 +8949,8 @@ function investmentCanonicalTarget(item, canonicals = investmentCanonicalFundsBy
     return name.length >= 5 && cn.length >= 5 && (name.includes(cn) || cn.includes(name));
   });
   if (close.length === 1) return close[0];
+  const numbers = name.match(/\d+/g)?.join('|') || '', numbered = numbers ? familyRows.filter(c => (investmentAliasName(c.fond, c.company).match(/\d+/g)?.join('|') || '') === numbers) : [];
+  if (numbered.length === 1) return numbered[0];
   const generic = ['opf', 'investice', 'fond', 'smlouva', 'aktualizace', 'obchod', 'retail opf'].includes(name);
   return generic && familyRows.length === 1 ? familyRows[0] : null;
 }
@@ -8954,13 +8964,13 @@ function investmentMissingIsinMergePlans() {
     group.count++;
   };
   Object.entries(state.fundValues || {}).forEach(([key, v]) => {
-    if (v?.area === 'investice' && !investmentIsRealIsin(v.isin)) add(v, key);
+    if (v?.area === 'investice' && !investmentIsCanonicalIdentity(v.isin)) add(v, key);
   });
-  (state.investmentSnapshots || []).filter(s => s.scope !== 'provider-total' && !investmentIsRealIsin(s.isin)).forEach(s => add(s));
-  (state.investmentRecords || []).filter(r => invProductGroup(r) !== 'FKI' && !investmentIsRealIsin(invIsin(r))).forEach(r => add(r));
+  (state.investmentSnapshots || []).filter(s => !investmentIsCanonicalIdentity(s.isin)).forEach(s => add(s));
+  (state.investmentRecords || []).filter(r => invProductGroup(r) !== 'FKI' && !investmentIsCanonicalIdentity(invIsin(r))).forEach(r => add(r));
   ['deals', 'contracts', 'opportunities'].forEach(arr => (state[arr] || []).forEach(x => {
     const area = arr === 'deals' ? areaForDeal(x) : arr === 'contracts' ? areaForContract(x) : opportunityArea(x);
-    if (area === 'investice' && !investmentIsRealIsin(x.isin || x.fundIsin)) add(x);
+    if (area === 'investice' && !investmentIsCanonicalIdentity(x.isin || x.fundIsin)) add(x);
   }));
   return Object.values(groups).filter(g => g.count > 0);
 }
@@ -8969,20 +8979,20 @@ function investmentApplyMissingIsinPlan(plan) {
   let changed = 0;
   const targetFor = item => investmentCanonicalTarget(item, canonicals)?.key === plan.target.key;
   (state.investmentSnapshots || []).forEach(s => {
-    if (s.scope === 'provider-total' || investmentIsRealIsin(s.isin) || !targetFor(s)) return;
+    if (investmentIsCanonicalIdentity(s.isin) || !targetFor(s)) return;
     s.company = data.company; s.product = data.fond; s.isin = data.isin; s.mergeKey = data.mergeKey || s.mergeKey || ''; s.fundType = data.typ || s.fundType || ''; s.typ = data.typ || s.typ || ''; s.updatedAt = today(); changed++;
   });
   (state.investmentRecords || []).filter(r => invProductGroup(r) !== 'FKI').forEach(r => {
-    if (investmentIsRealIsin(invIsin(r)) || !targetFor(r)) return;
+    if (investmentIsCanonicalIdentity(invIsin(r)) || !targetFor(r)) return;
     r['Investiční společnost'] = data.company; r.Fond = data.fond; r['rp.ISIN'] = data.isin; if (data.typ) r['Typ CP'] = data.typ; r._updatedAt = today(); changed++;
   });
   ['deals', 'contracts', 'opportunities'].forEach(arr => (state[arr] || []).forEach(x => {
     const area = arr === 'deals' ? areaForDeal(x) : arr === 'contracts' ? areaForContract(x) : opportunityArea(x);
-    if (area !== 'investice' || investmentIsRealIsin(x.isin || x.fundIsin) || !targetFor(x)) return;
+    if (area !== 'investice' || investmentIsCanonicalIdentity(x.isin || x.fundIsin) || !targetFor(x)) return;
     x.company = data.company; x.product = data.fond; x.isin = data.isin; x.fundIsin = data.isin; x.fundType = data.typ || x.fundType || ''; x.updatedAt = today(); changed++;
   }));
   (state.investmentForecasts || []).forEach(f => [...(f.proposalRows || []), ...(f.managedRows || []), ...(f.externalRows || []), ...(f.variants || []).flatMap(v => v.rows || [])].forEach(x => {
-    if (investmentIsRealIsin(x.isin) || !targetFor(x)) return;
+    if (investmentIsCanonicalIdentity(x.isin) || !targetFor(x)) return;
     x.company = data.company; x.product = data.fond; x.isin = data.isin; x.typ = data.typ || x.typ || ''; changed++;
   }));
   return changed + commissions_applyInvestmentFundCanonicalMerge(plan.keys, plan.target.key, data);
@@ -12959,8 +12969,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.08-6';
-const VERSION_NOTE = 'Sjednocení investic doplní ISIN i starším pozicím a obnoví jeden fond napříč všemi klienty.';
+const VERSION = '2026.10.08-7';
+const VERSION_NOTE = 'Sjednocení investic zahrnuje také společný účet Edward a historické názvy dluhopisových fondů.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
