@@ -155,7 +155,7 @@ Systémové události budou v historii klienta viditelné, ale budou označené 
 1. **Hotovo:** nasadit tři hlavní cíle týdne, ruční a automatická KPI, reflexi a historii.
 2. **Hotovo:** zjednodušit zápis aktivit, zpřístupnit jej z celého CRM a napojit jednotné záznamy do Analýzy a automatických KPI týdenních cílů.
 3. Přidat automatické systémové události z obchodů a ochranu proti dvojímu započítání.
-4. Postavit měsíční a týdenní analýzu nad jednotnými aktivitami a systémovými událostmi.
+4. **Částečně hotovo:** měsíční přehled je hlavní pohled, jednotlivé týdny jsou navazující detail a oba pohledy čerpají ze společných aktivit. Zbývá doplnit automatické systémové události obchodů.
 5. **Částečně hotovo:** zapínání fází do očekávané provize je nasazené. Zbývá zdraví obchodu, pravděpodobnostně vážený výhled a výpočet potřebného počtu nových příležitostí.
 6. Propojit historii týdenních cílů s měsíčním obchodním výsledkem a vyhodnotit, které aktivity mají největší dopad.
 7. Postupně přidávat nové profily importovaných reportů do společného importního centra.

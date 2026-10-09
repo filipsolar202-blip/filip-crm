@@ -1,3 +1,10 @@
+## 2026.10.09-4
+
+- Analýza po otevření prioritně ukazuje celý zvolený měsíc: hlavní výsledky, souhrn aktivit a samostatné karty jednotlivých týdnů.
+- Kliknutím na týden se otevře jeho podrobný funnel, minuty navolávání a konkrétní zápisy až pod měsíčním přehledem.
+- Dva rozměrné formuláře pro hovor a schůzku nahradil společný rychlý zápis „+ Aktivita“ s předvolbami Telefon, Schůzka, Zpráva a Nabídka.
+- Jeden rychlý zápis se automaticky promítá do historie klienta, Analýzy i automatických KPI týdenních cílů a může zároveň založit další krok.
+
 ## 2026.10.09-3
 
 - Každá fáze pipeline má vlastní přepínač „Počítat do provize“; vypnutá fáze zůstane viditelná, ale její případy se nezapočítají do očekávané provize.

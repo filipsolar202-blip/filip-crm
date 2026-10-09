@@ -5229,6 +5229,19 @@ function setAnalysisWeek(key) {
   setVal('analysisWeek', key);
   renderReferrerHub();
 }
+function analysisMonthWeekKeys(month = quickAnalysis_selectedMonth()) {
+  if (!/^\d{4}-\d{2}$/.test(String(month || ''))) return [];
+  const [year, number] = month.split('-').map(Number), last = new Date(year, number, 0).getDate(), keys = new Set();
+  for (let day = 1; day <= last; day++) keys.add(quickAnalysis_wk(`${month}-${String(day).padStart(2, '0')}`));
+  return [...keys].sort();
+}
+function setAnalysisMonth(month) {
+  if (!/^\d{4}-\d{2}$/.test(String(month || ''))) return;
+  setVal('analysisMonth', month);
+  const date = month === today().slice(0, 7) ? today() : month + '-01';
+  setVal('analysisWeek', quickAnalysis_wk(date));
+  renderReferrerHub();
+}
 function renderReferrerHubCore() {
   renderAnalysis();
   const y = +val('dealYear') || new Date().getFullYear(),
@@ -13171,9 +13184,24 @@ function renderAnalysis() {
     month = quickAnalysis_selectedMonth(),
     m = analysisActuals(month + '-01', month + '-31'),
     all = a.summary.all,
-    pct = all.agreed ? Math.round(all.realized / all.agreed * 100) : null,
+    monthAll = m.summary.all,
+    monthPct = monthAll.agreed ? Math.round(monthAll.realized / monthAll.agreed * 100) : null,
     metrics = document.getElementById('analysisMetrics');
-  if (metrics) metrics.innerHTML = `<div class="metric"><span class="note">Úspěšnost týdne</span><b>${pct === null ? '—' : quickAnalysis_fmt(pct) + ' %'}</b><small>${quickAnalysis_fmt(all.realized)} z ${quickAnalysis_fmt(all.agreed)} domluvených kroků</small></div><div class="metric"><span class="note">Navoláno</span><b>${quickAnalysis_fmt(a.minutes)} min</b><small>${quickAnalysis_fmt(a.calls)} hovorů</small></div><div class="metric"><span class="note">Hovor → schůzka</span><b>${a.calls ? quickAnalysis_fmt(Math.round(a.summary.meetings.planned / a.calls * 100)) + ' %' : '—'}</b><small>${quickAnalysis_fmt(a.summary.meetings.planned)} domluveno</small></div><div class="metric"><span class="note">Doporučení / podpisy</span><b>${quickAnalysis_fmt(a.referrals)} / ${quickAnalysis_fmt(a.signatures)}</b></div>`;
+  if (metrics) metrics.innerHTML = `<div class="metric"><span class="note">Úspěšnost měsíce</span><b>${monthPct === null ? '—' : quickAnalysis_fmt(monthPct) + ' %'}</b><small>${quickAnalysis_fmt(monthAll.realized)} z ${quickAnalysis_fmt(monthAll.agreed)} domluvených kroků</small></div><div class="metric"><span class="note">Navoláno za měsíc</span><b>${quickAnalysis_fmt(m.minutes)} min</b><small>${quickAnalysis_fmt(m.calls)} uskutečněných hovorů</small></div><div class="metric"><span class="note">Schůzky za měsíc</span><b>${quickAnalysis_fmt(m.meetingsExisting)}</b><small>${quickAnalysis_fmt(m.analyses)} analýz · ${quickAnalysis_fmt(m.presentations)} prezentací</small></div><div class="metric"><span class="note">Výsledky měsíce</span><b>${quickAnalysis_fmt(m.referrals)} / ${quickAnalysis_fmt(m.signatures)}</b><small>doporučení / podpisy</small></div>`;
+  const monthLabel = document.getElementById('analysisMonthLabel');
+  if (monthLabel) {
+    const [my, mm] = month.split('-').map(Number);
+    monthLabel.textContent = new Intl.DateTimeFormat('cs-CZ', {month:'long', year:'numeric'}).format(new Date(my, mm - 1, 1));
+  }
+  const monthWeeks = document.getElementById('analysisMonthWeeks');
+  if (monthWeeks) monthWeeks.innerHTML = analysisMonthWeekKeys(month).map((week, index) => {
+    const wr = quickAnalysis_range(week), [wy, wm] = month.split('-').map(Number), monthEnd = `${month}-${String(new Date(wy, wm, 0).getDate()).padStart(2, '0')}`,
+      visibleStart = wr.start < month + '-01' ? month + '-01' : wr.start, visibleEnd = wr.end > monthEnd ? monthEnd : wr.end,
+      wa = analysisActuals(visibleStart, visibleEnd, week), summary = wa.summary.all,
+      success = summary.agreed ? Math.round(summary.realized / summary.agreed * 100) : null,
+      active = week === key;
+    return `<button class="analysis-month-week ${active ? 'active' : ''}" onclick="setAnalysisWeek('${quickAnalysis_html(week)}')"><span>${index + 1}. týden měsíce</span><strong>${quickAnalysis_html(visibleStart.slice(8))}.–${quickAnalysis_html(visibleEnd.slice(8))}. ${quickAnalysis_html(visibleEnd.slice(5,7))}.</strong><div><b>${quickAnalysis_fmt(wa.calls)}</b> hovorů · <b>${quickAnalysis_fmt(wa.meetingsExisting)}</b> schůzek</div><small>${quickAnalysis_fmt(wa.signatures)} podpisů · úspěšnost ${success === null ? '—' : quickAnalysis_fmt(success) + ' %'}</small></button>`;
+  }).join('');
   const table = document.getElementById('analysisPlanStatus');
   if (table) {
     table.classList.add('analysis-week-table');
@@ -13209,8 +13237,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.09-3';
-const VERSION_NOTE = 'Pipeline umožňuje u každé fáze zapnout nebo vypnout její obchody ve výpočtu očekávané provize.';
+const VERSION = '2026.10.09-4';
+const VERSION_NOTE = 'Analýza začíná měsíčním pohledem, týdny jsou přehledný detail a všechny aktivity se zapisují jedním rychlým formulářem.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';

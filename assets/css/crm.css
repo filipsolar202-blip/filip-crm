@@ -308,6 +308,58 @@ h1,h2,h3,h4,.detail-title,.client-row b,.portfolio-card b,.contact-value{color:#
 .pipeline-column.commission-off .pipeline-card{filter:saturate(.55)}
 @media(max-width:700px){.pipeline-commission-summary{align-items:flex-start;flex-direction:column}}
 
+/* Analýza: měsíc je hlavní pohled, týden slouží jako navazující detail. */
+#referrers .analysis-main-toolbar{align-items:flex-end;padding:4px 2px 10px}
+#referrers .analysis-period-field{display:grid;gap:4px;color:var(--muted);font-size:10px;font-weight:900;text-transform:uppercase}
+#referrers .analysis-period-field input{min-height:30px;border:1.5px solid #9fb8d4;border-radius:10px;background:#f4f8fd;color:var(--text);padding:5px 8px;font:inherit}
+#referrers .analysis-month-overview{margin-top:10px;padding:13px;border:1.5px solid rgba(83,139,190,.52);border-radius:17px;background:linear-gradient(145deg,rgba(238,247,253,.94),rgba(247,249,251,.72));box-shadow:0 12px 32px rgba(38,67,105,.07),inset 0 1px 0 #fff}
+#referrers .analysis-month-overview h3{text-transform:capitalize}
+#referrers .analysis-month-weeks{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin:8px 0 12px}
+#referrers .analysis-month-week{display:grid;gap:4px;text-align:left;padding:10px 11px;border:1.5px solid rgba(147,176,207,.62);border-radius:13px;background:rgba(255,255,255,.7);color:var(--text);cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.94)}
+#referrers .analysis-month-week:hover{border-color:#5f8fbe;background:#fff}
+#referrers .analysis-month-week.active{border-color:#2879b2;background:linear-gradient(145deg,#e5f4fb,#f6fbfe);box-shadow:0 8px 20px rgba(45,113,163,.12)}
+#referrers .analysis-month-week>span{font-size:9px;font-weight:900;text-transform:uppercase;color:#4f779b}
+#referrers .analysis-month-week>strong{font-size:13px}
+#referrers .analysis-month-week>div,#referrers .analysis-month-week>small{font-size:10px;color:var(--muted)}
+#referrers .analysis-entry-guide{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:12px;padding:12px 14px;border:1.5px solid rgba(91,163,168,.45);border-radius:15px;background:linear-gradient(135deg,rgba(232,249,247,.86),rgba(244,250,252,.72))}
+#referrers .analysis-entry-guide h3{margin:1px 0 4px;font-size:14px}
+#referrers .analysis-entry-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}
+#referrers .analysis-week-detail{margin-top:12px;border:1.5px solid rgba(164,184,207,.6);border-radius:15px;background:rgba(247,249,251,.58);overflow:hidden}
+#referrers .analysis-week-detail>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 13px;cursor:pointer;list-style:none;background:rgba(233,239,247,.74)}
+#referrers .analysis-week-detail>summary::-webkit-details-marker{display:none}
+#referrers .analysis-week-detail>summary span:first-child{display:grid;gap:2px}
+#referrers .analysis-week-detail>summary strong{font-size:14px}
+#referrers .analysis-week-body{display:grid;gap:12px;padding:12px}
+#referrers .analysis-week-body .analysis-call-card,#referrers .analysis-week-entries{padding:10px;border:1px solid rgba(190,211,235,.74);border-radius:13px;background:rgba(255,255,255,.62)}
+@media(max-width:760px){#referrers .analysis-main-toolbar,#referrers .analysis-entry-guide{align-items:stretch;flex-direction:column}#referrers .analysis-entry-actions{justify-content:flex-start}}
+
+/* Klidnejsi kartovy styl podle zvolene vizualni reference. */
+#referrers>.card{padding:18px;background:linear-gradient(145deg,rgba(245,243,237,.9),rgba(241,246,251,.88));border-color:rgba(190,181,163,.42)}
+#referrers .analysis-main-toolbar{margin:-2px 0 16px;padding:16px 18px;border:1.5px solid rgba(205,197,182,.62);border-radius:18px;background:rgba(255,255,255,.88);box-shadow:0 10px 28px rgba(69,76,86,.06)}
+#referrers .analysis-main-toolbar h2{font-size:22px;color:#172b42}
+#referrers #analysisMetrics{gap:12px;margin:0 0 16px}
+#referrers #analysisMetrics .metric{min-height:92px;padding:15px 17px;border-color:rgba(205,197,182,.62);border-radius:17px;background:rgba(255,255,255,.9);box-shadow:0 9px 24px rgba(69,76,86,.05)}
+#referrers #analysisMetrics .metric .note{font-size:11px;text-transform:none;color:#707a81}
+#referrers #analysisMetrics .metric b{margin-top:8px;font-size:23px;color:#172b42}
+#referrers #analysisMetrics .metric small{margin-top:5px;color:#77838d}
+#referrers .analysis-month-overview{padding:18px;border-color:rgba(205,197,182,.66);border-radius:19px;background:rgba(255,255,255,.91);box-shadow:0 12px 30px rgba(69,76,86,.06)}
+#referrers .analysis-month-overview h3{font-size:19px;color:#172b42}
+#referrers .analysis-month-week{min-height:116px;padding:13px 14px;border-color:rgba(205,197,182,.72);border-radius:15px;background:#fff}
+#referrers .analysis-month-week.active{border-color:#4a86b8;background:linear-gradient(145deg,#f2f8fc,#fff);box-shadow:0 9px 22px rgba(45,113,163,.11)}
+#referrers .analysis-month-week>strong{font-size:15px;color:#172b42}
+#referrers .analysis-entry-guide{padding:15px 17px;border-color:rgba(182,193,188,.7);border-radius:17px;background:rgba(255,255,255,.88);box-shadow:0 9px 24px rgba(69,76,86,.045)}
+#referrers .analysis-week-detail{border-color:rgba(205,197,182,.66);border-radius:18px;background:rgba(255,255,255,.88);box-shadow:0 10px 28px rgba(69,76,86,.05)}
+#referrers .analysis-week-detail>summary{padding:15px 17px;background:rgba(248,246,241,.92)}
+#referrers .analysis-week-detail>summary strong{font-size:17px;color:#172b42}
+#referrers .analysis-week-body{gap:16px;padding:17px}
+#referrers .analysis-week-body .analysis-call-card,#referrers .analysis-week-entries{padding:14px;border-color:rgba(213,205,191,.7);background:#fff}
+#referrers .analysis-day-pill{padding:13px;border-color:rgba(213,205,191,.7);background:#fff}
+#referrers .analysis-day-pill b{font-size:20px;color:#172b42}
+#referrers .analysis-month-overview .table-wrap,#referrers .analysis-week-detail .table-wrap{border-color:rgba(213,205,191,.7);background:#fff}
+#referrers .analysis-month-overview th,#referrers .analysis-week-detail th{padding:9px 10px;background:rgba(248,246,241,.96);color:#68737a;font-size:10px}
+#referrers .analysis-month-overview td,#referrers .analysis-week-detail td{padding:8px 10px;font-size:11px}
+@media(max-width:760px){#referrers>.card{padding:10px}#referrers .analysis-main-toolbar{padding:13px}#referrers #analysisMetrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
 /* Tři hlavní cíle týdne: stručná výsledková tabule, ne další seznam úkolů. */
 .weekly-focus-card{position:relative;overflow:hidden;background:linear-gradient(135deg,#fff 0%,#f5f9ff 58%,#eef8f7 100%);border-color:#9bb9db}.weekly-focus-card:before{content:"";position:absolute;inset:0 0 auto;height:5px;background:linear-gradient(90deg,#174f7b,#33b4c5,#80b9a8)}.weekly-focus-toolbar{align-items:flex-start}.weekly-focus-question{margin:12px 0 16px;padding:12px 14px;border-left:4px solid #32afc0;background:#eef9fb;color:#183b5a;font-weight:700;border-radius:8px}.weekly-goals-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.weekly-goal{display:flex;flex-direction:column;gap:10px;min-height:250px;padding:16px;border:1px solid #c6d8eb;border-radius:16px;background:rgba(255,255,255,.9);box-shadow:0 8px 22px rgba(25,74,117,.07)}.weekly-goal.empty{justify-content:center;align-items:flex-start;border-style:dashed;background:rgba(255,255,255,.55)}.weekly-goal.late{border-color:#d86b67;background:#fff6f5}.weekly-goal-head,.weekly-goal-score,.weekly-goal-foot{display:flex;align-items:center;justify-content:space-between;gap:10px}.weekly-goal-number{display:inline-grid;place-items:center;min-width:30px;height:30px;padding:0 8px;border-radius:10px;background:#174f7b;color:#fff;font-weight:800}.weekly-goal h3{margin:3px 0 0;font-size:18px;line-height:1.25;color:#173c60}.weekly-goal-why{min-height:36px;margin:0}.weekly-goal-score{margin-top:auto;color:#173c60}.weekly-goal-score strong{font-size:20px}.weekly-progress{height:11px;overflow:hidden;border-radius:999px;background:#e5edf5}.weekly-progress span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#2caec0,#1c7ea8);transition:width .25s ease}.weekly-goal-foot{font-size:12px;color:#607a96}.weekly-goals-history{margin-top:14px}.weekly-goals-history details{border-top:1px solid #d9e5f1;padding-top:12px}.weekly-goals-history summary{display:flex;justify-content:space-between;gap:12px;cursor:pointer;color:#244f78}.weekly-history-bars{display:flex;align-items:flex-end;gap:8px;height:150px;margin-top:12px;padding:10px;background:#fff;border-radius:12px}.weekly-history-bars button{position:relative;display:grid;grid-template-rows:1fr auto auto;align-items:end;min-width:44px;height:100%;padding:0 4px;border:0;background:transparent;color:#315777;cursor:pointer}.weekly-history-bars button>span{display:block;width:22px;min-height:2px;margin:auto auto 5px;border-radius:6px 6px 2px 2px;background:linear-gradient(#39b3c0,#215b8e)}.weekly-history-bars small{font-size:10px}.weekly-goal-tabs{display:flex;gap:8px;margin:12px 0}.weekly-review-summary{display:grid;gap:8px;margin:12px 0 18px}.weekly-review-summary>div{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;padding:10px 12px;border:1px solid #d5e1ed;border-radius:12px;background:#f8fbfe}@media(max-width:900px){.weekly-goals-grid{grid-template-columns:1fr}.weekly-goal{min-height:auto}.weekly-goals-history summary{display:block}.weekly-review-summary>div{grid-template-columns:auto 1fr}.weekly-review-summary>div>span:last-child{grid-column:2}}
 
