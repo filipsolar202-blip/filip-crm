@@ -1,10 +1,29 @@
 # Plán dalšího rozvoje FILIP CRM
 
-Stav: náměty k pozdějšímu společnému upřesnění. Tento dokument zatím nemění fungování CRM.
+Stav: sjednocený plán rozvoje. První vrstva „3 hlavní cíle týdne“ je nasazená; další body na ni budou postupně napojeny.
 
 ## 0. Tři hlavní cíle týdne
 
 První verze je od 9. 10. 2026 přímo na Dashboardu. Obsahuje tři pevné priority, ruční i automatická KPI, průběh, týdenní reflexi a archiv posledních 12 týdnů. Další krok bude propojit historii cílů s obchodním výsledkem a ukázat, které opakované aktivity skutečně zvyšují počet příležitostí, schůzek, podpisů a provizí.
+
+## Jak budou jednotlivé části spolupracovat
+
+CRM bude mít čtyři navazující vrstvy:
+
+1. **Zápis práce** – rychlé aktivity a automatické události zachytí, co se skutečně stalo.
+2. **Týdenní řízení** – tři hlavní cíle vyberou činnosti s největším dopadem a průběžně převezmou skutečné hodnoty ze zápisů.
+3. **Manažerský pohled** – měsíční analýza vysvětlí, které aktivity vedly k příležitostem, schůzkám, podpisům, BJ a provizím.
+4. **Výhled** – pipeline ukáže obchody před dokončením, rizika, očekávanou provizi a počet nových případů potřebných pro splnění cíle.
+
+Jeden zápis se vytvoří pouze jednou. Ostatní části CRM jej jen použijí ve svém výpočtu. Například uskutečněná schůzka se zapíše jako aktivita, automaticky zvýší příslušný týdenní cíl a současně se zobrazí v měsíční analýze. Posun karty v pipeline zůstane systémovou událostí a nebude se vydávat za schůzku.
+
+### Napojení tří hlavních cílů
+
+- **Kontaktovaní klienti** se budou počítat z hotových telefonů, zpráv, e-mailů a schůzek s přiřazeným klientem.
+- **Nové příležitosti** se budou počítat podle data založení obchodního případu.
+- **Schůzky, analýzy, prezentace, doporučení a podpisy** se budou přebírat z jednotných aktivit.
+- **Obchodní výsledek** se bude počítat z dokončených obchodů, BJ, objemu a skutečné nebo očekávané provize.
+- Ruční hodnota zůstane pro cíle, které CRM nedokáže spolehlivě změřit, například zavedení nového postupu nebo delegování činnosti.
 
 ## 1. Další importy reportů
 
@@ -132,11 +151,13 @@ Systémové události budou v historii klienta viditelné, ale budou označené 
 
 ## Doporučené pořadí realizace
 
-1. Zjednodušit zápis aktivit a sjednotit jejich datový model.
-2. Postavit měsíční a týdenní analýzu nad novými aktivitami.
+1. **Hotovo:** nasadit tři hlavní cíle týdne, ruční a automatická KPI, reflexi a historii.
+2. Zjednodušit zápis aktivit a sjednotit jejich datový model. Současně opravit automatické KPI týdenních cílů tak, aby četla jen z tohoto jednotného zdroje.
 3. Přidat automatické systémové události z obchodů a ochranu proti dvojímu započítání.
-4. Doplnit výběr sloupců pipeline a provizní výhled.
-5. Postupně přidávat nové profily importovaných reportů do společného importního centra.
+4. Postavit měsíční a týdenní analýzu nad jednotnými aktivitami a systémovými událostmi.
+5. Doplnit výběr sloupců pipeline, zdraví obchodu, provizní výhled a výpočet potřebného počtu nových příležitostí.
+6. Propojit historii týdenních cílů s měsíčním obchodním výsledkem a vyhodnotit, které aktivity mají největší dopad.
+7. Postupně přidávat nové profily importovaných reportů do společného importního centra.
 
 Importní centrum lze připravovat nezávisle souběžně s prvními čtyřmi body.
 
@@ -147,6 +168,8 @@ Importní centrum lze připravovat nezávisle souběžně s prvními čtyřmi bo
 - Které aktivity se mají počítat do osobní produkční analýzy.
 - Jaké měsíční cíle mají být v analýze sledované.
 - Které změny obchodu mají vytvořit automatickou událost a které mají zůstat pouze v technické historii.
+- Jaký měsíční nebo roční cíl provize se použije pro výpočet chybějící pipeline.
+- Zda bude pravděpodobnost dokončení vycházet pouze z historické úspěšnosti fáze, nebo ji bude možné upravit také u konkrétního případu.
 
 ## Podmínky kvalitního výsledku
 
@@ -155,3 +178,5 @@ Importní centrum lze připravovat nezávisle souběžně s prvními čtyřmi bo
 - Ruční oprava musí mít přednost před automatickým výpočtem, pokud je tak označena.
 - Přehledy musí umožnit otevřít položky, ze kterých vznikl součet.
 - Nové funkce nesmí odebírat současné možnosti CRM.
+- Každá obchodní aktivita a událost musí mít stabilní identifikátor, aby se nemohla započítat vícekrát v cílech, analýze ani pipeline.
+- Automatické metriky musí umožnit otevřít seznam konkrétních záznamů, ze kterých vznikly.
