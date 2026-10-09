@@ -259,6 +259,9 @@ try{
  assert.equal(await page.locator('#isFundNavDate').getAttribute('type'),'date');
  await page.screenshot({path:'/private/tmp/crm-investment-position-modal.png',fullPage:true});
  await page.evaluate(()=>closeModal('investmentSnapshotModal'));
+ assert.equal(await page.locator('#invFundEntryCommission').count(),1);assert.equal(await page.locator('#fkFundEntryCommission').count(),1);
+ const entryCommission=await page.evaluate(()=>{fundProfile_store('investice','qa-entry-fund','QAENTRY0001',{entryCommissionPct:0.75});const saved=fundProfile_value('investice','qa-entry-fund','QAENTRY0001').entryCommissionPct;delete state.fundValues['qa-entry-fund'];return saved});
+ assert.equal(entryCommission,0.75);results.push('Funds store a separate entry commission or bonus alongside recurring commission');
  for(const expr of ["selectClient(1)","selectInvestmentClient(1)","selectFkClient(1)","selectPensionClient(1)","openClientModal(1)","openContractModal(1,10)","openDealModal(1,20)","openOpportunityModal(1,30)","openActivityModal(1,40)","openInvestmentFundModal()","openFkFundModal()","openInvestmentScenarioModal(1,'FKI')"]){await page.evaluate(expr);await page.evaluate(()=>document.querySelectorAll('.modal.show').forEach(x=>x.classList.remove('show')))}
  results.push('Client, investment, pension and editing dialogs');
  // Exercise real downloads; generated reports must be usable as independent files.
@@ -275,6 +278,10 @@ try{
  assert(await page.locator('#analysisMonthWeeks .analysis-month-week').count()>=4);
  assert.equal(await page.locator('#referrers .analysis-quick-grid').count(),0);
  assert.equal(await page.locator('#referrers .analysis-entry-guide').count(),1);
+ assert.equal(await page.locator('#analysisMonthTable').count(),0);
+ assert.equal(await page.locator('#analysisMonthActivityCards .analysis-activity-card').count(),7);
+ assert.equal(await page.locator('#analysisWeekMetrics .analysis-activity-card').count(),7);
+ assert.equal(await page.locator('#referrers .analysis-compact-section').count(),4);
  assert(await page.evaluate(()=>document.querySelector('.analysis-month-overview').compareDocumentPosition(document.querySelector('.analysis-week-detail'))&Node.DOCUMENT_POSITION_FOLLOWING));
  await page.setViewportSize({width:1600,height:1000});await page.screenshot({path:'/private/tmp/crm-analysis-month.png',fullPage:true});
  results.push('Analysis opens with the full month, weekly cards follow as detail and one compact activity entry replaces duplicate forms');
@@ -425,6 +432,8 @@ try{
  });
  assert.equal(management.defaultPartner,'filip');assert.equal(management.claim,4000);assert.equal(management.received,3000);assert(management.clientRows>=1);assert(management.dealRows>=1);assert.equal(management.filteredClientRows,1);assert.equal(management.filterValue,'mantra');assert(management.mantraAum>=0);assert(management.ownAum>=0);
  results.push('Management separates partner clients, trade claims, AUM and received payouts while migrating existing clients to Filip');
+ const collapsedTable=await page.evaluate(()=>{showView('management');const body=byId('managementClientsTable').tBodies[0];body.innerHTML=Array.from({length:12},(_,i)=>`<tr><td>QA ${i+1}</td></tr>`).join('');applyLongTableCollapse(byId('management'));return {hidden:body.querySelectorAll('.long-table-hidden').length,button:byId('management').querySelector('.long-table-control button')?.textContent||''}});
+ assert.deepEqual(collapsedTable,{hidden:10,button:'Zobrazit vše · 12 řádků'});results.push('Long management, report, investment, FKI and analysis tables collapse to a two-row preview');
 
  const weeklyGoals=await page.evaluate(()=>{
    const original={weeklyGoals:state.weeklyGoals,weeklyReviews:state.weeklyReviews,analysisEntries:state.analysisEntries,opportunities:state.opportunities};

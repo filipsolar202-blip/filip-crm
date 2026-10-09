@@ -2562,6 +2562,7 @@ function renderFundSettingsTable() {
     aum: +f.rawCurrent || 0,
     invested: +f.invested || 0,
     trail: state.trailSettings?.[f.key]?.trailPct ?? investmentFundStoredValue(f).trailPct ?? '',
+    entryCommission: investmentFundStoredValue(f).entryCommissionPct ?? '',
     locked: isInvestmentFundLocked(f.key),
     edit: 'investment'
   }));
@@ -2577,11 +2578,12 @@ function renderFundSettingsTable() {
     aum: +f.rawCurrent || 0,
     invested: +f.invested || 0,
     trail: state.trailSettings?.[f.key]?.trailPct ?? state.fundValues?.[f.key]?.trailPct ?? '',
+    entryCommission: state.fundValues?.[f.key]?.entryCommissionPct ?? '',
     locked: isFkiFundGloballyLocked(f.key),
     edit: 'fki'
   }));
   const rows = [...inv, ...fki].sort((a, b) => a.area.localeCompare(b.area, 'cs') || String(a.company).localeCompare(String(b.company), 'cs') || String(a.product).localeCompare(String(b.product), 'cs'));
-  table.innerHTML = `<thead><tr><th>Typ</th><th>Společnost - fond</th><th>ISIN / klíč</th><th>Vloženo</th><th>AUM</th><th>Následná %</th><th>Zámek</th><th></th></tr></thead><tbody>${rows.map(r => `<tr><td><span class="badge ${r.area === 'FKI' ? 'purple' : 'green'}">${r.area}</span></td><td><b>${esc([r.company, r.product].filter(Boolean).join(' - '))}</b><br><span class="note">${esc(r.typ || 'typ neuveden')}</span></td><td>${esc(r.isin || 'ISIN chybí')}<br><span class="note">${esc(r.mergeKey ? 'sloučeno: ' + r.mergeKey : 'klíč: ' + r.key)}</span></td><td class="money">${money(r.invested)}</td><td class="money">${money(r.aum)}</td><td class="num">${r.trail !== '' ? decimal(r.trail) + ' %' : '-'}</td><td>${r.locked ? '<span class="badge orange">zamčeno</span>' : '<span class="note">otevřeno</span>'}</td><td><button class="btn slim" onclick="${r.edit === 'fki' ? `openFkFundModal('${encodeURIComponent(r.key)}')` : `openInvestmentFundModal('${encodeURIComponent(r.key)}')`}">Upravit</button></td></tr>`).join('') || '<tr><td colspan="8" class="note">Zatím tu nejsou žádné fondy k nastavení.</td></tr>'}</tbody>`;
+  table.innerHTML = `<thead><tr><th>Typ</th><th>Společnost - fond</th><th>ISIN / klíč</th><th>Vloženo</th><th>AUM</th><th>Následná %</th><th>Vstupní %</th><th>Odhad vstupní provize</th><th>Zámek</th><th></th></tr></thead><tbody>${rows.map(r => `<tr><td><span class="badge ${r.area === 'FKI' ? 'purple' : 'green'}">${r.area}</span></td><td><b>${esc([r.company, r.product].filter(Boolean).join(' - '))}</b><br><span class="note">${esc(r.typ || 'typ neuveden')}</span></td><td>${esc(r.isin || 'ISIN chybí')}<br><span class="note">${esc(r.mergeKey ? 'sloučeno: ' + r.mergeKey : 'klíč: ' + r.key)}</span></td><td class="money">${money(r.invested)}</td><td class="money">${money(r.aum)}</td><td class="num">${r.trail !== '' ? decimal(r.trail) + ' %' : '-'}</td><td class="num">${r.entryCommission !== '' ? decimal(r.entryCommission) + ' %' : '-'}</td><td class="money">${r.entryCommission !== '' ? money(r.invested * (+r.entryCommission || 0) / 100) : '-'}</td><td>${r.locked ? '<span class="badge orange">zamčeno</span>' : '<span class="note">otevřeno</span>'}</td><td><button class="btn slim" onclick="${r.edit === 'fki' ? `openFkFundModal('${encodeURIComponent(r.key)}')` : `openInvestmentFundModal('${encodeURIComponent(r.key)}')`}">Upravit</button></td></tr>`).join('') || '<tr><td colspan="10" class="note">Zatím tu nejsou žádné fondy k nastavení.</td></tr>'}</tbody>`;
 }
 function renderReportDetails() {
   const el = byId('reportDetailGroups');
@@ -12140,6 +12142,7 @@ function loadInvestmentFundToForm() {
     clients = fund?.clients?.size || 0;
   setVal('invFundComment', fundPerformance_fundComment('investice', key, isin));
   fundProfile_fill('invFund','investice',key,isin);
+  setVal('invFundEntryCommission', fundProfile_value('investice',key,isin).entryCommissionPct ?? '');
   setText('invFundPropagationNote', clients ? `Hodnota CP a datum ocenění se po uložení použijí u ${num(clients)} klientů s tímto fondem.` : 'Hodnota CP a datum ocenění se po uložení použijí u všech klientů s tímto fondem.');
 }
 function loadFkFundToForm() {
@@ -12148,15 +12151,17 @@ function loadFkFundToForm() {
     isin = val('fkFundIsin');
   setVal('fkFundComment', fundPerformance_fundComment('fki', key, isin));
   fundProfile_fill('fkFund','fki',key,isin);
+  setVal('fkFundEntryCommission', fundProfile_value('fki',key,isin).entryCommissionPct ?? '');
 }
 function saveInvestmentFund() {
   const keyBefore = val('invFundSelect') || (typeof investmentFundKeyFromForm === 'function' ? investmentFundKeyFromForm() : ''),
     isin = val('invFundIsin').trim(),
-    comment = val('invFundComment').trim();
+    comment = val('invFundComment').trim(),
+    entryCommissionPct = val('invFundEntryCommission').trim() === '' ? '' : parseMoney(val('invFundEntryCommission'));
   if (typeof fundPerformance_oldSaveInvFund === 'function') fundPerformance_oldSaveInvFund.apply(this, arguments);
   const keyAfter = keyBefore || (typeof investmentFundKeyFromForm === 'function' ? investmentFundKeyFromForm() : '');
   fundPerformance_storeFundComment('investice', keyAfter, isin, comment);
-  fundProfile_store('investice',keyAfter,isin,fundProfile_fields('invFund'));
+  fundProfile_store('investice',keyAfter,isin,{...fundProfile_fields('invFund'),entryCommissionPct});
   persist();
   renderAll();
   saveToast('Investiční fond uložen včetně komentáře do reportu');
@@ -12164,11 +12169,12 @@ function saveInvestmentFund() {
 function saveFkFund() {
   const keyBefore = val('fkFundSelect') || (typeof fkFundKeyFromForm === 'function' ? fkFundKeyFromForm() : ''),
     isin = val('fkFundIsin').trim(),
-    comment = val('fkFundComment').trim();
+    comment = val('fkFundComment').trim(),
+    entryCommissionPct = val('fkFundEntryCommission').trim() === '' ? '' : parseMoney(val('fkFundEntryCommission'));
   if (typeof fundPerformance_oldSaveFkFund === 'function' && fundPerformance_oldSaveFkFund.apply(this, arguments) === false) return;
   const keyAfter = (typeof fkFundKeyFromForm === 'function' ? fkFundKeyFromForm() : '') || keyBefore;
   fundPerformance_storeFundComment('fki', keyAfter, isin, comment);
-  fundProfile_store('fki',keyAfter,isin,fundProfile_fields('fkFund'));
+  fundProfile_store('fki',keyAfter,isin,{...fundProfile_fields('fkFund'),entryCommissionPct});
   persist();
   renderAll();
   saveToast('FKI fond uložen včetně komentáře do reportu');
@@ -13055,6 +13061,8 @@ function renderAnalysisWeeklyPreview() {
   if (box) box.innerHTML = quickAnalysis_DAYS.map(([k, label]) => `<div class="analysis-day-pill"><span>${quickAnalysis_html(label)}</span><b>${quickAnalysis_fmt(days[k] || 0)} min</b></div>`).join('');
   const totalEl = document.getElementById('analysisCallTotal');
   if (totalEl) totalEl.textContent = quickAnalysis_fmt(total) + ' min';
+  const rangeEl = document.getElementById('analysisCallRange');
+  if (rangeEl) rangeEl.textContent = `Vybraný týden ${r.start.split('-').reverse().join('.')} – ${r.end.split('-').reverse().join('.')}`;
   return {
     planned,
     realized,
@@ -13193,6 +13201,18 @@ function renderAnalysis() {
     const [my, mm] = month.split('-').map(Number);
     monthLabel.textContent = new Intl.DateTimeFormat('cs-CZ', {month:'long', year:'numeric'}).format(new Date(my, mm - 1, 1));
   }
+  const activityCards = (target, rows) => {
+    const el = document.getElementById(target);
+    if (!el) return;
+    el.innerHTML = quickAnalysis_ROWS.map(([activityKey, label]) => {
+      const summary = quickAnalysis_summary(rows, activityKey), total = summary.realized + summary.moved + summary.noShow,
+        pct = summary.planned ? Math.round(summary.realized / summary.planned * 100) : null;
+      return `<article class="analysis-activity-card"><span>${quickAnalysis_html(label)}</span><strong>${quickAnalysis_fmt(summary.realized)}</strong><small>uskutečněno</small><div><b>${quickAnalysis_fmt(summary.planned)}</b> domluveno · <b>${quickAnalysis_fmt(total)}</b> vyřízeno</div><footer>${summary.moved ? `${quickAnalysis_fmt(summary.moved)} přesunuto · ` : ''}${summary.noShow ? `${quickAnalysis_fmt(summary.noShow)} nedorazil · ` : ''}úspěšnost ${pct === null ? '—' : quickAnalysis_fmt(pct) + ' %'}${activityKey === 'calls' ? ` · ${quickAnalysis_fmt(summary.minutes)} min` : ''}</footer></article>`;
+    }).join('');
+  };
+  const monthRows = analysisRows(month + '-01', month + '-31');
+  activityCards('analysisMonthActivityCards', monthRows);
+  activityCards('analysisWeekMetrics', list);
   const monthWeeks = document.getElementById('analysisMonthWeeks');
   if (monthWeeks) monthWeeks.innerHTML = analysisMonthWeekKeys(month).map((week, index) => {
     const wr = quickAnalysis_range(week), [wy, wm] = month.split('-').map(Number), monthEnd = `${month}-${String(new Date(wy, wm, 0).getDate()).padStart(2, '0')}`,
@@ -13200,7 +13220,7 @@ function renderAnalysis() {
       wa = analysisActuals(visibleStart, visibleEnd, week), summary = wa.summary.all,
       success = summary.agreed ? Math.round(summary.realized / summary.agreed * 100) : null,
       active = week === key;
-    return `<button class="analysis-month-week ${active ? 'active' : ''}" onclick="setAnalysisWeek('${quickAnalysis_html(week)}')"><span>${index + 1}. týden měsíce</span><strong>${quickAnalysis_html(visibleStart.slice(8))}.–${quickAnalysis_html(visibleEnd.slice(8))}. ${quickAnalysis_html(visibleEnd.slice(5,7))}.</strong><div><b>${quickAnalysis_fmt(wa.calls)}</b> hovorů · <b>${quickAnalysis_fmt(wa.meetingsExisting)}</b> schůzek</div><small>${quickAnalysis_fmt(wa.signatures)} podpisů · úspěšnost ${success === null ? '—' : quickAnalysis_fmt(success) + ' %'}</small></button>`;
+    return `<button class="analysis-month-week ${active ? 'active' : ''}" onclick="setAnalysisWeek('${quickAnalysis_html(week)}')"><div class="analysis-week-title"><span>${index + 1}. týden měsíce</span><strong>${quickAnalysis_html(visibleStart.slice(8))}.–${quickAnalysis_html(visibleEnd.slice(8))}. ${quickAnalysis_html(visibleEnd.slice(5,7))}.</strong><small>úspěšnost ${success === null ? '—' : quickAnalysis_fmt(success) + ' %'}</small></div><div class="analysis-week-numbers"><span><b>${quickAnalysis_fmt(wa.calls)}</b><small>hovorů</small></span><span><b>${quickAnalysis_fmt(wa.meetingsExisting)}</b><small>schůzek</small></span><span><b>${quickAnalysis_fmt(wa.signatures)}</b><small>podpisů</small></span></div></button>`;
   }).join('');
   const table = document.getElementById('analysisPlanStatus');
   if (table) {
@@ -13216,8 +13236,7 @@ function renderAnalysis() {
     moved: 'Přesunuto',
     no_show: 'Nedorazil'
   }[quickAnalysis_outcome(x)] || 'Zrealizováno')}</span></td><td>${quickAnalysis_html(x.nextType || '')}</td><td class="num">${quickAnalysis_fmt(x.minutes || 0)}</td><td>${quickAnalysis_html(x.note || '')}</td><td>${analysisActivityActions(x)}</td></tr>`).join('') || '<tr><td colspan="7" class="note">Zatím není zapsaný žádný hovor ani schůzka.</td></tr>'}</tbody>`;
-  const mt = document.getElementById('analysisMonthTable'),
-    monthRows = analysisRows(month + '-01', month + '-31');
+  const mt = document.getElementById('analysisMonthTable');
   if (mt) mt.innerHTML = `<thead><tr><th>Aktivita</th><th>Domluveno</th><th>Zrealizováno</th><th>Přesunuto</th><th>Nedorazil</th><th>Úspěšnost</th><th>Minuty</th></tr></thead><tbody>${quickAnalysis_ROWS.map(([k, label]) => {
     const su = quickAnalysis_summary(monthRows, k),
       mp = su.planned ? Math.round(su.realized / su.planned * 100) : null;
@@ -13237,8 +13256,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.09-5';
-const VERSION_NOTE = 'Měsíční Analýza je sjednocená s modrostříbrným vzhledem celého FILIP CRM.';
+const VERSION = '2026.10.09-6';
+const VERSION_NOTE = 'Analýza používá velké výsledkové karty, podrobnosti lze sbalit a fondy evidují následnou i vstupní provizi.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
@@ -13357,6 +13376,42 @@ const annualAnalysis_ANALYSIS_MONTH_LABELS = ['Led', 'Úno', 'Bře', 'Dub', 'Kv�
 const annualAnalysis_ANALYSIS_YEAR_COLORS = ['#2563eb', '#16a34a', '#f59e0b', '#7c3aed', '#dc2626', '#0891b2', '#db2777', '#475569'];
 let annualAnalysis_analysisBusinessChart = null;
 const commissions_baseReportFundSettings = renderFundSettingsTable;
+const longTableExpanded = new Set();
+function applyLongTableCollapse(root = document.querySelector('.view.active'), threshold = 10, preview = 2) {
+  if (!root) return;
+  root.querySelectorAll('.long-table-control').forEach(x => x.remove());
+  [...root.querySelectorAll('table tbody')].forEach((body, index) => {
+    const rows = [...body.querySelectorAll(':scope > tr')], table = body.closest('table'), wrap = table?.closest('.table-wrap');
+    if (!table || !wrap) return;
+    const key = table.id || `${root.id || 'view'}-table-${index}`;
+    table.dataset.longTableId = key;
+    rows.forEach(row => row.classList.remove('long-table-hidden'));
+    if (rows.length <= threshold) return;
+    const expanded = longTableExpanded.has(key);
+    if (!expanded) rows.slice(preview).forEach(row => row.classList.add('long-table-hidden'));
+    const control = document.createElement('div');
+    control.className = 'long-table-control';
+    control.innerHTML = `<button class="btn" onclick="toggleLongTable('${encodeURIComponent(key)}')">${expanded ? 'Sbalit na náhled' : `Zobrazit vše · ${num(rows.length)} řádků`}</button>`;
+    wrap.appendChild(control);
+  });
+}
+function toggleLongTable(encodedKey) {
+  const key = decodeURIComponent(encodedKey);
+  if (longTableExpanded.has(key)) longTableExpanded.delete(key);else longTableExpanded.add(key);
+  applyLongTableCollapse();
+}
+function wrapLongTableRenderer(fn) {
+  return function (...args) {
+    const result = fn.apply(this, args);
+    applyLongTableCollapse(document.querySelector('.view.active'));
+    return result;
+  };
+}
+renderManagement = wrapLongTableRenderer(renderManagement);
+renderReports = wrapLongTableRenderer(renderReports);
+renderInvestments = wrapLongTableRenderer(renderInvestments);
+renderFk = wrapLongTableRenderer(renderFk);
+renderReferrerHub = wrapLongTableRenderer(renderReferrerHub);
 document.addEventListener('click', function (e) {
   const btn = e.target.closest('[data-dash-action]');
   if (!btn) return;

@@ -1,3 +1,11 @@
+## 2026.10.09-6
+
+- Analýza řadí obsah jako měsíční KPI, minuty navolávání, výsledkové karty měsíce, rychlý zápis a výrazné týdenní karty.
+- Malou měsíční tabulku nahradily čitelné karty; týdenní karty zobrazují velké počty hovorů, schůzek a podpisů.
+- Detail týdne, konkrétní týdenní zápisy, historie týdnů, typaři a doporučení jsou samostatně rozbalitelné.
+- Dlouhé tabulky ve Správě, Reportu, Investicích, FKI a Analýze zobrazí dvouřádkový náhled a tlačítko pro rozbalení, pokud mají více než deset řádků.
+- Investiční i FKI fond eviduje vedle následné provize také vstupní provizi či bonifikaci v procentech; Report ukazuje i její odhad z vložené částky.
+
 ## 2026.10.09-5
 
 - Měsíční Analýza je vizuálně sjednocená se zbytkem FILIP CRM: modrostříbrné rámečky, chladné světlé plochy, tmavě modrá typografie a stejné zvýraznění aktivních prvků.

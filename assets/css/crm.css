@@ -360,6 +360,39 @@ h1,h2,h3,h4,.detail-title,.client-row b,.portfolio-card b,.contact-value{color:#
 #referrers .analysis-month-overview td,#referrers .analysis-week-detail td{padding:8px 10px;font-size:11px}
 @media(max-width:760px){#referrers>.card{padding:10px}#referrers .analysis-main-toolbar{padding:13px}#referrers #analysisMetrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
+/* Citelnější měsíční a týdenní výsledky v Analýze. */
+#referrers .analysis-primary-card{margin:0 0 14px;padding:17px;border:1.5px solid rgba(119,154,195,.56);border-radius:18px;background:linear-gradient(145deg,rgba(250,252,255,.96),rgba(237,244,251,.84));box-shadow:0 10px 28px rgba(47,79,117,.055)}
+#referrers .analysis-primary-card h3{font-size:18px;color:#172b42}
+#referrers .analysis-primary-card>.toolbar>strong{font-size:23px;color:#173b63}
+#referrers .analysis-activity-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+#referrers .analysis-activity-card{display:grid;gap:4px;min-height:130px;padding:13px 14px;border:1.5px solid rgba(151,180,212,.7);border-radius:15px;background:linear-gradient(145deg,#fbfdff,#edf4fb)}
+#referrers .analysis-activity-card>span{font-size:10px;font-weight:900;text-transform:uppercase;color:#527698}
+#referrers .analysis-activity-card>strong{font-size:27px;line-height:1;color:#173b63}
+#referrers .analysis-activity-card>small{font-size:10px;color:#6d8197}
+#referrers .analysis-activity-card>div{margin-top:6px;font-size:11px;color:#405e7d}
+#referrers .analysis-activity-card footer{margin-top:auto;font-size:10px;color:#6d8197}
+#referrers .analysis-month-weeks{grid-template-columns:repeat(auto-fit,minmax(245px,1fr));gap:10px;margin-bottom:2px}
+#referrers .analysis-month-week{grid-template-columns:minmax(105px,.8fr) minmax(125px,1.2fr);align-items:center;gap:14px;min-height:142px;padding:15px 16px;border-radius:16px}
+#referrers .analysis-week-title{display:grid;gap:8px}
+#referrers .analysis-week-title>span{font-size:10px;font-weight:900;text-transform:uppercase;color:#527698}
+#referrers .analysis-week-title>strong{font-size:19px;line-height:1.1;color:#172b42}
+#referrers .analysis-week-title>small{font-size:10px;color:#526b87}
+#referrers .analysis-week-numbers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+#referrers .analysis-week-numbers>span{display:grid;gap:3px;text-align:center;padding:8px 4px;border-radius:11px;background:rgba(225,237,248,.78)}
+#referrers .analysis-week-numbers b{font-size:21px;line-height:1;color:#173b63}
+#referrers .analysis-week-numbers small{font-size:9px;color:#5f7690}
+#referrers .analysis-compact-section{margin-top:12px;border:1.5px solid rgba(119,154,195,.52);border-radius:15px;background:rgba(247,250,254,.9);overflow:hidden}
+#referrers .analysis-compact-section>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;cursor:pointer;list-style:none;background:linear-gradient(145deg,rgba(235,243,251,.94),rgba(247,250,254,.9));color:#254f7d}
+#referrers .analysis-compact-section>summary::-webkit-details-marker{display:none}
+#referrers .analysis-compact-section>summary span:first-child{display:grid;gap:2px}
+#referrers .analysis-compact-section>summary b{font-size:13px}
+#referrers .analysis-compact-section>summary small{font-size:10px;color:#607892}
+#referrers .analysis-compact-section>summary>span:last-child{font-size:10px;font-weight:900}
+#referrers .analysis-compact-body{padding:12px}
+.long-table-hidden{display:none!important}.long-table-control{display:flex;justify-content:center;padding:8px 0 2px}
+@media(max-width:1050px){#referrers .analysis-activity-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){#referrers .analysis-activity-cards{grid-template-columns:1fr}#referrers .analysis-month-week{grid-template-columns:1fr}}
+
 /* Tři hlavní cíle týdne: stručná výsledková tabule, ne další seznam úkolů. */
 .weekly-focus-card{position:relative;overflow:hidden;background:linear-gradient(135deg,#fff 0%,#f5f9ff 58%,#eef8f7 100%);border-color:#9bb9db}.weekly-focus-card:before{content:"";position:absolute;inset:0 0 auto;height:5px;background:linear-gradient(90deg,#174f7b,#33b4c5,#80b9a8)}.weekly-focus-toolbar{align-items:flex-start}.weekly-focus-question{margin:12px 0 16px;padding:12px 14px;border-left:4px solid #32afc0;background:#eef9fb;color:#183b5a;font-weight:700;border-radius:8px}.weekly-goals-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.weekly-goal{display:flex;flex-direction:column;gap:10px;min-height:250px;padding:16px;border:1px solid #c6d8eb;border-radius:16px;background:rgba(255,255,255,.9);box-shadow:0 8px 22px rgba(25,74,117,.07)}.weekly-goal.empty{justify-content:center;align-items:flex-start;border-style:dashed;background:rgba(255,255,255,.55)}.weekly-goal.late{border-color:#d86b67;background:#fff6f5}.weekly-goal-head,.weekly-goal-score,.weekly-goal-foot{display:flex;align-items:center;justify-content:space-between;gap:10px}.weekly-goal-number{display:inline-grid;place-items:center;min-width:30px;height:30px;padding:0 8px;border-radius:10px;background:#174f7b;color:#fff;font-weight:800}.weekly-goal h3{margin:3px 0 0;font-size:18px;line-height:1.25;color:#173c60}.weekly-goal-why{min-height:36px;margin:0}.weekly-goal-score{margin-top:auto;color:#173c60}.weekly-goal-score strong{font-size:20px}.weekly-progress{height:11px;overflow:hidden;border-radius:999px;background:#e5edf5}.weekly-progress span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#2caec0,#1c7ea8);transition:width .25s ease}.weekly-goal-foot{font-size:12px;color:#607a96}.weekly-goals-history{margin-top:14px}.weekly-goals-history details{border-top:1px solid #d9e5f1;padding-top:12px}.weekly-goals-history summary{display:flex;justify-content:space-between;gap:12px;cursor:pointer;color:#244f78}.weekly-history-bars{display:flex;align-items:flex-end;gap:8px;height:150px;margin-top:12px;padding:10px;background:#fff;border-radius:12px}.weekly-history-bars button{position:relative;display:grid;grid-template-rows:1fr auto auto;align-items:end;min-width:44px;height:100%;padding:0 4px;border:0;background:transparent;color:#315777;cursor:pointer}.weekly-history-bars button>span{display:block;width:22px;min-height:2px;margin:auto auto 5px;border-radius:6px 6px 2px 2px;background:linear-gradient(#39b3c0,#215b8e)}.weekly-history-bars small{font-size:10px}.weekly-goal-tabs{display:flex;gap:8px;margin:12px 0}.weekly-review-summary{display:grid;gap:8px;margin:12px 0 18px}.weekly-review-summary>div{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;padding:10px 12px;border:1px solid #d5e1ed;border-radius:12px;background:#f8fbfe}@media(max-width:900px){.weekly-goals-grid{grid-template-columns:1fr}.weekly-goal{min-height:auto}.weekly-goals-history summary{display:block}.weekly-review-summary>div{grid-template-columns:auto 1fr}.weekly-review-summary>div>span:last-child{grid-column:2}}
 
