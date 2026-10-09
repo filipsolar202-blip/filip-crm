@@ -2894,11 +2894,11 @@ function renderOpportunities() {
   const metrics=`<div class="metric"><span class="note">Otevřených případů</span><b>${rows.length}</b></div><div class="metric"><span class="note">Bez aktualizace přes 14 dní</span><b>${rows.filter(x=>caseDays(x.o)>14).length}</b></div><div class="metric"><span class="note">Plánované BJ</span><b>${num(rows.reduce((s,x)=>s+(+x.o.bj||0),0))} BJ</b></div><div class="metric"><span class="note">Očekávaná provize</span><b>${money(cash)}</b></div>`;
   if(byId('oppMetrics'))byId('oppMetrics').innerHTML=metrics;if(byId('pipelineMetrics'))byId('pipelineMetrics').innerHTML=metrics;
   const table=byId('opportunityTable');
-  if(table)table.innerHTML=`<thead><tr><th>Případ / klient</th><th>Kategorie</th><th>Fáze</th><th>Od aktualizace</th><th>Společnost</th><th>Objem</th><th>BJ</th><th>Oček. provize</th><th>Kontakt / další termín</th><th>Akce</th></tr></thead><tbody>${rows.map(({o,c})=>`<tr data-case-id="${esc(o.id)}"><td><button class="case-title" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">${esc(o.product||o.category||'Obchodní případ')}</button><br><span>${esc(clientName(c))}</span>${o.isContractOpportunity?'<span class="chip">ze smlouvy</span>':''}${replacementBadge(o)}</td><td>${esc(o.category)}</td><td>${opportunityStatusSelect(o)}</td><td>${caseAgeHtml(o)}<br><small>${esc(caseLastUpdate(o)?dateObj(caseLastUpdate(o)).toLocaleDateString('cs-CZ'):'')}</small></td><td>${esc(o.company)}</td><td class="money"><button class="case-title" title="Upravit objem případu" onclick="caseEditVolume(decodeURIComponent('${caseEncodedId(o.id)}'))">${money(o.amount)} ✎</button></td><td>${num(o.bj)}</td><td class="money">${money(+o.actualCommission||+o.expectedCommission||opportunityCash(o,new Date().getFullYear()))}</td><td>${opportunityContactHtml(o)}</td><td><button class="btn slim" onclick="selectedClientId=${Number(o.clientId)};showView('clients')">Klient</button><button class="btn slim" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">Upravit</button></td></tr>`).join('')||'<tr><td colspan="10" class="note">Žádné obchodní případy pro tento výběr.</td></tr>'}</tbody>`;
+  if(table)table.innerHTML=`<thead><tr><th>Případ / klient</th><th>Kategorie</th><th>Fáze</th><th>Od aktualizace</th><th>Společnost</th><th>Objem</th><th>BJ</th><th>Oček. provize</th><th>Kontakt / další termín</th><th>Akce</th></tr></thead><tbody>${rows.map(({o,c})=>`<tr data-case-id="${esc(o.id)}"><td><button class="case-title" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">${esc(o.product||o.category||'Obchodní případ')}</button><br><span>${esc(clientName(c))}</span>${o.isContractOpportunity?'<span class="chip">ze smlouvy</span>':''}${replacementBadge(o)}</td><td>${esc(o.category)}</td><td>${opportunityStatusSelect(o)}</td><td>${caseAgeHtml(o)}<br><small>${esc(caseLastUpdate(o)?dateObj(caseLastUpdate(o)).toLocaleDateString('cs-CZ'):'')}</small></td><td>${esc(o.company)}</td><td class="money"><button class="case-title" title="Upravit objem případu" onclick="caseEditVolume(decodeURIComponent('${caseEncodedId(o.id)}'))">${money(o.amount)} ✎</button></td><td>${num(o.bj)}</td><td class="money">${money(+o.actualCommission||+o.expectedCommission||opportunityCash(o,new Date().getFullYear()))}</td><td>${opportunityContactHtml(o)}</td><td><button class="btn slim" onclick="openQuickActivity(${Number(o.clientId)})">+ Aktivita</button><button class="btn slim" onclick="selectedClientId=${Number(o.clientId)};showView('clients')">Klient</button><button class="btn slim" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">Upravit</button></td></tr>`).join('')||'<tr><td colspan="10" class="note">Žádné obchodní případy pro tento výběr.</td></tr>'}</tbody>`;
   const board=byId('pipelineBoard');
   if(board)board.innerHTML=caseStages().map((stage,index)=>{
     const cards=rows.filter(x=>caseStage(x.o.status)===stage);
-    return `<section class="pipeline-column" data-stage="${esc(stage)}" style="--stage-color:${['#8b7db9','#7289bb','#b69a65','#69a69c','#739ac3','#8b7db9','#487aa0'][index]}" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="caseDrop(event,'${esc(stage)}')"><header><h3>${esc(stage)} <span>${cards.length}</span></h3><b>${num(cards.reduce((s,x)=>s+(+x.o.bj||0),0))} BJ</b></header><div class="pipeline-cards">${cards.map(({o,c})=>`<article class="pipeline-card" draggable="true" data-case-id="${esc(o.id)}" ondragstart="event.dataTransfer.setData('application/x-crm-case',decodeURIComponent('${caseEncodedId(o.id)}'))"><button class="case-title" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">${esc(o.product||o.category||'Obchodní případ')}</button><div class="pipeline-client">${esc(clientName(c))}</div>${replacementBadge(o)}<div class="chips"><span class="chip">${esc(o.category)}</span>${caseAgeHtml(o)}</div>${opportunityContactHtml(o)}<div class="pipeline-amount">${num(o.bj)} BJ</div><div class="note">Oček. provize ${money(+o.actualCommission||+o.expectedCommission||opportunityCash(o,new Date().getFullYear()))}</div><div class="pipeline-volume"><button class="case-title" title="Upravit objem případu" onclick="caseEditVolume(decodeURIComponent('${caseEncodedId(o.id)}'))">${money(o.amount)} ✎</button></div><div class="note">${esc(o.company||'')}</div>${opportunityStatusSelect(o)}<div class="actions"><button class="btn slim" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">Upravit</button><button class="btn slim" onclick="selectedClientId=${Number(o.clientId)};showView('clients')">Klient</button></div></article>`).join('')||'<p class="pipeline-empty">Žádné případy</p>'}</div></section>`;
+    return `<section class="pipeline-column" data-stage="${esc(stage)}" style="--stage-color:${['#8b7db9','#7289bb','#b69a65','#69a69c','#739ac3','#8b7db9','#487aa0'][index]}" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="caseDrop(event,'${esc(stage)}')"><header><h3>${esc(stage)} <span>${cards.length}</span></h3><b>${num(cards.reduce((s,x)=>s+(+x.o.bj||0),0))} BJ</b></header><div class="pipeline-cards">${cards.map(({o,c})=>`<article class="pipeline-card" draggable="true" data-case-id="${esc(o.id)}" ondragstart="event.dataTransfer.setData('application/x-crm-case',decodeURIComponent('${caseEncodedId(o.id)}'))"><button class="case-title" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">${esc(o.product||o.category||'Obchodní případ')}</button><div class="pipeline-client">${esc(clientName(c))}</div>${replacementBadge(o)}<div class="chips"><span class="chip">${esc(o.category)}</span>${caseAgeHtml(o)}</div>${opportunityContactHtml(o)}<div class="pipeline-amount">${num(o.bj)} BJ</div><div class="note">Oček. provize ${money(+o.actualCommission||+o.expectedCommission||opportunityCash(o,new Date().getFullYear()))}</div><div class="pipeline-volume"><button class="case-title" title="Upravit objem případu" onclick="caseEditVolume(decodeURIComponent('${caseEncodedId(o.id)}'))">${money(o.amount)} ✎</button></div><div class="note">${esc(o.company||'')}</div>${opportunityStatusSelect(o)}<div class="actions"><button class="btn slim primary" onclick="openQuickActivity(${Number(o.clientId)})">+ Aktivita</button><button class="btn slim" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">Upravit</button><button class="btn slim" onclick="selectedClientId=${Number(o.clientId)};showView('clients')">Klient</button></div></article>`).join('')||'<p class="pipeline-empty">Žádné případy</p>'}</div></section>`;
   }).join('');
 }
 function renderVersion() {
@@ -3490,11 +3490,11 @@ function clientOverview(c, contracts, deals, acts, year) {
     pensions = clientPensionSummary(c.id),
     totalAum = sum.total + pensions.total,
     opps = clientOpenOpportunities(c.id).filter(isOpenOpportunity);
-  return `${clientTools(stats)}<div class="mini-card"><h3>Souhrn</h3><p class="note">${esc(c.note || 'Bez poznámky.')}</p><div class="chips"><span class="badge blue">${contracts.length} produktů</span><span class="badge green">${deals.length} obchodů</span><span class="badge orange">${acts.length} aktivit</span>${opps.length ? `<span class="badge purple">${opps.length} v řešení</span>` : ''}</div>${sum.items.length || pensions.items.length ? `<div class="investment-summary" style="margin-top:14px"><div class="metric"><span class="note">AUM klienta celkem</span><b>${money(totalAum)}</b></div><div class="metric"><span class="note">Běžné investice</span><b>${money(sum.classic)}</b></div><div class="metric"><span class="note">FKI</span><b>${money(sum.fki)}</b></div><div class="metric"><span class="note">Penze</span><b>${money(pensions.total)}</b></div></div>` : ''}</div><div class="split" style="margin-top:12px"><div class="mini-card"><h3>X-sell panel</h3>${xsellPanel(stats)}${opportunityMiniList(opps)}</div><div class="mini-card"><h3>Investice, FKI a penze klienta</h3>${investmentMini(inv, c.id)}</div></div>`;
+  return `${clientTools(stats, c.id)}<div class="mini-card"><h3>Souhrn</h3><p class="note">${esc(c.note || 'Bez poznámky.')}</p><div class="chips"><span class="badge blue">${contracts.length} produktů</span><span class="badge green">${deals.length} obchodů</span><span class="badge orange">${acts.length} aktivit</span>${opps.length ? `<span class="badge purple">${opps.length} v řešení</span>` : ''}</div>${sum.items.length || pensions.items.length ? `<div class="investment-summary" style="margin-top:14px"><div class="metric"><span class="note">AUM klienta celkem</span><b>${money(totalAum)}</b></div><div class="metric"><span class="note">Běžné investice</span><b>${money(sum.classic)}</b></div><div class="metric"><span class="note">FKI</span><b>${money(sum.fki)}</b></div><div class="metric"><span class="note">Penze</span><b>${money(pensions.total)}</b></div></div>` : ''}</div><div class="split" style="margin-top:12px"><div class="mini-card"><h3>X-sell panel</h3>${xsellPanel(stats)}${opportunityMiniList(opps)}</div><div class="mini-card"><h3>Investice, FKI a penze klienta</h3>${investmentMini(inv, c.id)}</div></div>`;
 }
-function clientTools(stats) {
+function clientTools(stats, clientId) {
   const tools = ['investice', 'fki', 'pojisteni', 'uvery', 'ostatni'];
-  return `<div class="tools-row">${tools.map(k => `<button class="tool-tile ${stats[k]?.count ? 'active' : ''}" onclick="focusClientPortfolio('${k}')"><span>${esc(areaLabel(k))}</span><span class="count">${num(stats[k]?.count || 0)}</span></button>`).join('')}</div>`;
+  return `<div class="client-quick-action"><button class="btn primary" onclick="openQuickActivity(${Number(clientId) || 'null'})">+ Rychlá aktivita klienta</button><span class="note">Telefon, schůzka, e-mail nebo další krok během několika sekund.</span></div><div class="tools-row">${tools.map(k => `<button class="tool-tile ${stats[k]?.count ? 'active' : ''}" onclick="focusClientPortfolio('${k}')"><span>${esc(areaLabel(k))}</span><span class="count">${num(stats[k]?.count || 0)}</span></button>`).join('')}</div>`;
 }
 function xsellPanel(stats) {
   const max = Math.max(1, ...Object.values(stats).map(x => x.count));
@@ -10797,7 +10797,7 @@ function quickAnalysis_outcome(x) {
   return x?.outcome || x?.result || 'realized';
 }
 function quickAnalysis_rows(start, end) {
-  return (state.analysisEntries || []).filter(x => !x.sourceActivityId && quickAnalysis_inRange(x.date, start, end)).map(x => ({
+  const entries = (state.analysisEntries || []).filter(x => !x.sourceActivityId && quickAnalysis_inRange(x.date, start, end)).map(x => ({
     ...x,
     source: x.source || 'Rychlý zápis',
     clientId: null,
@@ -10805,6 +10805,22 @@ function quickAnalysis_rows(start, end) {
     minutes: +x.minutes || 0,
     outcome: quickAnalysis_outcome(x)
   }));
+  const activities = (state.activities || []).filter(x => x.analysisType && quickAnalysis_inRange(x.date, start, end)).map(x => ({
+    id:'activity_' + x.id,
+    sourceActivityId:x.id,
+    date:x.date,
+    time:x.time || '',
+    type:x.analysisType,
+    clientId:x.clientId || null,
+    count:1,
+    minutes:+x.duration || 0,
+    note:x.text || '',
+    outcome:activities_aOutcome(x),
+    nextType:'',
+    nextDate:x.followDate || '',
+    source:x.source === 'quick_activity' ? 'Rychlá aktivita' : 'Aktivita klienta'
+  }));
+  return [...entries, ...activities];
 }
 function quickAnalysis_summary(list, key) {
   const chosen = list.filter(x => quickAnalysis_rowKey(x.type) === key),
@@ -12429,6 +12445,50 @@ function downloadSavedInvestmentForecast(id) {
 function crmActivityAnalysisType(a) {
   return activities_aDefaultAnalysisType(a);
 }
+let quickActivityPreset = 'phone';
+const QUICK_ACTIVITY_PRESETS = {
+  phone: {label:'Telefon', icon:'☎', type:'Telefon', analysisType:'Volání', duration:10, outcome:'realized', placeholder:'co se domluvilo nebo proč se nedovolalo'},
+  meeting: {label:'Schůzka', icon:'◎', type:'Schůzka', analysisType:'Schůzka stávající klient', duration:60, outcome:'realized', placeholder:'hlavní výsledek schůzky'},
+  message: {label:'E-mail / zpráva', icon:'✉', type:'Email', analysisType:'Poznámka', duration:5, outcome:'realized', placeholder:'co bylo klientovi odesláno'},
+  offer: {label:'Nabídka odeslána', icon:'➜', type:'Nabídka', analysisType:'Prezentace', duration:10, outcome:'realized', placeholder:'jaká nabídka byla odeslána'},
+  followup: {label:'Následný kontakt', icon:'↻', type:'Telefon', analysisType:'Volání', duration:10, outcome:'realized', placeholder:'na co kontakt navazoval a výsledek'},
+  internal: {label:'Interní práce', icon:'✓', type:'Interní práce', analysisType:'Poznámka', duration:15, outcome:'realized', placeholder:'co bylo zpracováno nebo zlepšeno', optionalClient:true}
+};
+function openQuickActivity(clientId = null, preset = 'phone') {
+  quickActivityPreset = QUICK_ACTIVITY_PRESETS[preset] ? preset : 'phone';
+  const remembered = localStorage.getItem('filip_crm_quick_activity_client'), chosen = clientId || selectedClientId || remembered || '';
+  fillOptionalClientSelect('qaClient', chosen);
+  setVal('qaClient', chosen && state.clients.some(c => String(c.id) === String(chosen)) ? chosen : '');
+  setVal('qaDate', today()); setVal('qaText', ''); setVal('qaFollowType', ''); setVal('qaFollowDate', ''); setVal('qaFollowTime', '09:00'); setVal('qaFollowText', '');
+  const details = byId('quickActivityModal')?.querySelector('.quick-activity-follow');
+  if (details) details.open = false;
+  selectQuickActivityPreset(quickActivityPreset);
+  openModal('quickActivityModal');
+  setTimeout(() => byId('qaText')?.focus(), 0);
+}
+function selectQuickActivityPreset(key) {
+  if (!QUICK_ACTIVITY_PRESETS[key]) return;
+  quickActivityPreset = key;
+  const p = QUICK_ACTIVITY_PRESETS[key];
+  byId('quickActivityPresets').innerHTML = Object.entries(QUICK_ACTIVITY_PRESETS).map(([k, x]) => `<button type="button" class="quick-preset ${k === key ? 'active' : ''}" onclick="selectQuickActivityPreset('${k}')"><span>${x.icon}</span><b>${esc(x.label)}</b></button>`).join('');
+  setVal('qaOutcome', p.outcome); setVal('qaDuration', p.duration); byId('qaText').placeholder = p.placeholder;
+  setText('qaClientHint', p.optionalClient ? 'Klient je u interní práce volitelný.' : 'Vyber klienta, kterého se aktivita týká.');
+}
+function saveQuickClientActivity() {
+  const p = QUICK_ACTIVITY_PRESETS[quickActivityPreset], clientId = +val('qaClient') || null;
+  if (!p.optionalClient && !clientId) return alert('Vyber klienta.');
+  const outcome = val('qaOutcome') || p.outcome, completed = outcome !== 'agreed', activity = {
+    id:uid(), clientId, type:p.type, date:val('qaDate') || today(), time:'', duration:parseMoney(val('qaDuration')) || 0,
+    location:'', text:val('qaText').trim(), outcome, analysisType:p.analysisType, source:'quick_activity',
+    followType:val('qaFollowType') || '', followDate:val('qaFollowDate') || '', followTime:val('qaFollowTime') || '', followText:val('qaFollowText').trim(),
+    completed, completedAt:completed ? today() : '', createdAt:new Date().toISOString(), updatedAt:new Date().toISOString()
+  };
+  if (activity.followType && !activity.followDate) return alert('Doplň datum dalšího kroku.');
+  state.activities = state.activities || []; state.activities.push(activity);
+  if (completed && activity.followDate) activities_aCreateFollowUp(activity);
+  if (clientId) { selectedClientId = clientId; localStorage.setItem('filip_crm_quick_activity_client', String(clientId)); }
+  persist(); closeModal('quickActivityModal'); renderAll(); saveToast(`${p.label} uložen${p.label.endsWith('a') ? 'a' : ''}${activity.followDate ? ' · další krok naplánován' : ''}`);
+}
 function openActivityModal(clientId = null, id = null) {
   editingActivityId = id;
   const a = id ? (state.activities || []).find(x => String(x.id) === String(id)) : null;
@@ -12621,7 +12681,7 @@ function weeklyGoalActual(goal, key = goal?.weekKey || weekKey()) {
   if (goal.metricType === 'contacted_clients') {
     const ids = new Set();
     (state.activities || []).forEach(x => {
-      if (x.clientId && dateInRange(x.date, range.start, range.end) && /telefon|sms|whatsapp|email|sch[uů]zka|vol[aá]n/i.test(String(x.type || ''))) ids.add(String(x.clientId));
+      if (x.clientId && activities_aOutcome(x) !== 'agreed' && dateInRange(x.date, range.start, range.end) && /telefon|sms|whatsapp|email|sch[uů]zka|vol[aá]n/i.test(String(x.type || ''))) ids.add(String(x.clientId));
     });
     (state.opportunities || []).forEach(x => {
       if (x.clientId && dateInRange(x.lastContactDate, range.start, range.end)) ids.add(String(x.clientId));
@@ -12990,6 +13050,16 @@ function deleteAnalysisEntry(entryId) {
   if (typeof renderReferrerHub === 'function') renderReferrerHub();else renderAnalysis();
   if (typeof saveToast === 'function') saveToast('Aktivita smazána');
 }
+function deleteClientActivity(activityId) {
+  if (!confirm('Smazat aktivitu a její případný navazující krok?')) return;
+  const source = (state.activities || []).find(x => String(x.id) === String(activityId)), followId = source?.followActivityId;
+  state.activities = (state.activities || []).filter(x => String(x.id) !== String(activityId) && String(x.id) !== String(followId || '') && String(x.sourceActivityId || '') !== String(activityId));
+  persist(); renderAll(); saveToast('Aktivita smazána');
+}
+function analysisActivityActions(x) {
+  if (x.sourceActivityId) return `${x.clientId ? `<button class="btn slim" onclick="openActivityModal(${Number(x.clientId)},'${esc(x.sourceActivityId)}')">Upravit</button> ` : ''}<button class="btn slim red" onclick="deleteClientActivity('${esc(x.sourceActivityId)}')">Smazat</button>`;
+  return `<button class="btn slim" onclick="editAnalysisEntry('${quickAnalysis_html(x.id)}')">Upravit</button> <button class="btn slim red" onclick="deleteAnalysisEntry('${quickAnalysis_html(x.id)}')">Smazat</button>`;
+}
 function editAnalysisEntry(entryId) {
   const x = (state.analysisEntries || []).find(a => String(a.id) === String(entryId));
   if (!x) return alert('Zápis už v analýze nevidím.');
@@ -13094,7 +13164,7 @@ function renderAnalysis() {
     realized: 'Zrealizováno',
     moved: 'Přesunuto',
     no_show: 'Nedorazil'
-  }[quickAnalysis_outcome(x)] || 'Zrealizováno')}</span></td><td>${quickAnalysis_html(x.nextType || '')}</td><td class="num">${quickAnalysis_fmt(x.minutes || 0)}</td><td>${quickAnalysis_html(x.note || '')}</td><td><button class="btn slim" onclick="editAnalysisEntry('${quickAnalysis_html(x.id)}')">Upravit</button> <button class="btn slim red" onclick="deleteAnalysisEntry('${quickAnalysis_html(x.id)}')">Smazat</button></td></tr>`).join('') || '<tr><td colspan="7" class="note">Zatím není zapsaný žádný hovor ani schůzka.</td></tr>'}</tbody>`;
+  }[quickAnalysis_outcome(x)] || 'Zrealizováno')}</span></td><td>${quickAnalysis_html(x.nextType || '')}</td><td class="num">${quickAnalysis_fmt(x.minutes || 0)}</td><td>${quickAnalysis_html(x.note || '')}</td><td>${analysisActivityActions(x)}</td></tr>`).join('') || '<tr><td colspan="7" class="note">Zatím není zapsaný žádný hovor ani schůzka.</td></tr>'}</tbody>`;
   const mt = document.getElementById('analysisMonthTable'),
     monthRows = analysisRows(month + '-01', month + '-31');
   if (mt) mt.innerHTML = `<thead><tr><th>Aktivita</th><th>Domluveno</th><th>Zrealizováno</th><th>Přesunuto</th><th>Nedorazil</th><th>Úspěšnost</th><th>Minuty</th></tr></thead><tbody>${quickAnalysis_ROWS.map(([k, label]) => {
@@ -13116,8 +13186,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.09-1';
-const VERSION_NOTE = 'Dashboard nově vede tři hlavní cíle týdne, automatické KPI, reflexi a historii výsledků.';
+const VERSION = '2026.10.09-2';
+const VERSION_NOTE = 'Rychlá aktivita je dostupná v celém CRM a jedním zápisem plní klientskou historii, Analýzu i týdenní cíle.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';

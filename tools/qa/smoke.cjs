@@ -23,6 +23,9 @@ const {chromium,launchOptions}=require('./runtime.cjs');
  for(const view of await page.locator('.tab[data-view]').evaluateAll(xs=>xs.map(x=>x.dataset.view))){await page.locator(`.tab[data-view="${view}"]`).click();console.log('view',view,await page.locator('#'+view).isVisible())}
  console.log('all errors',errors);
  await page.locator('.tab[data-view="dashboard"]').click();
+ await page.evaluate(()=>openQuickActivity(null,'phone'));
+ await page.screenshot({path:'/private/tmp/crm-quick-activity.png',fullPage:true});
+ await page.evaluate(()=>closeModal('quickActivityModal'));
  await page.screenshot({path:'/private/tmp/crm-unified-dashboard.png',fullPage:true});
  await browser.close();if(errors.length)process.exitCode=1;
 })();

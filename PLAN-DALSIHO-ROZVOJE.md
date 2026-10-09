@@ -152,7 +152,7 @@ Systémové události budou v historii klienta viditelné, ale budou označené 
 ## Doporučené pořadí realizace
 
 1. **Hotovo:** nasadit tři hlavní cíle týdne, ruční a automatická KPI, reflexi a historii.
-2. Zjednodušit zápis aktivit a sjednotit jejich datový model. Současně opravit automatické KPI týdenních cílů tak, aby četla jen z tohoto jednotného zdroje.
+2. **Hotovo:** zjednodušit zápis aktivit, zpřístupnit jej z celého CRM a napojit jednotné záznamy do Analýzy a automatických KPI týdenních cílů.
 3. Přidat automatické systémové události z obchodů a ochranu proti dvojímu započítání.
 4. Postavit měsíční a týdenní analýzu nad jednotnými aktivitami a systémovými událostmi.
 5. Doplnit výběr sloupců pipeline, zdraví obchodu, provizní výhled a výpočet potřebného počtu nových příležitostí.

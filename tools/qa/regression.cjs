@@ -423,6 +423,15 @@ try{
  });
  assert.deepEqual(weeklyGoals.actuals,[1,1,3]);assert.equal(weeklyGoals.cards,3);assert.deepEqual(weeklyGoals.progress,['50 %','100 %','100 %']);assert.equal(weeklyGoals.completed,2);assert.equal(weeklyGoals.totalPct,83);assert.equal(weeklyGoals.reflection,'Test reflexe');assert.equal(weeklyGoals.history,1);
  results.push('Weekly focus keeps exactly three priorities, reads CRM metrics, closes the week and archives its score and reflection');
+ const quickActivity=await page.evaluate(()=>{
+   const original=state.activities;state.activities=[];
+   openQuickActivity(1,'phone');setVal('qaText','QA rychlý telefon');setVal('qaDuration','12');setVal('qaFollowType','Schůzka');setVal('qaFollowDate',activities_aPlusDays(today(),2));setVal('qaFollowTime','10:30');setVal('qaFollowText','QA navazující schůzka');saveQuickClientActivity();
+   const source=state.activities.find(x=>x.text==='QA rychlý telefon'),follow=state.activities.find(x=>x.sourceActivityId===source.id),actual=analysisActuals(today(),today()),contactGoal={weekKey:weekKey(),metricType:'contacted_clients',target:1};
+   const result={presets:document.querySelectorAll('#quickActivityPresets .quick-preset').length,fab:!!document.querySelector('.quick-activity-fab'),type:source.type,analysisType:source.analysisType,completed:source.completed,duration:source.duration,followType:follow.type,followTime:follow.time,followOpen:!follow.completed,calls:actual.calls,contacted:weeklyGoalActual(contactGoal)};
+   state.activities=original;renderAll();return result;
+ });
+ assert.deepEqual(quickActivity,{presets:6,fab:true,type:'Telefon',analysisType:'Volání',completed:true,duration:12,followType:'Schůzka',followTime:'10:30',followOpen:true,calls:1,contacted:1});
+ results.push('Quick activity logs one client event, feeds analysis and weekly KPIs, and creates one open follow-up');
 
  await page.setViewportSize({width:1600,height:1000});await page.evaluate(()=>showView('pipeline'));await page.screenshot({path:'/private/tmp/crm-pipeline-desktop.png',fullPage:true});
  await page.setViewportSize({width:834,height:1112});await page.screenshot({path:'/private/tmp/crm-pipeline-ipad.png',fullPage:true});

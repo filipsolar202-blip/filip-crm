@@ -1,3 +1,11 @@
+## 2026.10.09-2
+
+- Stálé tlačítko „+ Aktivita“ zpřístupňuje rychlý zápis z každé části CRM; stejné tlačítko je také přímo u klienta a na kartách pipeline.
+- Telefon, schůzka, e-mail nebo zpráva, odeslaná nabídka, následný kontakt a interní práce mají vlastní jednoduché předvolby.
+- Povinný je pouze klient u klientských aktivit; poznámka, délka a navazující krok zůstávají volitelné.
+- Jeden zápis se automaticky promítne do historie klienta, týdenních cílů a Analýzy bez dalšího ručního přepisování.
+- Z rychlého zápisu lze rovnou vytvořit navazující telefon, zprávu, e-mail, schůzku nebo úkol s termínem.
+
 ## 2026.10.09-1
 
 - Hlavní Dashboard obsahuje nový výrazný blok „3 hlavní cíle týdne“ se třemi pevnými prioritami, průběhem, termínem a upozorněním na nesplnění.
