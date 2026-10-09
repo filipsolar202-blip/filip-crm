@@ -53,19 +53,20 @@ Nové importy přidávat nad jedním společným importním systémem. Díky tom
 
 ### Cíl
 
-Dočasně zobrazit jen vybrané fáze pipeline a okamžitě zjistit, jakou provizi lze z těchto fází očekávat.
+Okamžitě zjistit, jakou provizi lze očekávat pouze z vybraných fází pipeline, aniž by se obchody skryly nebo změnil jejich stav.
 
 ### Navrhované řešení
 
-- Do horní části pipeline přidat volbu **Zobrazené fáze**.
-- Každý sloupec bude možné zapnout nebo skrýt bez změny stavu obchodního případu.
-- Volba se uloží, aby zůstala zachovaná po obnovení stránky.
-- Nad pipeline zobrazit souhrn pouze za označené sloupce:
+- **Hotovo:** každý sloupec má přepínač **Počítat do provize** bez změny stavu obchodního případu.
+- **Hotovo:** vypnutý sloupec zůstává viditelný, ale jeho případy se do částky nezapočítají.
+- **Hotovo:** volba se ukládá a zůstává zachovaná po obnovení stránky.
+- **Hotovo:** nad pipeline se zobrazuje souhrn pouze za označené sloupce:
   - počet případů,
   - plánované BJ,
-  - celkovou očekávanou provizi,
-  - provizi po zohlednění pravděpodobnosti dokončení.
-- Umožnit rychlé předvolby, například:
+  - celková očekávaná provize,
+  - částka celé pipeline pro srovnání.
+- **Hotovo:** rychlé volby **Počítat vše** a **Vypnout vše**.
+- Později doplnit provizi po zohlednění pravděpodobnosti dokončení a rychlé předvolby, například:
   - Rozpracované obchody,
   - Od nabídky dál,
   - Před podpisem,
@@ -155,7 +156,7 @@ Systémové události budou v historii klienta viditelné, ale budou označené 
 2. **Hotovo:** zjednodušit zápis aktivit, zpřístupnit jej z celého CRM a napojit jednotné záznamy do Analýzy a automatických KPI týdenních cílů.
 3. Přidat automatické systémové události z obchodů a ochranu proti dvojímu započítání.
 4. Postavit měsíční a týdenní analýzu nad jednotnými aktivitami a systémovými událostmi.
-5. Doplnit výběr sloupců pipeline, zdraví obchodu, provizní výhled a výpočet potřebného počtu nových příležitostí.
+5. **Částečně hotovo:** zapínání fází do očekávané provize je nasazené. Zbývá zdraví obchodu, pravděpodobnostně vážený výhled a výpočet potřebného počtu nových příležitostí.
 6. Propojit historii týdenních cílů s měsíčním obchodním výsledkem a vyhodnotit, které aktivity mají největší dopad.
 7. Postupně přidávat nové profily importovaných reportů do společného importního centra.
 

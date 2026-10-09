@@ -2836,6 +2836,27 @@ function caseStageLabel(status) {
   return status === 'Podepsáno' ? 'Dokončeno / do obchodů' : caseStage(status);
 }
 function caseStages() { return ['Opportunity','Nabídka','Scoring','Kompletace','Schvalování','Podpis','K zadání (BeTy)']; }
+function caseExpectedCommission(o) {
+  return +o?.actualCommission || +o?.expectedCommission || opportunityCash(o, new Date().getFullYear());
+}
+function pipelineCommissionSettings() {
+  state.settings = state.settings && typeof state.settings === 'object' ? state.settings : {};
+  state.settings.pipelineCommissionStages = state.settings.pipelineCommissionStages && typeof state.settings.pipelineCommissionStages === 'object' ? state.settings.pipelineCommissionStages : {};
+  return state.settings.pipelineCommissionStages;
+}
+function pipelineStageCommissionEnabled(stage) {
+  return pipelineCommissionSettings()[caseStage(stage)] !== false;
+}
+function togglePipelineStageCommission(stage, enabled) {
+  pipelineCommissionSettings()[caseStage(stage)] = !!enabled;
+  persist(); renderOpportunities();
+  saveToast(`${caseStage(stage)} ${enabled ? 'započítávám' : 'nezapočítávám'} do očekávané provize`);
+}
+function setAllPipelineCommissionStages(enabled) {
+  caseStages().forEach(stage => pipelineCommissionSettings()[stage] = !!enabled);
+  persist(); renderOpportunities();
+  saveToast(enabled ? 'Do provize se počítají všechny fáze' : 'Výpočet provize je ve všech fázích vypnutý');
+}
 function opportunityNextContactDate(o) {
   return o?.nextContactDate || (caseStage(o?.status) === 'Opportunity' ? '' : o?.expectedDate || '');
 }
@@ -2890,15 +2911,17 @@ function renderOpportunities() {
     if(filters.sort==='date')return caseLastUpdate(b.o).localeCompare(caseLastUpdate(a.o));
     return caseStages().indexOf(caseStage(b.o.status))-caseStages().indexOf(caseStage(a.o.status))||(caseDays(b.o)??-1)-(caseDays(a.o)??-1);
   });
-  const total=rows.reduce((s,x)=>s+(+x.o.amount||0),0),cash=rows.reduce((s,x)=>s+(+x.o.actualCommission||+x.o.expectedCommission||opportunityCash(x.o,new Date().getFullYear())),0);
-  const metrics=`<div class="metric"><span class="note">Otevřených případů</span><b>${rows.length}</b></div><div class="metric"><span class="note">Bez aktualizace přes 14 dní</span><b>${rows.filter(x=>caseDays(x.o)>14).length}</b></div><div class="metric"><span class="note">Plánované BJ</span><b>${num(rows.reduce((s,x)=>s+(+x.o.bj||0),0))} BJ</b></div><div class="metric"><span class="note">Očekávaná provize</span><b>${money(cash)}</b></div>`;
-  if(byId('oppMetrics'))byId('oppMetrics').innerHTML=metrics;if(byId('pipelineMetrics'))byId('pipelineMetrics').innerHTML=metrics;
+  const total=rows.reduce((s,x)=>s+(+x.o.amount||0),0), cash=rows.reduce((s,x)=>s+caseExpectedCommission(x.o),0), totalBj=rows.reduce((s,x)=>s+(+x.o.bj||0),0), countedRows=rows.filter(x=>pipelineStageCommissionEnabled(x.o.status)), countedCash=countedRows.reduce((s,x)=>s+caseExpectedCommission(x.o),0), countedBj=countedRows.reduce((s,x)=>s+(+x.o.bj||0),0), commonMetrics=`<div class="metric"><span class="note">Otevřených případů</span><b>${rows.length}</b></div><div class="metric"><span class="note">Bez aktualizace přes 14 dní</span><b>${rows.filter(x=>caseDays(x.o)>14).length}</b></div>`;
+  if(byId('oppMetrics'))byId('oppMetrics').innerHTML=commonMetrics+`<div class="metric"><span class="note">Plánované BJ</span><b>${num(totalBj)} BJ</b></div><div class="metric"><span class="note">Očekávaná provize všech případů</span><b>${money(cash)}</b></div>`;
+  if(byId('pipelineMetrics'))byId('pipelineMetrics').innerHTML=commonMetrics+`<div class="metric"><span class="note">Plánované BJ zapnutých fází</span><b>${num(countedBj)} BJ</b><small>celá pipeline ${num(totalBj)} BJ</small></div><div class="metric pipeline-counted-commission"><span class="note">Očekávaná provize zapnutých fází</span><b>${money(countedCash)}</b><small>${num(countedRows.length)} z ${num(rows.length)} případů · celá pipeline ${money(cash)}</small></div>`;
+  const commissionSummary=byId('pipelineCommissionSummary');
+  if(commissionSummary)commissionSummary.innerHTML=`<div><span class="badge blue">Počítáno ${num(caseStages().filter(pipelineStageCommissionEnabled).length)} ze ${num(caseStages().length)} fází</span><span class="note">Vypnuté fáze jsou v pipeline dál viditelné, pouze se nepromítnou do částky.</span></div><div class="actions"><button class="btn slim" onclick="setAllPipelineCommissionStages(true)">Počítat vše</button><button class="btn slim" onclick="setAllPipelineCommissionStages(false)">Vypnout vše</button></div>`;
   const table=byId('opportunityTable');
   if(table)table.innerHTML=`<thead><tr><th>Případ / klient</th><th>Kategorie</th><th>Fáze</th><th>Od aktualizace</th><th>Společnost</th><th>Objem</th><th>BJ</th><th>Oček. provize</th><th>Kontakt / další termín</th><th>Akce</th></tr></thead><tbody>${rows.map(({o,c})=>`<tr data-case-id="${esc(o.id)}"><td><button class="case-title" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">${esc(o.product||o.category||'Obchodní případ')}</button><br><span>${esc(clientName(c))}</span>${o.isContractOpportunity?'<span class="chip">ze smlouvy</span>':''}${replacementBadge(o)}</td><td>${esc(o.category)}</td><td>${opportunityStatusSelect(o)}</td><td>${caseAgeHtml(o)}<br><small>${esc(caseLastUpdate(o)?dateObj(caseLastUpdate(o)).toLocaleDateString('cs-CZ'):'')}</small></td><td>${esc(o.company)}</td><td class="money"><button class="case-title" title="Upravit objem případu" onclick="caseEditVolume(decodeURIComponent('${caseEncodedId(o.id)}'))">${money(o.amount)} ✎</button></td><td>${num(o.bj)}</td><td class="money">${money(+o.actualCommission||+o.expectedCommission||opportunityCash(o,new Date().getFullYear()))}</td><td>${opportunityContactHtml(o)}</td><td><button class="btn slim" onclick="openQuickActivity(${Number(o.clientId)})">+ Aktivita</button><button class="btn slim" onclick="selectedClientId=${Number(o.clientId)};showView('clients')">Klient</button><button class="btn slim" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">Upravit</button></td></tr>`).join('')||'<tr><td colspan="10" class="note">Žádné obchodní případy pro tento výběr.</td></tr>'}</tbody>`;
   const board=byId('pipelineBoard');
   if(board)board.innerHTML=caseStages().map((stage,index)=>{
-    const cards=rows.filter(x=>caseStage(x.o.status)===stage);
-    return `<section class="pipeline-column" data-stage="${esc(stage)}" style="--stage-color:${['#8b7db9','#7289bb','#b69a65','#69a69c','#739ac3','#8b7db9','#487aa0'][index]}" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="caseDrop(event,'${esc(stage)}')"><header><h3>${esc(stage)} <span>${cards.length}</span></h3><b>${num(cards.reduce((s,x)=>s+(+x.o.bj||0),0))} BJ</b></header><div class="pipeline-cards">${cards.map(({o,c})=>`<article class="pipeline-card" draggable="true" data-case-id="${esc(o.id)}" ondragstart="event.dataTransfer.setData('application/x-crm-case',decodeURIComponent('${caseEncodedId(o.id)}'))"><button class="case-title" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">${esc(o.product||o.category||'Obchodní případ')}</button><div class="pipeline-client">${esc(clientName(c))}</div>${replacementBadge(o)}<div class="chips"><span class="chip">${esc(o.category)}</span>${caseAgeHtml(o)}</div>${opportunityContactHtml(o)}<div class="pipeline-amount">${num(o.bj)} BJ</div><div class="note">Oček. provize ${money(+o.actualCommission||+o.expectedCommission||opportunityCash(o,new Date().getFullYear()))}</div><div class="pipeline-volume"><button class="case-title" title="Upravit objem případu" onclick="caseEditVolume(decodeURIComponent('${caseEncodedId(o.id)}'))">${money(o.amount)} ✎</button></div><div class="note">${esc(o.company||'')}</div>${opportunityStatusSelect(o)}<div class="actions"><button class="btn slim primary" onclick="openQuickActivity(${Number(o.clientId)})">+ Aktivita</button><button class="btn slim" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">Upravit</button><button class="btn slim" onclick="selectedClientId=${Number(o.clientId)};showView('clients')">Klient</button></div></article>`).join('')||'<p class="pipeline-empty">Žádné případy</p>'}</div></section>`;
+    const cards=rows.filter(x=>caseStage(x.o.status)===stage), enabled=pipelineStageCommissionEnabled(stage), stageCash=cards.reduce((sum,x)=>sum+caseExpectedCommission(x.o),0);
+    return `<section class="pipeline-column ${enabled?'commission-on':'commission-off'}" data-stage="${esc(stage)}" style="--stage-color:${['#8b7db9','#7289bb','#b69a65','#69a69c','#739ac3','#8b7db9','#487aa0'][index]}" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="caseDrop(event,'${esc(stage)}')"><header><h3>${esc(stage)} <span>${cards.length}</span></h3><div class="pipeline-stage-commission"><label><input type="checkbox" ${enabled?'checked':''} onchange="togglePipelineStageCommission('${esc(stage)}',this.checked)"><span>Počítat do provize</span></label><strong>${money(stageCash)}</strong></div><b>${num(cards.reduce((s,x)=>s+(+x.o.bj||0),0))} BJ</b></header><div class="pipeline-cards">${cards.map(({o,c})=>`<article class="pipeline-card" draggable="true" data-case-id="${esc(o.id)}" ondragstart="event.dataTransfer.setData('application/x-crm-case',decodeURIComponent('${caseEncodedId(o.id)}'))"><button class="case-title" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">${esc(o.product||o.category||'Obchodní případ')}</button><div class="pipeline-client">${esc(clientName(c))}</div>${replacementBadge(o)}<div class="chips"><span class="chip">${esc(o.category)}</span>${caseAgeHtml(o)}</div>${opportunityContactHtml(o)}<div class="pipeline-amount">${num(o.bj)} BJ</div><div class="note">Oček. provize ${money(caseExpectedCommission(o))}</div><div class="pipeline-volume"><button class="case-title" title="Upravit objem případu" onclick="caseEditVolume(decodeURIComponent('${caseEncodedId(o.id)}'))">${money(o.amount)} ✎</button></div><div class="note">${esc(o.company||'')}</div>${opportunityStatusSelect(o)}<div class="actions"><button class="btn slim primary" onclick="openQuickActivity(${Number(o.clientId)})">+ Aktivita</button><button class="btn slim" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">Upravit</button><button class="btn slim" onclick="selectedClientId=${Number(o.clientId)};showView('clients')">Klient</button></div></article>`).join('')||'<p class="pipeline-empty">Žádné případy</p>'}</div></section>`;
   }).join('');
 }
 function renderVersion() {
@@ -13186,8 +13209,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.09-2';
-const VERSION_NOTE = 'Rychlá aktivita je dostupná v celém CRM a jedním zápisem plní klientskou historii, Analýzu i týdenní cíle.';
+const VERSION = '2026.10.09-3';
+const VERSION_NOTE = 'Pipeline umožňuje u každé fáze zapnout nebo vypnout její obchody ve výpočtu očekávané provize.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';

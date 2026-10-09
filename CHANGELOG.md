@@ -1,3 +1,9 @@
+## 2026.10.09-3
+
+- Každá fáze pipeline má vlastní přepínač „Počítat do provize“; vypnutá fáze zůstane viditelná, ale její případy se nezapočítají do očekávané provize.
+- Souhrn nad pipeline ihned ukazuje provizi zapnutých fází, počet započítaných případů a částku celé pipeline pro srovnání.
+- Přidána rychlá tlačítka „Počítat vše“ a „Vypnout vše“ a uložené nastavení zůstane zachované po obnovení CRM.
+
 ## 2026.10.09-2
 
 - Stálé tlačítko „+ Aktivita“ zpřístupňuje rychlý zápis z každé části CRM; stejné tlačítko je také přímo u klienta a na kartách pipeline.

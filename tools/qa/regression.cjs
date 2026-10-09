@@ -326,7 +326,7 @@ try{
  results.push('Replacement case links the original contract, replaces it immediately and preserves its history with a future effective date');
  const savedCases=await page.evaluate(()=>JSON.stringify(state));
  await page.evaluate(()=>{
-   state.opportunities=[{id:99001,clientId:1,product:'Hypotéka QA',category:'Hypotéka',status:'Oportunita',amount:2500000,updatedAt:'2026-09-01',history:[]},{id:99002,clientId:1,product:'Investice QA',category:'Investice',status:'Schváleno',amount:300000,updatedAt:'2026-09-15',history:[]}];
+   state.opportunities=[{id:99001,clientId:1,product:'Hypotéka QA',category:'Hypotéka',status:'Oportunita',amount:2500000,expectedCommission:10000,updatedAt:'2026-09-01',history:[]},{id:99002,clientId:1,product:'Investice QA',category:'Investice',status:'Schváleno',amount:300000,expectedCommission:20000,updatedAt:'2026-09-15',history:[]}];
    window.businessCaseFilters={query:'QA',category:'',status:'',sort:'status'};showView('opportunities');
  });
  assert.equal(await page.locator('#opportunityTable tbody tr').first().getAttribute('data-case-id'),'99002');
@@ -336,6 +336,21 @@ try{
  assert.equal(await page.locator('#opportunityTable [data-case-id="99001"] select').inputValue(),'Opportunity');
  await page.evaluate(()=>showView('pipeline'));
  assert.equal(await page.locator('#pipelineBoard .pipeline-column').count(),7);
+ assert.equal(await page.locator('#pipelineBoard .pipeline-stage-commission input').count(),7);
+ assert.equal((await page.locator('#pipelineMetrics .pipeline-counted-commission b').textContent()).replace(/\D/g,''),'30000');
+ await page.locator('#pipelineBoard [data-stage="Opportunity"] .pipeline-stage-commission input').uncheck();
+ assert.equal(await page.evaluate(()=>pipelineStageCommissionEnabled('Opportunity')),false);
+ assert.equal((await page.locator('#pipelineMetrics .pipeline-counted-commission b').textContent()).replace(/\D/g,''),'20000');
+ assert.equal(await page.locator('#pipelineBoard [data-stage="Opportunity"].commission-off').count(),1);
+ await page.locator('#pipelineBoard [data-stage="Opportunity"] .pipeline-stage-commission input').check();
+ assert.equal(await page.evaluate(()=>pipelineStageCommissionEnabled('Opportunity')),true);
+ assert.equal((await page.locator('#pipelineMetrics .pipeline-counted-commission b').textContent()).replace(/\D/g,''),'30000');
+ await page.getByRole('button',{name:'Vypnout vše'}).click();
+ assert.equal(await page.locator('#pipelineBoard .pipeline-column.commission-off').count(),7);
+ assert.equal((await page.locator('#pipelineMetrics .pipeline-counted-commission b').textContent()).replace(/\D/g,''),'0');
+ await page.getByRole('button',{name:'Počítat vše'}).click();
+ assert.equal(await page.locator('#pipelineBoard .pipeline-column.commission-on').count(),7);
+ assert.equal((await page.locator('#pipelineMetrics .pipeline-counted-commission b').textContent()).replace(/\D/g,''),'30000');
  assert.equal(await page.locator('#pipelineBoard [data-stage="Opportunity"] [data-case-id="99001"]').count(),1);
  await page.locator('#pipelineBoard [data-case-id="99001"] select').selectOption('Scoring');
  assert.equal(await page.locator('#pipelineBoard [data-stage="Scoring"] [data-case-id="99001"]').count(),1);
