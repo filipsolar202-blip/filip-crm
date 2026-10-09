@@ -333,30 +333,30 @@ h1,h2,h3,h4,.detail-title,.client-row b,.portfolio-card b,.contact-value{color:#
 #referrers .analysis-week-body .analysis-call-card,#referrers .analysis-week-entries{padding:10px;border:1px solid rgba(190,211,235,.74);border-radius:13px;background:rgba(255,255,255,.62)}
 @media(max-width:760px){#referrers .analysis-main-toolbar,#referrers .analysis-entry-guide{align-items:stretch;flex-direction:column}#referrers .analysis-entry-actions{justify-content:flex-start}}
 
-/* Klidnejsi kartovy styl podle zvolene vizualni reference. */
-#referrers>.card{padding:18px;background:linear-gradient(145deg,rgba(245,243,237,.9),rgba(241,246,251,.88));border-color:rgba(190,181,163,.42)}
-#referrers .analysis-main-toolbar{margin:-2px 0 16px;padding:16px 18px;border:1.5px solid rgba(205,197,182,.62);border-radius:18px;background:rgba(255,255,255,.88);box-shadow:0 10px 28px rgba(69,76,86,.06)}
+/* Mesicni analyza v jednotnem modrostribrnem stylu FILIP CRM. */
+#referrers>.card{padding:18px;background:linear-gradient(145deg,rgba(239,245,252,.92),rgba(247,250,254,.88));border-color:rgba(119,154,195,.52)}
+#referrers .analysis-main-toolbar{margin:-2px 0 16px;padding:16px 18px;border:1.5px solid rgba(119,154,195,.52);border-radius:18px;background:linear-gradient(145deg,rgba(250,252,255,.96),rgba(239,245,252,.88));box-shadow:0 10px 28px rgba(47,79,117,.07)}
 #referrers .analysis-main-toolbar h2{font-size:22px;color:#172b42}
 #referrers #analysisMetrics{gap:12px;margin:0 0 16px}
-#referrers #analysisMetrics .metric{min-height:92px;padding:15px 17px;border-color:rgba(205,197,182,.62);border-radius:17px;background:rgba(255,255,255,.9);box-shadow:0 9px 24px rgba(69,76,86,.05)}
-#referrers #analysisMetrics .metric .note{font-size:11px;text-transform:none;color:#707a81}
+#referrers #analysisMetrics .metric{min-height:92px;padding:15px 17px;border-color:rgba(119,154,195,.52);border-radius:17px;background:linear-gradient(145deg,rgba(250,252,255,.96),rgba(239,245,252,.82));box-shadow:0 9px 24px rgba(47,79,117,.055)}
+#referrers #analysisMetrics .metric .note{font-size:11px;text-transform:none;color:#526b87}
 #referrers #analysisMetrics .metric b{margin-top:8px;font-size:23px;color:#172b42}
-#referrers #analysisMetrics .metric small{margin-top:5px;color:#77838d}
-#referrers .analysis-month-overview{padding:18px;border-color:rgba(205,197,182,.66);border-radius:19px;background:rgba(255,255,255,.91);box-shadow:0 12px 30px rgba(69,76,86,.06)}
+#referrers #analysisMetrics .metric small{margin-top:5px;color:#647b95}
+#referrers .analysis-month-overview{padding:18px;border-color:rgba(119,154,195,.56);border-radius:19px;background:linear-gradient(145deg,rgba(250,252,255,.96),rgba(237,244,251,.84));box-shadow:0 12px 30px rgba(47,79,117,.065)}
 #referrers .analysis-month-overview h3{font-size:19px;color:#172b42}
-#referrers .analysis-month-week{min-height:116px;padding:13px 14px;border-color:rgba(205,197,182,.72);border-radius:15px;background:#fff}
+#referrers .analysis-month-week{min-height:116px;padding:13px 14px;border-color:rgba(151,180,212,.72);border-radius:15px;background:linear-gradient(145deg,#fbfdff,#edf4fb)}
 #referrers .analysis-month-week.active{border-color:#4a86b8;background:linear-gradient(145deg,#f2f8fc,#fff);box-shadow:0 9px 22px rgba(45,113,163,.11)}
 #referrers .analysis-month-week>strong{font-size:15px;color:#172b42}
-#referrers .analysis-entry-guide{padding:15px 17px;border-color:rgba(182,193,188,.7);border-radius:17px;background:rgba(255,255,255,.88);box-shadow:0 9px 24px rgba(69,76,86,.045)}
-#referrers .analysis-week-detail{border-color:rgba(205,197,182,.66);border-radius:18px;background:rgba(255,255,255,.88);box-shadow:0 10px 28px rgba(69,76,86,.05)}
-#referrers .analysis-week-detail>summary{padding:15px 17px;background:rgba(248,246,241,.92)}
+#referrers .analysis-entry-guide{padding:15px 17px;border-color:rgba(83,165,185,.52);border-radius:17px;background:linear-gradient(135deg,rgba(231,247,251,.92),rgba(241,247,253,.86));box-shadow:0 9px 24px rgba(47,79,117,.05)}
+#referrers .analysis-week-detail{border-color:rgba(119,154,195,.56);border-radius:18px;background:rgba(246,250,254,.9);box-shadow:0 10px 28px rgba(47,79,117,.055)}
+#referrers .analysis-week-detail>summary{padding:15px 17px;background:linear-gradient(145deg,rgba(229,238,248,.94),rgba(241,246,252,.9))}
 #referrers .analysis-week-detail>summary strong{font-size:17px;color:#172b42}
 #referrers .analysis-week-body{gap:16px;padding:17px}
-#referrers .analysis-week-body .analysis-call-card,#referrers .analysis-week-entries{padding:14px;border-color:rgba(213,205,191,.7);background:#fff}
-#referrers .analysis-day-pill{padding:13px;border-color:rgba(213,205,191,.7);background:#fff}
+#referrers .analysis-week-body .analysis-call-card,#referrers .analysis-week-entries{padding:14px;border-color:rgba(151,180,212,.68);background:linear-gradient(145deg,#fbfdff,#f0f5fb)}
+#referrers .analysis-day-pill{padding:13px;border-color:rgba(151,180,212,.68);background:linear-gradient(145deg,#fbfdff,#f0f5fb)}
 #referrers .analysis-day-pill b{font-size:20px;color:#172b42}
-#referrers .analysis-month-overview .table-wrap,#referrers .analysis-week-detail .table-wrap{border-color:rgba(213,205,191,.7);background:#fff}
-#referrers .analysis-month-overview th,#referrers .analysis-week-detail th{padding:9px 10px;background:rgba(248,246,241,.96);color:#68737a;font-size:10px}
+#referrers .analysis-month-overview .table-wrap,#referrers .analysis-week-detail .table-wrap{border-color:rgba(151,180,212,.68);background:#fafdff}
+#referrers .analysis-month-overview th,#referrers .analysis-week-detail th{padding:9px 10px;background:rgba(229,238,248,.96);color:#526b87;font-size:10px}
 #referrers .analysis-month-overview td,#referrers .analysis-week-detail td{padding:8px 10px;font-size:11px}
 @media(max-width:760px){#referrers>.card{padding:10px}#referrers .analysis-main-toolbar{padding:13px}#referrers #analysisMetrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
 

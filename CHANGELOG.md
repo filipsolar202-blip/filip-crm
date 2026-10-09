@@ -1,3 +1,8 @@
+## 2026.10.09-5
+
+- Měsíční Analýza je vizuálně sjednocená se zbytkem FILIP CRM: modrostříbrné rámečky, chladné světlé plochy, tmavě modrá typografie a stejné zvýraznění aktivních prvků.
+- Zachováno zlepšené měsíční rozložení, týdenní detail i jednotný rychlý zápis aktivit.
+
 ## 2026.10.09-4
 
 - Analýza po otevření prioritně ukazuje celý zvolený měsíc: hlavní výsledky, souhrn aktivit a samostatné karty jednotlivých týdnů.
