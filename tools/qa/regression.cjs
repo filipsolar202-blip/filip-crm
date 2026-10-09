@@ -404,6 +404,26 @@ try{
  assert.equal(management.defaultPartner,'filip');assert.equal(management.claim,4000);assert.equal(management.received,3000);assert(management.clientRows>=1);assert(management.dealRows>=1);assert.equal(management.filteredClientRows,1);assert.equal(management.filterValue,'mantra');assert(management.mantraAum>=0);assert(management.ownAum>=0);
  results.push('Management separates partner clients, trade claims, AUM and received payouts while migrating existing clients to Filip');
 
+ const weeklyGoals=await page.evaluate(()=>{
+   const original={weeklyGoals:state.weeklyGoals,weeklyReviews:state.weeklyReviews,analysisEntries:state.analysisEntries,opportunities:state.opportunities};
+   state.weeklyGoals=[];state.weeklyReviews=[];state.analysisEntries=[];state.opportunities=[];
+   const key=weekKey(),range=weekRange(key);
+   state.analysisEntries.push({id:99101,date:range.start,type:'Schůzka stávající klient',count:1,outcome:'realized'});
+   state.opportunities.push({id:99102,clientId:1,createdAt:range.start,status:'Opportunity'});
+   state.weeklyGoals.push(
+     {id:99103,weekKey:key,slot:1,title:'Schůzky',why:'Více rozhovorů',category:'Obchod',metricType:'meetings',target:2,dueDate:range.end,status:'Probíhá'},
+     {id:99104,weekKey:key,slot:2,title:'Příležitosti',why:'Nový pipeline',category:'Nové příležitosti',metricType:'opportunities',target:1,dueDate:range.end,status:'Nezahájeno'},
+     {id:99105,weekKey:key,slot:3,title:'Systém',why:'Úspora času',category:'CRM / systém',metricType:'manual',manualActual:3,target:3,dueDate:range.end,status:'Probíhá'}
+   );
+   renderWeeklyGoals();
+   const actuals=state.weeklyGoals.map(g=>weeklyGoalActual(g,key)),cards=document.querySelectorAll('#weeklyGoalsGrid .weekly-goal').length,progress=[...document.querySelectorAll('#weeklyGoalsGrid .weekly-goal-score strong')].map(x=>x.textContent.trim());
+   byId('weeklyReviewSummary').dataset.weekKey=key;setVal('wrSuccess','Test reflexe');closeWeeklyGoals();
+   const review=state.weeklyReviews[0],history=document.querySelectorAll('#weeklyGoalsHistory .weekly-history-bars button').length;
+   Object.assign(state,original);renderAll();return {actuals,cards,progress,completed:review.completed,totalPct:review.totalPct,reflection:review.reflection.success,history};
+ });
+ assert.deepEqual(weeklyGoals.actuals,[1,1,3]);assert.equal(weeklyGoals.cards,3);assert.deepEqual(weeklyGoals.progress,['50 %','100 %','100 %']);assert.equal(weeklyGoals.completed,2);assert.equal(weeklyGoals.totalPct,83);assert.equal(weeklyGoals.reflection,'Test reflexe');assert.equal(weeklyGoals.history,1);
+ results.push('Weekly focus keeps exactly three priorities, reads CRM metrics, closes the week and archives its score and reflection');
+
  await page.setViewportSize({width:1600,height:1000});await page.evaluate(()=>showView('pipeline'));await page.screenshot({path:'/private/tmp/crm-pipeline-desktop.png',fullPage:true});
  await page.setViewportSize({width:834,height:1112});await page.screenshot({path:'/private/tmp/crm-pipeline-ipad.png',fullPage:true});
  await page.evaluate(data=>{state=JSON.parse(data);window.businessCaseFilters={query:'',category:'',status:'',sort:'status'};renderAll()},savedCases);

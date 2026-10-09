@@ -75,6 +75,8 @@ function def() {
     externalInvestments: [],
     investmentForecasts: [],
     analysisPlans: {},
+    weeklyGoals: [],
+    weeklyReviews: [],
     contractOpportunityStatuses: {},
     verifiedDuplicates: {},
     investmentRecords: [],
@@ -99,7 +101,7 @@ function normalizeState(s) {
     ...s
   };
   delete s.mailHeaders;
-  ['clients', 'contracts', 'deals', 'activities', 'referrals', 'referrerPayouts', 'managementPartners', 'managementPayouts', 'notes', 'opportunities', 'investmentRecords', 'investmentSnapshots', 'commissionImports', 'analysisEntries', 'campaigns', 'externalInvestments', 'investmentForecasts'].forEach(k => s[k] = Array.isArray(s[k]) ? s[k] : []);
+  ['clients', 'contracts', 'deals', 'activities', 'referrals', 'referrerPayouts', 'managementPartners', 'managementPayouts', 'notes', 'opportunities', 'investmentRecords', 'investmentSnapshots', 'commissionImports', 'analysisEntries', 'campaigns', 'externalInvestments', 'investmentForecasts', 'weeklyGoals', 'weeklyReviews'].forEach(k => s[k] = Array.isArray(s[k]) ? s[k] : []);
   if (!s.managementPartners.length) s.managementPartners = base.managementPartners;
   if (!s.managementPartners.some(x => x.id === 'filip')) s.managementPartners.unshift(base.managementPartners[0]);
   s.clients.forEach(c => { if (!c.managementPartnerId) c.managementPartnerId = 'filip'; });
@@ -112,7 +114,7 @@ function normalizeState(s) {
   Object.values(s.plans).forEach(p => normalizePlan(p, s.settings.bjCoef));
   dedupeInvestmentRecordsInState(s);
   dedupeInvestmentSnapshotsInState(s);
-  let maxId = Math.max(0, ...['clients', 'contracts', 'deals', 'activities', 'referrals', 'referrerPayouts', 'managementPayouts', 'notes', 'opportunities', 'commissionImports', 'investmentSnapshots', 'analysisEntries', 'campaigns', 'externalInvestments', 'investmentForecasts'].flatMap(k => s[k].map(x => +x.id || 0)));
+  let maxId = Math.max(0, ...['clients', 'contracts', 'deals', 'activities', 'referrals', 'referrerPayouts', 'managementPayouts', 'notes', 'opportunities', 'commissionImports', 'investmentSnapshots', 'analysisEntries', 'campaigns', 'externalInvestments', 'investmentForecasts', 'weeklyGoals', 'weeklyReviews'].flatMap(k => s[k].map(x => +x.id || 0)));
   if (!s.nextId || s.nextId <= maxId) s.nextId = maxId + 1;
   return s;
 }
@@ -10915,7 +10917,7 @@ function mergeIncomingState(incoming) {
 }
 function stateCountsText(s = state) {
   s = normalizeState(s);
-  return `${num((s.clients || []).length)} klientů · ${num((s.contracts || []).length)} smluv · ${num((s.deals || []).length)} obchodů · ${num((s.opportunities || []).length)} obchodních případů · ${num((s.notes || []).length)} poznámek · ${num((s.analysisEntries || []).length)} analytických aktivit · ${num((s.investmentRecords || []).length)} investičních záznamů · ${num((s.investmentSnapshots || []).length)} aktualizací investic · ${num((s.externalInvestments || []).length)} investic mimo správu · ${num((s.investmentForecasts || []).length)} prognóz · ${num((s.activities || []).length)} aktivit · ${num((s.commissionImports || []).length)} provizních importů · ${num((s.referrerPayouts || []).length)} výplat tipařům`;
+  return `${num((s.clients || []).length)} klientů · ${num((s.contracts || []).length)} smluv · ${num((s.deals || []).length)} obchodů · ${num((s.opportunities || []).length)} obchodních případů · ${num((s.notes || []).length)} poznámek · ${num((s.analysisEntries || []).length)} analytických aktivit · ${num((s.weeklyGoals || []).length)} týdenních cílů · ${num((s.weeklyReviews || []).length)} uzavřených týdnů · ${num((s.investmentRecords || []).length)} investičních záznamů · ${num((s.investmentSnapshots || []).length)} aktualizací investic · ${num((s.externalInvestments || []).length)} investic mimo správu · ${num((s.investmentForecasts || []).length)} prognóz · ${num((s.activities || []).length)} aktivit · ${num((s.commissionImports || []).length)} provizních importů · ${num((s.referrerPayouts || []).length)} výplat tipařům`;
 }
 function criticalBackupCounts(s = state) {
   s = normalizeState(s);
@@ -10931,6 +10933,8 @@ function criticalBackupCounts(s = state) {
     investmentForecasts: s.investmentForecasts.length,
     activities: s.activities.length,
     analysisEntries: s.analysisEntries.length,
+    weeklyGoals: (s.weeklyGoals || []).length,
+    weeklyReviews: (s.weeklyReviews || []).length,
     commissionImports: (s.commissionImports || []).length,
     referrerPayouts: (s.referrerPayouts || []).length,
     referrals: (s.referrals || []).length
@@ -12585,8 +12589,151 @@ function renderDashboardWorkQueue() {
   container.innerHTML = shown.map(x => `<article class="dash-work-row ${activities_aEsc(x.rowClass || '')}"><div class="dash-work-client"><span class="badge ${x.kind === 'activity' ? 'blue' : 'orange'}">${activities_aEsc(x.type)}</span><b>${activities_aEsc(activities_aClientName(x.c))}</b><span class="note">${activities_aEsc(x.c?.phone || 'bez telefonu')}${x.c?.email ? ' · ' + activities_aEsc(x.c.email) : ''}</span></div><div class="dash-work-topic"><b>${activities_aEsc(x.title)}</b>${x.text ? `<span class="note">${activities_aEsc(x.text)}</span>` : ''}</div><div class="dash-work-date"><b>${activities_aEsc(x.date || '')}</b>${x.time ? `<span class="note">${activities_aEsc(x.time)}</span>` : ''}${x.kind === 'contract' && typeof daysBadge === 'function' ? daysBadge(x.days) : ''}</div><div class="dash-work-status">${x.status}</div><div class="dash-work-actions"><button class="btn slim green" data-dash-action="done" data-kind="${activities_aEsc(x.kind)}" data-id="${activities_aEsc(x.id)}">Hotovo</button><button class="btn slim" data-dash-action="edit" data-kind="${activities_aEsc(x.kind)}" data-id="${activities_aEsc(x.id)}">Upravit</button><button class="btn slim" data-dash-action="client" data-client="${activities_aEsc(x.clientId)}">Klient</button>${activities_aContactAction(x)}</div></article>`).join('') || '<div class="dash-work-empty note">Na dnešek nevidím žádné otevřené úkoly ani aktivity.</div>';
   if (more > 0) container.insertAdjacentHTML('beforeend', `<div class="dash-work-empty note">Zobrazuji prvních ${shown.length} položek. Dalších ${more} je bezpečně skryto, aby se Dashboard nezasekl.</div>`);
 }
+let weeklyGoalEditingSlot = 1;
+const WEEKLY_GOAL_METRICS = {
+  manual: ['Ručně', ''],
+  contacted_clients: ['Kontaktovaní klienti', 'klientů'],
+  opportunities: ['Nové obchodní případy', 'příležitostí'],
+  meetings: ['Uskutečněné schůzky', 'schůzek'],
+  analyses: ['Nové analýzy', 'analýz'],
+  referrals: ['Získaná doporučení', 'doporučení'],
+  presentations: ['Prezentace', 'prezentací'],
+  signatures: ['Podpisy', 'podpisů'],
+  signed_deals: ['Uzavřené obchody', 'obchodů']
+};
+function weeklyGoalsFor(key = weekKey()) {
+  return (state.weeklyGoals || []).filter(x => x.weekKey === key).sort((a, b) => (+a.slot || 0) - (+b.slot || 0));
+}
+function weeklyReviewFor(key = weekKey()) {
+  return (state.weeklyReviews || []).find(x => x.weekKey === key) || null;
+}
+function weeklyGoalForSlot(slot, key = weekKey()) {
+  return weeklyGoalsFor(key).find(x => +x.slot === +slot) || null;
+}
+function weeklyGoalActual(goal, key = goal?.weekKey || weekKey()) {
+  if (!goal) return 0;
+  if (goal.closedActual !== undefined && weeklyReviewFor(key)) return +goal.closedActual || 0;
+  if (!goal.metricType || goal.metricType === 'manual') return +goal.manualActual || 0;
+  const range = weekRange(key),
+    actuals = typeof analysisActuals === 'function' ? analysisActuals(range.start, range.end, key) : {};
+  if (goal.metricType === 'opportunities') return (state.opportunities || []).filter(x => dateInRange(x.createdAt || x.statusDate, range.start, range.end)).length;
+  if (goal.metricType === 'signed_deals') return (typeof visibleDeals === 'function' ? visibleDeals() : state.deals || []).filter(x => dateInRange(x.date, range.start, range.end)).length;
+  if (goal.metricType === 'contacted_clients') {
+    const ids = new Set();
+    (state.activities || []).forEach(x => {
+      if (x.clientId && dateInRange(x.date, range.start, range.end) && /telefon|sms|whatsapp|email|sch[uů]zka|vol[aá]n/i.test(String(x.type || ''))) ids.add(String(x.clientId));
+    });
+    (state.opportunities || []).forEach(x => {
+      if (x.clientId && dateInRange(x.lastContactDate, range.start, range.end)) ids.add(String(x.clientId));
+    });
+    return ids.size;
+  }
+  const map = {meetings:'meetingsExisting', analyses:'analyses', referrals:'referrals', presentations:'presentations', signatures:'signatures'};
+  let value = +(actuals[map[goal.metricType]] || 0);
+  if (goal.metricType === 'referrals') value = Math.max(value, (state.referrals || []).filter(x => dateInRange(x.date, range.start, range.end)).length);
+  return value;
+}
+function weeklyGoalProgress(goal, key = goal?.weekKey || weekKey()) {
+  const actual = weeklyGoalActual(goal, key), target = Math.max(1, +goal?.target || 1);
+  return {actual, target, pct:Math.max(0, Math.round(actual / target * 100)), bar:Math.min(100, Math.max(0, actual / target * 100))};
+}
+function weeklyGoalDisplayStatus(goal, progress, closed = false) {
+  if (closed) return progress.pct >= 100 ? 'Splněno' : progress.actual > 0 ? 'Částečně splněno' : 'Nesplněno';
+  if (progress.pct >= 100) return 'Splněno';
+  if (goal.status === 'Nesplněno') return 'Nesplněno';
+  if (progress.actual > 0 || goal.status === 'Probíhá') return 'Probíhá';
+  return 'Nezahájeno';
+}
+function weeklyGoalStatusClass(status) {
+  return status === 'Splněno' ? 'green' : status === 'Nesplněno' ? 'red' : status === 'Částečně splněno' || status === 'Probíhá' ? 'orange' : 'blue';
+}
+function weeklyGoalMetricLabel(goal) {
+  return goal.kpiLabel || WEEKLY_GOAL_METRICS[goal.metricType]?.[1] || 'jednotek';
+}
+function renderWeeklyGoals() {
+  const grid = byId('weeklyGoalsGrid');
+  if (!grid) return;
+  const key = weekKey(), range = weekRange(key), review = weeklyReviewFor(key);
+  setText('weeklyGoalsRange', `${key} · ${range.start} až ${range.end}${review ? ' · týden uzavřen' : ''}`);
+  const closeBtn = byId('closeWeeklyGoalsBtn');
+  if (closeBtn) { closeBtn.disabled = !!review; closeBtn.textContent = review ? 'Týden uzavřen' : 'Uzavřít týden'; }
+  grid.innerHTML = [1, 2, 3].map(slot => {
+    const goal = weeklyGoalForSlot(slot, key);
+    if (!goal) return `<article class="weekly-goal empty"><span class="weekly-goal-number">${slot}</span><h3>Zatím nenastaveno</h3><p class="note">Vyber jednu prioritu, která tento týden posune byznys.</p><button class="btn" onclick="openWeeklyGoalModal(${slot})">+ Nastavit cíl</button></article>`;
+    const p = weeklyGoalProgress(goal, key), status = weeklyGoalDisplayStatus(goal, p, !!review), late = !review && goal.dueDate && goal.dueDate < today() && p.pct < 100;
+    return `<article class="weekly-goal ${late ? 'late' : ''}"><div class="weekly-goal-head"><span class="weekly-goal-number">${slot}</span><span class="badge ${weeklyGoalStatusClass(status)}">${esc(status)}</span></div><div><span class="eyebrow">${esc(goal.category || 'Jiné')}</span><h3>${esc(goal.title)}</h3></div>${goal.why ? `<p class="note weekly-goal-why">${esc(goal.why)}</p>` : ''}<div class="weekly-goal-score"><b>${num(p.actual)} / ${num(p.target)} ${esc(weeklyGoalMetricLabel(goal))}</b><strong>${num(p.pct)} %</strong></div><div class="weekly-progress"><span style="width:${p.bar}%"></span></div><div class="weekly-goal-foot"><span>${goal.dueDate ? 'Termín ' + esc(goal.dueDate) : 'Bez termínu'}</span>${late ? '<b class="red">Po termínu</b>' : `<span>${esc(WEEKLY_GOAL_METRICS[goal.metricType]?.[0] || 'Ručně')}</span>`}</div>${review ? '' : `<button class="btn slim" onclick="openWeeklyGoalModal(${slot})">Aktualizovat</button>`}</article>`;
+  }).join('');
+  renderWeeklyGoalsHistory();
+}
+function renderWeeklyGoalsHistory() {
+  const box = byId('weeklyGoalsHistory');
+  if (!box) return;
+  const rows = [...(state.weeklyReviews || [])].sort((a, b) => String(b.weekKey).localeCompare(String(a.weekKey))).slice(0, 12);
+  if (!rows.length) { box.innerHTML = '<p class="note">Historie vznikne po prvním uzavřeném týdnu.</p>'; return; }
+  const avg = Math.round(rows.reduce((s, x) => s + (+x.totalPct || 0), 0) / rows.length), completed = rows.reduce((s, x) => s + (+x.completed || 0), 0);
+  box.innerHTML = `<details><summary><b>Trend posledních ${num(rows.length)} týdnů</b><span class="note">Průměr ${num(avg)} % · splněno ${num(completed)} z ${num(rows.length * 3)} cílů</span></summary><div class="weekly-history-bars">${rows.map(x => `<button type="button" title="${esc(x.summary || '')}" onclick="openWeeklyReviewModal('${esc(x.weekKey)}')"><span style="height:${Math.min(100, +x.totalPct || 0)}%"></span><b>${esc(String(x.weekKey).replace(/^\d{4}-/, ''))}</b><small>${num(x.totalPct || 0)} %</small></button>`).join('')}</div></details>`;
+}
+function openWeeklyGoalModal(slot = null) {
+  const key = weekKey();
+  if (weeklyReviewFor(key)) return alert('Tento týden už je uzavřený. Jeho výsledky jsou v historii.');
+  weeklyGoalEditingSlot = +(slot || [1, 2, 3].find(x => !weeklyGoalForSlot(x, key)) || 1);
+  fillWeeklyGoalEditor();
+  openModal('weeklyGoalModal');
+}
+function fillWeeklyGoalEditor() {
+  const key = weekKey(), range = weekRange(key), goal = weeklyGoalForSlot(weeklyGoalEditingSlot, key);
+  byId('weeklyGoalTabs').innerHTML = [1,2,3].map(x => `<button class="btn ${x === weeklyGoalEditingSlot ? 'primary' : ''}" onclick="weeklyGoalEditingSlot=${x};fillWeeklyGoalEditor()">Cíl ${x}${weeklyGoalForSlot(x, key) ? ' ✓' : ''}</button>`).join('');
+  setVal('wgTitle', goal?.title || ''); setVal('wgWhy', goal?.why || ''); setVal('wgCategory', goal?.category || 'Obchod');
+  setVal('wgMetricType', goal?.metricType || 'manual'); setVal('wgKpiLabel', goal?.kpiLabel || ''); setVal('wgTarget', goal?.target || '');
+  setVal('wgManualActual', goal?.manualActual || ''); setVal('wgDueDate', goal?.dueDate || range.end); setVal('wgStatus', goal?.status || 'Nezahájeno');
+  toggleWeeklyGoalMetric();
+}
+function toggleWeeklyGoalMetric() {
+  const automatic = val('wgMetricType') !== 'manual', field = byId('wgManualActualField');
+  if (field) field.style.display = automatic ? 'none' : '';
+  if (automatic && !val('wgKpiLabel')) setVal('wgKpiLabel', WEEKLY_GOAL_METRICS[val('wgMetricType')]?.[1] || '');
+}
+function saveWeeklyGoal() {
+  const title = val('wgTitle').trim(), why = val('wgWhy').trim(), target = +val('wgTarget') || 0, key = weekKey();
+  if (!title) return alert('Doplň název cíle.');
+  if (!why) return alert('Doplň, jak tento cíl konkrétně posune byznys.');
+  if (target <= 0) return alert('Cílová hodnota musí být větší než nula.');
+  let goal = weeklyGoalForSlot(weeklyGoalEditingSlot, key);
+  if (!goal) { goal = {id:uid(), weekKey:key, slot:weeklyGoalEditingSlot, createdAt:new Date().toISOString()}; state.weeklyGoals.push(goal); }
+  Object.assign(goal, {title, why, category:val('wgCategory'), metricType:val('wgMetricType'), kpiLabel:val('wgKpiLabel').trim(), target, manualActual:+val('wgManualActual') || 0, dueDate:val('wgDueDate'), status:val('wgStatus'), updatedAt:new Date().toISOString()});
+  persist(); renderWeeklyGoals(); fillWeeklyGoalEditor(); saveToast('Týdenní cíl uložen');
+}
+function weeklyReviewAutoSummary(goals, key) {
+  const stats = goals.map(g => ({g, ...weeklyGoalProgress(g, key)})), completed = stats.filter(x => x.pct >= 100).length,
+    totalPct = stats.length ? Math.round(stats.reduce((s, x) => s + Math.min(100, x.pct), 0) / stats.length) : 0,
+    best = [...stats].sort((a,b) => b.pct - a.pct)[0], weakest = [...stats].sort((a,b) => a.pct - b.pct)[0];
+  return {completed, totalPct, summary:`Splněno ${completed} ze 3 hlavních cílů. Celkové splnění ${totalPct} %.${best ? ` Největší posun: ${best.g.title} (${best.pct} %).` : ''}${weakest && weakest.pct < 100 ? ` Prostor ke zlepšení: ${weakest.g.title} (${weakest.pct} %).` : ''}`};
+}
+function openWeeklyReviewModal(key = weekKey()) {
+  const goals = weeklyGoalsFor(key), review = weeklyReviewFor(key), range = weekRange(key);
+  if (!review && goals.length !== 3) return alert('Nejdřív nastav všechny 3 hlavní cíle týdne.');
+  const snapshots = review?.goals || goals.map(g => ({...g, actual:weeklyGoalActual(g, key), pct:weeklyGoalProgress(g, key).pct}));
+  setText('weeklyReviewTitle', `${review ? 'Vyhodnocení' : 'Uzavřít'} ${key}`);
+  byId('weeklyReviewSummary').innerHTML = snapshots.map((g, i) => { const actual = g.actual ?? weeklyGoalActual(g, key), target = +g.target || 1, pct = g.pct ?? Math.round(actual / target * 100), status = pct >= 100 ? 'Splněno' : actual > 0 ? 'Částečně splněno' : 'Nesplněno'; return `<div><span class="weekly-goal-number">${i+1}</span><b>${esc(g.title)}</b><span>${num(actual)} / ${num(target)} · ${num(pct)} % · <strong class="${weeklyGoalStatusClass(status)}">${status}</strong></span></div>`; }).join('');
+  const fields = {wrSuccess:'success',wrFailure:'failure',wrDifferent:'different',wrOpportunities:'opportunities',wrWaste:'waste',wrCarry:'carry',wrEfficiency:'efficiency'};
+  Object.entries(fields).forEach(([id, prop]) => { setVal(id, review?.reflection?.[prop] || ''); byId(id).disabled = !!review; });
+  const save = byId('weeklyReviewModal').querySelector('.actions .primary');
+  if (save) save.style.display = review ? 'none' : '';
+  byId('weeklyReviewSummary').dataset.weekKey = key;
+  openModal('weeklyReviewModal');
+}
+function closeWeeklyGoals() {
+  const key = byId('weeklyReviewSummary')?.dataset.weekKey || weekKey(), goals = weeklyGoalsFor(key);
+  if (goals.length !== 3) return alert('Nejdřív nastav všechny 3 hlavní cíle týdne.');
+  const snapshots = goals.map(g => { const p = weeklyGoalProgress(g, key); g.closedActual = p.actual; g.status = p.pct >= 100 ? 'Splněno' : 'Nesplněno'; return {...g, actual:p.actual, pct:p.pct}; }), auto = weeklyReviewAutoSummary(goals, key);
+  const reflection = {success:val('wrSuccess').trim(),failure:val('wrFailure').trim(),different:val('wrDifferent').trim(),opportunities:val('wrOpportunities').trim(),waste:val('wrWaste').trim(),carry:val('wrCarry').trim(),efficiency:val('wrEfficiency').trim()};
+  state.weeklyReviews = (state.weeklyReviews || []).filter(x => x.weekKey !== key);
+  state.weeklyReviews.push({id:uid(), weekKey:key, closedAt:new Date().toISOString(), range:weekRange(key), goals:snapshots, reflection, ...auto});
+  persist(); closeModal('weeklyReviewModal'); renderWeeklyGoals(); saveToast('Týden uzavřen a uložen do historie');
+}
 function renderDashboard() {
   renderDashboardMetrics();
+  renderWeeklyGoals();
   try {
     renderDashboardWorkQueue();
   } catch (e) {
@@ -12969,8 +13116,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.08-7';
-const VERSION_NOTE = 'Sjednocení investic zahrnuje také společný účet Edward a historické názvy dluhopisových fondů.';
+const VERSION = '2026.10.09-1';
+const VERSION_NOTE = 'Dashboard nově vede tři hlavní cíle týdne, automatické KPI, reflexi a historii výsledků.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
@@ -13075,9 +13222,11 @@ const BACKUP_COUNT_LABELS = {
   investmentForecasts: 'investičních prognóz',
   commissionImports: 'provizních importů',
   referrerPayouts: 'výplat tipařům',
-  referrals: 'doporučení'
+  referrals: 'doporučení',
+  weeklyGoals: 'týdenních cílů',
+  weeklyReviews: 'uzavřených týdnů'
 };
-const BACKUP_PROTECTED_KEYS = ['clients', 'contracts', 'deals', 'opportunities', 'notes', 'activities', 'analysisEntries', 'campaigns', 'investments', 'investmentSnapshots', 'externalInvestments', 'investmentForecasts', 'commissionImports', 'referrerPayouts', 'referrals'];
+const BACKUP_PROTECTED_KEYS = ['clients', 'contracts', 'deals', 'opportunities', 'notes', 'activities', 'analysisEntries', 'campaigns', 'investments', 'investmentSnapshots', 'externalInvestments', 'investmentForecasts', 'commissionImports', 'referrerPayouts', 'referrals', 'weeklyGoals', 'weeklyReviews'];
 let scenario_editableScope = '';
 let fkiEditor_editingFkRecordKey = '',
   fkiEditor_editingFkClientId = null;

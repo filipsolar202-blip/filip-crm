@@ -2,6 +2,10 @@
 
 Stav: náměty k pozdějšímu společnému upřesnění. Tento dokument zatím nemění fungování CRM.
 
+## 0. Tři hlavní cíle týdne
+
+První verze je od 9. 10. 2026 přímo na Dashboardu. Obsahuje tři pevné priority, ruční i automatická KPI, průběh, týdenní reflexi a archiv posledních 12 týdnů. Další krok bude propojit historii cílů s obchodním výsledkem a ukázat, které opakované aktivity skutečně zvyšují počet příležitostí, schůzek, podpisů a provizí.
+
 ## 1. Další importy reportů
 
 ### Cíl

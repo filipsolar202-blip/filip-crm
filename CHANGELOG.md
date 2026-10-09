@@ -1,3 +1,10 @@
+## 2026.10.09-1
+
+- Hlavní Dashboard obsahuje nový výrazný blok „3 hlavní cíle týdne“ se třemi pevnými prioritami, průběhem, termínem a upozorněním na nesplnění.
+- Cíl lze měřit ručně nebo automaticky podle kontaktovaných klientů, nových příležitostí, schůzek, analýz, doporučení, prezentací, podpisů a uzavřených obchodů.
+- Týden lze uzavřít reflexí, automatickým shrnutím a archivovat do trendu posledních 12 týdnů.
+- Týdenní cíle i vyhodnocení jsou součástí zálohy CRM.
+
 ## 2026.10.08-4
 
 - Interní označení produktu „FKI“ a „investiční akcie“ u stejného ISIN, názvu, společnosti a třídy už nevytváří falešnou duplicitu fondu.
