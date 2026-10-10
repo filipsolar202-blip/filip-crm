@@ -1530,6 +1530,8 @@ function isVolumeCategory(c) {
   return c === 'Investice' || c === 'Hypotéky';
 }
 function dealCash(d, y) {
+  const area = areaForDeal(d || {}), entryPct = parseMoney(d?.entryCommissionPct);
+  if (['investice', 'fki'].includes(area) && entryPct > 0 && dealVolume(d) > 0) return dealVolume(d) * entryPct / 100;
   const base = dealBJ(d) * (+getPlan(y || yearOf(d.date)).bjCoef || +state.settings.bjCoef || 150);
   return d.category === 'Životní pojištění' ? base * .8 : base;
 }
@@ -1559,6 +1561,8 @@ function opportunityCash(o, y) {
   return dealCash({
     category: opportunityCategoryToDeal(o?.category, o?.product),
     bj: +o?.bj || 0,
+    amount: +o?.amount || 0,
+    entryCommissionPct: o?.entryCommissionPct,
     date: o?.statusDate || today()
   }, y || yearOf(o?.statusDate || today()));
 }
@@ -2561,8 +2565,9 @@ function renderFundSettingsTable() {
     mergeKey: f.mergeKey || '',
     aum: +f.rawCurrent || 0,
     invested: +f.invested || 0,
-    trail: state.trailSettings?.[f.key]?.trailPct ?? investmentFundStoredValue(f).trailPct ?? '',
-    entryCommission: investmentFundStoredValue(f).entryCommissionPct ?? '',
+    trail: state.trailSettings?.[f.key]?.trailPct ?? fundProfile_value('investice',f.key,f.isin).trailPct ?? '',
+    entryCommission: fundProfile_value('investice',f.key,f.isin).entryCommissionPct ?? '',
+    entryFeeRewardShare: fundProfile_value('investice',f.key,f.isin).entryFeeRewardSharePct ?? '',
     locked: isInvestmentFundLocked(f.key),
     edit: 'investment'
   }));
@@ -2577,13 +2582,14 @@ function renderFundSettingsTable() {
     mergeKey: '',
     aum: +f.rawCurrent || 0,
     invested: +f.invested || 0,
-    trail: state.trailSettings?.[f.key]?.trailPct ?? state.fundValues?.[f.key]?.trailPct ?? '',
-    entryCommission: state.fundValues?.[f.key]?.entryCommissionPct ?? '',
+    trail: state.trailSettings?.[f.key]?.trailPct ?? fundProfile_value('fki',f.key,f.isin).trailPct ?? '',
+    entryCommission: fundProfile_value('fki',f.key,f.isin).entryCommissionPct ?? '',
+    entryFeeRewardShare: fundProfile_value('fki',f.key,f.isin).entryFeeRewardSharePct ?? '',
     locked: isFkiFundGloballyLocked(f.key),
     edit: 'fki'
   }));
   const rows = [...inv, ...fki].sort((a, b) => a.area.localeCompare(b.area, 'cs') || String(a.company).localeCompare(String(b.company), 'cs') || String(a.product).localeCompare(String(b.product), 'cs'));
-  table.innerHTML = `<thead><tr><th>Typ</th><th>Společnost - fond</th><th>ISIN / klíč</th><th>Vloženo</th><th>AUM</th><th>Následná %</th><th>Vstupní %</th><th>Odhad vstupní provize</th><th>Zámek</th><th></th></tr></thead><tbody>${rows.map(r => `<tr><td><span class="badge ${r.area === 'FKI' ? 'purple' : 'green'}">${r.area}</span></td><td><b>${esc([r.company, r.product].filter(Boolean).join(' - '))}</b><br><span class="note">${esc(r.typ || 'typ neuveden')}</span></td><td>${esc(r.isin || 'ISIN chybí')}<br><span class="note">${esc(r.mergeKey ? 'sloučeno: ' + r.mergeKey : 'klíč: ' + r.key)}</span></td><td class="money">${money(r.invested)}</td><td class="money">${money(r.aum)}</td><td class="num">${r.trail !== '' ? decimal(r.trail) + ' %' : '-'}</td><td class="num">${r.entryCommission !== '' ? decimal(r.entryCommission) + ' %' : '-'}</td><td class="money">${r.entryCommission !== '' ? money(r.invested * (+r.entryCommission || 0) / 100) : '-'}</td><td>${r.locked ? '<span class="badge orange">zamčeno</span>' : '<span class="note">otevřeno</span>'}</td><td><button class="btn slim" onclick="${r.edit === 'fki' ? `openFkFundModal('${encodeURIComponent(r.key)}')` : `openInvestmentFundModal('${encodeURIComponent(r.key)}')`}">Upravit</button></td></tr>`).join('') || '<tr><td colspan="10" class="note">Zatím tu nejsou žádné fondy k nastavení.</td></tr>'}</tbody>`;
+  table.innerHTML = `<thead><tr><th>Typ</th><th>Společnost - fond</th><th>ISIN / klíč</th><th>Vloženo</th><th>AUM</th><th>MNG fee % p.a.</th><th>Vstupní % z objemu</th><th>BT podíl z poplatku</th><th>Odhad vstupní provize</th><th>Zámek</th><th></th></tr></thead><tbody>${rows.map(r => `<tr><td><span class="badge ${r.area === 'FKI' ? 'purple' : 'green'}">${r.area}</span></td><td><b>${esc([r.company, r.product].filter(Boolean).join(' - '))}</b><br><span class="note">${esc(r.typ || 'typ neuveden')}</span></td><td>${esc(r.isin || 'ISIN chybí')}<br><span class="note">${esc(r.mergeKey ? 'sloučeno: ' + r.mergeKey : 'klíč: ' + r.key)}</span></td><td class="money">${money(r.invested)}</td><td class="money">${money(r.aum)}</td><td class="num">${r.trail !== '' ? decimal(r.trail) + ' %' : '-'}</td><td class="num">${r.entryCommission !== '' ? decimal(r.entryCommission) + ' %' : '-'}</td><td class="num">${r.entryFeeRewardShare !== '' ? decimal(r.entryFeeRewardShare) + ' % z poplatku' : '-'}</td><td class="money">${r.entryCommission !== '' ? money(r.invested * (+r.entryCommission || 0) / 100) : '-'}</td><td>${r.locked ? '<span class="badge orange">zamčeno</span>' : '<span class="note">otevřeno</span>'}</td><td><button class="btn slim" onclick="${r.edit === 'fki' ? `openFkFundModal('${encodeURIComponent(r.key)}')` : `openInvestmentFundModal('${encodeURIComponent(r.key)}')`}">Upravit</button></td></tr>`).join('') || '<tr><td colspan="11" class="note">Zatím tu nejsou žádné fondy k nastavení.</td></tr>'}</tbody>`;
 }
 function renderReportDetails() {
   const el = byId('reportDetailGroups');
@@ -5684,13 +5690,56 @@ function syncDealManagementDefault() {
 function dealCategoryCreatesContract(category) {
   return !['FKI', 'Investice', 'Následná provize'].includes(category);
 }
+function dealFundCommissionRows(category = val('dCategory')) {
+  const area = category === 'FKI' ? 'fki' : category === 'Investice' ? 'investice' : '';
+  if (!area) return [];
+  const funds = area === 'fki' ? fkFundItems() : investmentFundItems();
+  return funds.map(f => {
+    const stored = area === 'fki' ? (state.fundValues?.[f.key] || {}) : investmentFundStoredValue(f),
+      isin = stored.isin || f.isin || '', profile = fundProfile_value(area, f.key, isin);
+    return {area,key:f.key,company:stored.company || f.company || '',product:stored.fond || stored.product || f.product || f.label || (area === 'fki' ? 'FKI' : 'Investice'),isin,profile};
+  }).sort((a,b) => String(a.company).localeCompare(String(b.company),'cs') || String(a.product).localeCompare(String(b.product),'cs'));
+}
+function fillDealFundSelect(selectedKey = val('dFundKey')) {
+  const box = byId('dFundCommissionBox'), el = byId('dFundKey'), area = val('dCategory');
+  if (!box || !el) return;
+  const visible = area === 'FKI' || area === 'Investice';
+  box.style.display = visible ? '' : 'none';
+  ['dFundIsin','dEntryCommissionPct','dTrailPct','dEntryFeeRewardSharePct','dEntryCommissionEstimate','dCommissionSource'].forEach(id => {
+    const field = byId(id)?.closest('.field');
+    if (field) field.style.display = visible ? '' : 'none';
+  });
+  if (!visible) return;
+  const rows = dealFundCommissionRows(area);
+  el.innerHTML = '<option value="">Vyber fond…</option>' + rows.map(r => `<option value="${esc(r.key)}">${esc([r.company,r.product,r.isin].filter(Boolean).join(' · '))}</option>`).join('');
+  if (selectedKey && rows.some(r => r.key === selectedKey)) el.value = selectedKey;
+}
+function syncDealFundCommission() {
+  const row = dealFundCommissionRows().find(r => r.key === val('dFundKey'));
+  if (!row) {
+    ['dFundIsin','dEntryCommissionPct','dTrailPct','dEntryFeeRewardSharePct','dCommissionSource'].forEach(id => setVal(id,''));
+    updateDealExpectedCommission();
+    return;
+  }
+  setVal('dCompany', row.company);
+  setVal('dProduct', row.product);
+  setVal('dFundIsin', row.isin);
+  setVal('dEntryCommissionPct', row.profile.entryCommissionPct ?? '');
+  setVal('dTrailPct', row.profile.trailPct ?? '');
+  setVal('dEntryFeeRewardSharePct', row.profile.entryFeeRewardSharePct ?? '');
+  setVal('dCommissionSource', row.profile.commissionScheduleSource || 'Ruční nastavení fondu');
+  syncDealContractDefaults();
+}
 function updateDealExpectedCommission() {
-  const expected = dealCash({
+  const current = {
     category: val('dCategory'),
     bj: parseMoney(val('dBj')),
+    amount: parseMoney(val('dAmount')),
+    entryCommissionPct: parseMoney(val('dEntryCommissionPct')),
     date: val('dDate') || today()
-  }, yearOf(val('dDate') || today()));
+  }, expected = dealCash(current, yearOf(current.date));
   setVal('dExpectedCommission', money(expected));
+  setVal('dEntryCommissionEstimate', ['Investice','FKI'].includes(current.category) && current.entryCommissionPct > 0 ? money(current.amount * current.entryCommissionPct / 100) : 'Doplň sazbu fondu');
 }
 function syncDealContractDefaults(forceType = false) {
   const type = contractTypeFromDeal(val('dCategory'), val('dProduct'));
@@ -5765,6 +5814,13 @@ function openDealModal(clientId = null, id = null) {
   setVal('dCompany', d.company || '');
   setVal('dProduct', d.product || '');
   setVal('dAmount', d.amount || '');
+  setVal('dFundKey', d.fundKey || '');
+  setVal('dFundIsin', d.fundIsin || '');
+  setVal('dEntryCommissionPct', d.entryCommissionPct ?? '');
+  setVal('dTrailPct', d.trailPct ?? '');
+  setVal('dEntryFeeRewardSharePct', d.entryFeeRewardSharePct ?? '');
+  setVal('dCommissionSource', d.commissionSource || '');
+  fillDealFundSelect(d.fundKey || '');
   setVal('dBj', d.bj || '');
   setVal('dOwner', d.owner || '');
   setVal('dOwnerType', d.ownerType || '');
@@ -5844,6 +5900,13 @@ function openDealFromOpportunity(o) {
   setVal('dCompany', d.company || o.company || '');
   setVal('dProduct', d.product || o.product || '');
   setVal('dAmount', d.amount || o.amount || '');
+  setVal('dFundKey', d.fundKey || o.fundKey || '');
+  setVal('dFundIsin', d.fundIsin || o.fundIsin || '');
+  setVal('dEntryCommissionPct', d.entryCommissionPct ?? o.entryCommissionPct ?? '');
+  setVal('dTrailPct', d.trailPct ?? o.trailPct ?? '');
+  setVal('dEntryFeeRewardSharePct', d.entryFeeRewardSharePct ?? o.entryFeeRewardSharePct ?? '');
+  setVal('dCommissionSource', d.commissionSource || o.commissionSource || '');
+  fillDealFundSelect(d.fundKey || o.fundKey || '');
   setVal('dBj', d.bj || o.bj || '');
   setVal('dOwner', d.owner || o.owner || '');
   setVal('dOwnerType', d.ownerType || '');
@@ -5905,6 +5968,13 @@ function openDealFromContract(s) {
   setVal('dCompany', d.company || s.company || '');
   setVal('dProduct', d.product || s.product || s.type || '');
   setVal('dAmount', d.amount || (s.caseVolume ?? parseMoney(s.amount)) || '');
+  setVal('dFundKey', d.fundKey || '');
+  setVal('dFundIsin', d.fundIsin || '');
+  setVal('dEntryCommissionPct', d.entryCommissionPct ?? '');
+  setVal('dTrailPct', d.trailPct ?? '');
+  setVal('dEntryFeeRewardSharePct', d.entryFeeRewardSharePct ?? '');
+  setVal('dCommissionSource', d.commissionSource || '');
+  fillDealFundSelect(d.fundKey || '');
   setVal('dBj', d.bj || pref.bj || '');
   setVal('dOwner', d.owner || pref.owner || '');
   setVal('dOwnerType', d.ownerType || pref.ownerType || '');
@@ -6525,6 +6595,12 @@ function fkiSync_before_saveDeal() {
     company: val('dCompany').trim(),
     product: val('dProduct').trim(),
     amount: parseMoney(val('dAmount')),
+    fundKey: val('dFundKey'),
+    fundIsin: val('dFundIsin').trim(),
+    entryCommissionPct: val('dEntryCommissionPct').trim() === '' ? '' : parseMoney(val('dEntryCommissionPct')),
+    trailPct: val('dTrailPct').trim() === '' ? '' : parseMoney(val('dTrailPct')),
+    entryFeeRewardSharePct: val('dEntryFeeRewardSharePct').trim() === '' ? '' : parseMoney(val('dEntryFeeRewardSharePct')),
+    commissionSource: val('dCommissionSource').trim(),
     bj: parseMoney(val('dBj')),
     owner,
     ownerType,
@@ -8249,7 +8325,8 @@ function scenario_scenarioRowNote(r, summary, horizon, title = 'Investiční ná
   return [`${title} · ${r.area} · očekávaný výnos ${num(r.rate)} % p.a. · horizont ${num(horizon)} let`, r.monthly ? `Pravidelně: ${money(r.monthly)} měsíčně` : '', r.topupYear ? `Dokup ${r.topupYear}. rok: ${money(r.topupAmount)}` : '', r.dropYear ? `Propad ${r.dropYear}. rok: ${num(r.dropPct)} %` : '', summary].filter(Boolean).join('\n');
 }
 function scenario_scenarioOpportunityDraft(c, r, summary, horizon) {
-  const proposalKey = scenario_scenarioProposalKey(r);
+  const proposalKey = scenario_scenarioProposalKey(r), area = r.area === 'FKI' ? 'fki' : 'investice',
+    profile = fundProfile_value(area, r.key || '', r.isin || '');
   return {
     clientId: c.id,
     status: 'Nabídka',
@@ -8264,6 +8341,10 @@ function scenario_scenarioOpportunityDraft(c, r, summary, horizon) {
     isin: r.isin || '',
     fundIsin: r.isin || '',
     fundType: r.typ || '',
+    entryCommissionPct: profile.entryCommissionPct ?? '',
+    trailPct: profile.trailPct ?? '',
+    entryFeeRewardSharePct: profile.entryFeeRewardSharePct ?? '',
+    commissionSource: profile.commissionScheduleSource || '',
     bj: 0,
     expectedDate: '',
     owner: '',
@@ -8317,6 +8398,8 @@ function scenario_addScenarioSnapshot(c, r, date) {
 }
 function scenario_addScenarioDeal(c, r, summary, horizon, date) {
   state.deals = state.deals || [];
+  const area = r.area === 'FKI' ? 'fki' : 'investice',
+    profile = fundProfile_value(area, r.key || '', r.isin || '');
   const d = {
     id: uid(),
     clientId: c.id,
@@ -8340,6 +8423,10 @@ function scenario_addScenarioDeal(c, r, summary, horizon, date) {
     isin: r.isin || '',
     fundIsin: r.isin || '',
     fundType: r.typ || '',
+    entryCommissionPct: profile.entryCommissionPct ?? '',
+    trailPct: profile.trailPct ?? '',
+    entryFeeRewardSharePct: profile.entryFeeRewardSharePct ?? '',
+    commissionSource: profile.commissionScheduleSource || '',
     note: scenario_scenarioRowNote(r, summary, horizon, 'Investice sjednána'),
     createdAt: today(),
     signedAt: date || today(),
@@ -9637,6 +9724,32 @@ function fundPerformance_defaultFundComment(area, key, isin, fv = {}) {
   const found = rows.find(([keys]) => keys.some(k => hay.includes(norm(k))));
   return found ? found[1] : '';
 }
+function fundCommission_avantSchedule(isin) {
+  const rows = {
+    CZ0008474772:.4,CZ0008476207:.4,CZ0008049319:.8,CZ0008049327:.8,CZ1005200947:.8,
+    CZ0008046596:.5,CZ0008048949:.5,CZ0008050994:.5,CZ0008043635:.4,CZ0008046216:.5,
+    CZ0008043437:.5,CZ0008044088:.5,CZ0008044096:.5,CZ0008046208:.5,CZ0008046224:.5,
+    CZ0008046232:.5,CZ0008044195:.9,CZ0008049137:.7,CZ0008044179:.7,CZ0008048915:.5,
+    CZ0008048923:.5,CZ0008043502:.5,CZ0008050978:.5,CZ0008052321:.5,CZ0008053089:.5,
+    CZ0008053014:1,CZ0008053030:1,CZ0008046406:.9,CZ0008046422:.9,CZ0008050705:.9,
+    CZ1005202133:1,CZ0008052933:1.5,CZ0008052925:1.5,CZ0008042801:.65,CZ1005200731:.65,
+    CZ1005200749:.65,CZ0008043676:.9,CZ0008044047:.4,CZ0008053121:1,CZ0008053113:1,
+    CZ0008053105:1,CZ0008053147:1,CZ0008053097:1,CZ0008053139:1,CZ0008043163:.75,
+    CZ0008043445:2.4,CZ0008044609:2.4,CZ0008046091:2.4,CZ0008046083:2.4,CZ0008045747:0,
+    CZ0008052644:2.4,CZ0008050580:1,CZ0008051679:0,CZ1005203636:.35,CZ1005203628:1,
+    CZ0008044880:1,CZ0008047172:1.1,CZ0008043247:1,CZ0008052412:1,CZ0008043387:1,
+    CZ0008053188:1,CZ0008043395:1,CZ0008042645:1,CZ1005204519:1.4,CZ0008043304:.4,
+    CZ0008043569:.9,CZ0008047263:.7,CZ0008049749:.7,CZ1005204014:.7,CZ0008051877:.7
+  };
+  const id = String(isin || '').replace(/\s/g, '').toUpperCase();
+  if (!Object.prototype.hasOwnProperty.call(rows, id)) return {};
+  return {
+    trailPct: rows[id],
+    entryFeeRewardSharePct: 48,
+    commissionScheduleSource: 'Broker Trust · Avant_fondy 2026_10_E',
+    commissionScheduleValidFrom: '2026-10-05'
+  };
+}
 function fundProfile_default(isin) {
   const profiles = {
     CZ0008045374:{targetReturn:'6,2–6,5 % p.a.',performance12m:'+6,08 %',fundSize:'450 mil. Kč',exitFee:'0 %; rozhoduje upisovací smlouva',valuationFrequency:'Měsíčně',liquidity:'Výplata zpravidla do 6 měsíců',officialUrl:'https://www.codyainvest.cz/nase-fondy/1-fond-reverznich-hypotek/'},
@@ -9655,7 +9768,8 @@ function fundProfile_default(isin) {
 }
 function fundProfile_value(area, key, isin) {
   const fv = fundPerformance_fundValueBy(area, key, isin);
-  return {...fundProfile_default(isin || fv.isin), ...fv, metadataAsOf:fv.metadataAsOf || (Object.keys(fundProfile_default(isin || fv.isin)).length ? '2026-10-08' : '')};
+  const id = isin || fv.isin;
+  return {...fundProfile_default(id), ...fundCommission_avantSchedule(id), ...fv, metadataAsOf:fv.metadataAsOf || (Object.keys(fundProfile_default(id)).length ? '2026-10-08' : '')};
 }
 function fundProfile_store(area, key, isin, profile) {
   state.fundValues ||= {};
@@ -9716,6 +9830,25 @@ function fundPerformance_applyApprovedFundExpectedRates() {
   });
   state._fundExpectedRatesAppliedVersion = marker;
   if (changed) persist();
+}
+function fundCommission_applyAvantSchedule() {
+  const marker = '2026.10.10-1';
+  if (!state || state._avantCommissionScheduleVersion === marker) return;
+  state.fundValues ||= {};
+  state.trailSettings ||= {};
+  const candidates = [];
+  try { candidates.push(...investmentFundItems().map(f => ({area:'investice', key:f.key, isin:f.isin || investmentFundStoredValue(f).isin}))); } catch (_) {}
+  try { candidates.push(...fkFundItems().map(f => ({area:'fki', key:f.key, isin:f.isin || state.fundValues?.[f.key]?.isin}))); } catch (_) {}
+  Object.entries(state.fundValues).forEach(([key, fv]) => candidates.push({area:fv?.area || '', key, isin:fv?.isin || ''}));
+  candidates.forEach(({area,key,isin}) => {
+    const schedule = fundCommission_avantSchedule(isin);
+    if (!key || !Object.keys(schedule).length) return;
+    const current = state.fundValues[key] || {};
+    state.fundValues[key] = {...current, area:current.area || area, isin:current.isin || isin, ...schedule};
+    state.trailSettings[key] = {...(state.trailSettings[key] || {}), trailPct:schedule.trailPct};
+  });
+  state._avantCommissionScheduleVersion = marker;
+  persist();
 }
 function fundPerformance_storeFundComment(area, key, isin, comment) {
   state.fundValues = state.fundValues || {};
@@ -12142,8 +12275,21 @@ function loadInvestmentFundToForm() {
     clients = fund?.clients?.size || 0;
   setVal('invFundComment', fundPerformance_fundComment('investice', key, isin));
   fundProfile_fill('invFund','investice',key,isin);
-  setVal('invFundEntryCommission', fundProfile_value('investice',key,isin).entryCommissionPct ?? '');
+  const profile = fundProfile_value('investice',key,isin);
+  setVal('invFundEntryCommission', profile.entryCommissionPct ?? '');
+  setVal('invFundEntryFeeRewardShare', profile.entryFeeRewardSharePct ?? '');
+  setText('invFundCommissionSource', profile.commissionScheduleSource ? `${profile.commissionScheduleSource} · platnost od ${profile.commissionScheduleValidFrom || 'neuvedena'}` : 'Sazby lze doplnit ručně pro každý fond.');
   setText('invFundPropagationNote', clients ? `Hodnota CP a datum ocenění se po uložení použijí u ${num(clients)} klientů s tímto fondem.` : 'Hodnota CP a datum ocenění se po uložení použijí u všech klientů s tímto fondem.');
+}
+function fillFundCommissionScheduleFromIsin(prefix) {
+  const schedule = fundCommission_avantSchedule(val(prefix + 'Isin'));
+  if (!Object.keys(schedule).length) {
+    setText(prefix + 'CommissionSource', 'Pro tento ISIN není v načteném dodatku Broker Trustu sazba. Lze ji doplnit ručně.');
+    return;
+  }
+  setVal(prefix + 'Trail', schedule.trailPct);
+  setVal(prefix + 'EntryFeeRewardShare', schedule.entryFeeRewardSharePct);
+  setText(prefix + 'CommissionSource', `${schedule.commissionScheduleSource} · platnost od ${schedule.commissionScheduleValidFrom}`);
 }
 function loadFkFundToForm() {
   if (typeof fundPerformance_oldLoadFkFund === 'function') fundPerformance_oldLoadFkFund.apply(this, arguments);
@@ -12151,17 +12297,21 @@ function loadFkFundToForm() {
     isin = val('fkFundIsin');
   setVal('fkFundComment', fundPerformance_fundComment('fki', key, isin));
   fundProfile_fill('fkFund','fki',key,isin);
-  setVal('fkFundEntryCommission', fundProfile_value('fki',key,isin).entryCommissionPct ?? '');
+  const profile = fundProfile_value('fki',key,isin);
+  setVal('fkFundEntryCommission', profile.entryCommissionPct ?? '');
+  setVal('fkFundEntryFeeRewardShare', profile.entryFeeRewardSharePct ?? '');
+  setText('fkFundCommissionSource', profile.commissionScheduleSource ? `${profile.commissionScheduleSource} · platnost od ${profile.commissionScheduleValidFrom || 'neuvedena'}` : 'Sazby lze doplnit ručně pro každý fond.');
 }
 function saveInvestmentFund() {
   const keyBefore = val('invFundSelect') || (typeof investmentFundKeyFromForm === 'function' ? investmentFundKeyFromForm() : ''),
     isin = val('invFundIsin').trim(),
     comment = val('invFundComment').trim(),
-    entryCommissionPct = val('invFundEntryCommission').trim() === '' ? '' : parseMoney(val('invFundEntryCommission'));
+    entryCommissionPct = val('invFundEntryCommission').trim() === '' ? '' : parseMoney(val('invFundEntryCommission')),
+    entryFeeRewardSharePct = val('invFundEntryFeeRewardShare').trim() === '' ? '' : parseMoney(val('invFundEntryFeeRewardShare'));
   if (typeof fundPerformance_oldSaveInvFund === 'function') fundPerformance_oldSaveInvFund.apply(this, arguments);
   const keyAfter = keyBefore || (typeof investmentFundKeyFromForm === 'function' ? investmentFundKeyFromForm() : '');
   fundPerformance_storeFundComment('investice', keyAfter, isin, comment);
-  fundProfile_store('investice',keyAfter,isin,{...fundProfile_fields('invFund'),entryCommissionPct});
+  fundProfile_store('investice',keyAfter,isin,{...fundProfile_fields('invFund'),entryCommissionPct,entryFeeRewardSharePct});
   persist();
   renderAll();
   saveToast('Investiční fond uložen včetně komentáře do reportu');
@@ -12170,11 +12320,12 @@ function saveFkFund() {
   const keyBefore = val('fkFundSelect') || (typeof fkFundKeyFromForm === 'function' ? fkFundKeyFromForm() : ''),
     isin = val('fkFundIsin').trim(),
     comment = val('fkFundComment').trim(),
-    entryCommissionPct = val('fkFundEntryCommission').trim() === '' ? '' : parseMoney(val('fkFundEntryCommission'));
+    entryCommissionPct = val('fkFundEntryCommission').trim() === '' ? '' : parseMoney(val('fkFundEntryCommission')),
+    entryFeeRewardSharePct = val('fkFundEntryFeeRewardShare').trim() === '' ? '' : parseMoney(val('fkFundEntryFeeRewardShare'));
   if (typeof fundPerformance_oldSaveFkFund === 'function' && fundPerformance_oldSaveFkFund.apply(this, arguments) === false) return;
   const keyAfter = (typeof fkFundKeyFromForm === 'function' ? fkFundKeyFromForm() : '') || keyBefore;
   fundPerformance_storeFundComment('fki', keyAfter, isin, comment);
-  fundProfile_store('fki',keyAfter,isin,{...fundProfile_fields('fkFund'),entryCommissionPct});
+  fundProfile_store('fki',keyAfter,isin,{...fundProfile_fields('fkFund'),entryCommissionPct,entryFeeRewardSharePct});
   persist();
   renderAll();
   saveToast('FKI fond uložen včetně komentáře do reportu');
@@ -13256,8 +13407,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.09-6';
-const VERSION_NOTE = 'Analýza používá velké výsledkové karty, podrobnosti lze sbalit a fondy evidují následnou i vstupní provizi.';
+const VERSION = '2026.10.10-1';
+const VERSION_NOTE = 'FKI sazby se párují podle ISIN, MNG fee a vstupní provize jsou oddělené a úpis fondu přebírá provize do obchodu.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
@@ -13492,8 +13643,10 @@ const activities_A_TYPES = ['Volání', 'Doporučení', 'Schůzka nový klient',
 const quickAnalysis_ROWS = [['calls', 'Volání'], ['meetings', 'Schůzky'], ['referrals', 'Doporučení'], ['analyses', 'Analýzy'], ['presentations', 'Prezentace / poradenství'], ['signatures', 'Podpisy'], ['coop', 'Spolupráce']];
 const quickAnalysis_DAYS = [['mon', 'Pondělí'], ['tue', 'Úterý'], ['wed', 'Středa'], ['thu', 'Čtvrtek'], ['fri', 'Pátek']];
 scenario_ensure();
+fundCommission_applyAvantSchedule();
 renderAll();
 initDiskStorage().then(() => {
+  fundCommission_applyAvantSchedule();
   fundPerformance_applyDefaultFundComments();
   fundPerformance_applyApprovedFundExpectedRates();
   renderAll();
