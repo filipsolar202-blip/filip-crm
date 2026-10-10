@@ -263,11 +263,11 @@ try{
  const entryCommission=await page.evaluate(()=>{fundProfile_store('investice','qa-entry-fund','QAENTRY0001',{entryCommissionPct:0.75});const saved=fundProfile_value('investice','qa-entry-fund','QAENTRY0001').entryCommissionPct;delete state.fundValues['qa-entry-fund'];return saved});
  assert.equal(entryCommission,0.75);results.push('Funds store a separate entry commission or bonus alongside recurring commission');
  const investmentCommissionSchedule=await page.evaluate(()=>{
-   const r2p=fundCommission_avantSchedule('CZ0008043445'),vihorev=fundCommission_avantSchedule('CZ0008043569'),estimate=dealCash({category:'FKI',amount:500000,entryCommissionPct:.8,bj:0,date:'2026-10-10'},2026);
-   return {r2p,vihorev,estimate,fields:['invFundEntryCommission','invFundEntryFeeRewardShare','fkFundEntryCommission','fkFundEntryFeeRewardShare','dFundKey','dEntryCommissionPct','dTrailPct','dEntryFeeRewardSharePct'].every(id=>!!byId(id))};
+   const r2p=fundCommission_avantSchedule('CZ0008043445'),vihorev=fundCommission_avantSchedule('CZ0008043569'),estimate=dealCash({category:'FKI',amount:200000,entryCommissionPct:2,bj:0,date:'2026-10-10'},2026),pipeline=opportunityCash({category:'FKI',amount:200000,entryCommissionPct:2,bj:0,statusDate:'2026-10-10'},2026);
+   return {r2p,vihorev,estimate,pipeline,hasEntryFeeShare:Object.hasOwn(r2p,'entryFeeRewardSharePct'),fields:['invFundEntryCommission','fkFundEntryCommission','dFundKey','dEntryCommissionPct','dTrailPct','oFundKey','oEntryCommissionPct','oTrailPct'].every(id=>!!byId(id))};
  });
- assert.equal(investmentCommissionSchedule.r2p.trailPct,2.4);assert.equal(investmentCommissionSchedule.r2p.entryFeeRewardSharePct,48);assert.equal(investmentCommissionSchedule.vihorev.trailPct,.9);assert.equal(investmentCommissionSchedule.estimate,4000);assert(investmentCommissionSchedule.fields);
- results.push('Avant rates map by ISIN, keep the 48% entry-fee share separate and calculate subscribed-fund entry commission from volume');
+ assert.equal(investmentCommissionSchedule.r2p.trailPct,2.4);assert.equal(investmentCommissionSchedule.vihorev.trailPct,.9);assert.equal(investmentCommissionSchedule.estimate,4000);assert.equal(investmentCommissionSchedule.pipeline,4000);assert.equal(investmentCommissionSchedule.hasEntryFeeShare,false);assert(investmentCommissionSchedule.fields);
+ results.push('Avant maps only MNG fee by ISIN; a manually entered 2% entry rate produces CZK 4,000 from CZK 200,000 in pipeline and trades with zero BJ');
  for(const expr of ["selectClient(1)","selectInvestmentClient(1)","selectFkClient(1)","selectPensionClient(1)","openClientModal(1)","openContractModal(1,10)","openDealModal(1,20)","openOpportunityModal(1,30)","openActivityModal(1,40)","openInvestmentFundModal()","openFkFundModal()","openInvestmentScenarioModal(1,'FKI')"]){await page.evaluate(expr);await page.evaluate(()=>document.querySelectorAll('.modal.show').forEach(x=>x.classList.remove('show')))}
  results.push('Client, investment, pension and editing dialogs');
  // Exercise real downloads; generated reports must be usable as independent files.

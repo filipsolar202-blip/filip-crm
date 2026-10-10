@@ -1,7 +1,13 @@
+## 2026.10.10-2
+
+- Z dodatku Broker Trust se podle ISIN přebírá výhradně následné MNG fee z AUM; údaj 48 % ze vstupního poplatku se v CRM neeviduje ani nepoužívá.
+- Automatická vstupní provize je samostatná ručně doplnitelná sazba každého FKI i běžného investičního fondu a vždy se počítá z objemu úpisu.
+- Fond lze vybrat už v obchodním případu v pipeline. Při objemu 200 000 Kč a vstupní sazbě 2 % CRM zobrazí očekávanou provizi 4 000 Kč při 0 BJ a stejné údaje zachová po převedení do obchodu.
+- MNG fee zůstává oddělené a počítá se z aktuálního AUM investic.
+
 ## 2026.10.10-1
 
 - FKI fondy uvedené v dodatku Broker Trust Avant_fondy 2026_10_E dostávají podle ISIN aktuální následné MNG fee s platností od 5. 10. 2026.
-- Jednorázová odměna 48 % ze vstupního poplatku je vedená odděleně od procenta z investované částky, aby se tyto dvě různé sazby nezaměňovaly.
 - Každý FKI i běžný investiční fond má samostatné pole pro vstupní provizi z investované částky, následné MNG fee a případný podíl ze vstupního poplatku.
 - Při zápisu investičního obchodu lze vybrat fond podle ISIN; CRM načte jeho sazby a z objemu vypočítá očekávanou vstupní provizi.
 - Report fondů ukazuje MNG fee, vstupní sazbu z objemu, podíl ze vstupního poplatku a odhad vstupní provize odděleně.
