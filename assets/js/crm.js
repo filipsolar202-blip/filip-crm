@@ -9741,10 +9741,24 @@ function fundPerformance_annualizedPct(invested, current, realized, start, end) 
   const final = (+current || 0) + (+realized || 0);
   if (invested <= 0 || final <= 0) return null;
   const y = fundPerformance_yearsBetween(start, end);
+  if (!y) return null;
   return (Math.pow(final / invested, 1 / y) - 1) * 100;
 }
+function investmentReturnStartDate(x = {}) {
+  const source = x?.source || {}, snapshot = x?.snapshot || {};
+  const explicit = x?.purchaseDate || snapshot?.purchaseDate || source?.purchaseDate ||
+    x?.['Datum připsání platby'] || x?.paymentDate || source?.['Datum připsání platby'] || source?.paymentDate;
+  if (explicit) return liquidity_isoDate(explicit) || String(explicit).slice(0, 10);
+  if (x?._crmSourceType === 'contract') {
+    const deal = (state.deals || []).find(d => String(d.id) === String(x._crmDealId || '')),
+      contract = (state.contracts || []).find(c => String(c.id) === String(x._crmContractId || x._crmSourceId || ''));
+    return liquidity_isoDate(deal?.date || deal?.dealDate || contract?.purchaseDate || contract?.startDate || contract?.dealDate || '');
+  }
+  if (['deal', 'record'].includes(x?.sourceType)) return liquidity_isoDate(source?.dealDate || source?.date || x?.dealDate || (!snapshot?.id ? x?.date : ''));
+  return '';
+}
 function fundPerformance_cashFlowDate(r) {
-  return invPaymentDate(r) || invEmissionDate(r);
+  return investmentReturnStartDate(r);
 }
 function fundPerformance_pctText(v) {
   return v === null || !isFinite(v) ? '-' : (Math.round(v * 10) / 10).toFixed(1) + ' %';
@@ -9947,8 +9961,10 @@ function fundPerformance_classicPositionRows(f, clientId) {
       gain = investmentReportedGain(x),
       pct = investmentReportedPct(x),
       start = liquidity_investmentTaxStart(x),
+      returnStart = investmentReturnStartDate(x),
       valueDate = typeof fundValueDateText === 'function' ? fundValueDateText('investice', f.key, x.isin, x.snapshot?.date || x.source?.valueDate || x.source?.date || '') : x.snapshot?.date || x.date || '',
-      pa = investmentReportedAnnualPct(x),
+      reportedPa = investmentReportedAnnualPct(x),
+      pa = reportedPa == null ? fundPerformance_annualizedPct(put, cur, realized, returnStart, valueDate) : reportedPa,
       info = liquidity_liquidityInfo('investice', f.key, x.isin || f.isin, start);
     return `<tr><td><b>${esc(x.product || x.kind || 'Investice')} #${i + 1}</b><br><span class="note">${esc([x.company, x.isin, x.typ || x.kind].filter(Boolean).join(' · '))}</span></td><td class="money">${money(put)}</td><td class="money">${money(cur)}<br><span class="date-highlight">k ${esc(valueDate || '-')}</span></td><td class="money ${gain >= 0 ? 'green' : 'red'}">${money(gain)}<br><span>${pct.toFixed(2)} %</span></td><td class="money ${pa === null || pa >= 0 ? 'green' : 'red'}">${pa === null ? '-' : pa.toFixed(2) + ' %'}</td><td>${liquidity_taxBadge(info)}<br><span class="note">${info ? `${num(info.rules.taxMonths)} měsíců od ${liquidity_fmtDate(start)}` : 'Doplň datum nákupu'}</span></td><td>${esc(valueDate || '-')}</td><td>${esc(x.snapshot?.source || x.sourceType || 'CRM')}</td><td>${typeof invStatus === 'function' ? invStatus(x) : ''}</td><td>${typeof invRowAction === 'function' ? invRowAction(x, clientId) : ''}</td></tr>`;
   }).join('') || '<tr><td colspan="10" class="note">Pod fondem není žádná pozice.</td></tr>'}</tbody></table></div>`;
@@ -10547,6 +10563,9 @@ function clientOutput_xRowDate(r) {
 function clientOutput_xRowEmission(r) {
   return typeof invEmissionDate === 'function' ? invEmissionDate(r) : clientOutput_xPick(r, ['Datum emise', 'emissionDate']);
 }
+function clientOutput_xRowPurchaseDate(r) {
+  return typeof investmentReturnStartDate === 'function' ? investmentReturnStartDate(r) : clientOutput_xPick(r, ['purchaseDate', 'Datum připsání platby', 'paymentDate']);
+}
 function clientOutput_xRowTaxStart(r, area) {
   if (area === 'FKI') return typeof liquidity_fkiTaxStart === 'function' ? liquidity_fkiTaxStart(r) : clientOutput_xRowEmission(r) || clientOutput_xRowDate(r) || clientOutput_xPick(r, ['purchaseDate']);
   const explicit = clientOutput_xPick(r, ['purchaseDate']) || r?.snapshot?.purchaseDate || r?.source?.purchaseDate || r?.source?.startDate || r?.source?.dealDate;
@@ -10554,6 +10573,8 @@ function clientOutput_xRowTaxStart(r, area) {
   return ['deal', 'record'].includes(r?.sourceType) ? r?.source?.date || (!r?.snapshot ? clientOutput_xRowDate(r) : '') : '';
 }
 function clientOutput_xRowInvested(r) {
+  const explicit = clientOutput_xPick(r, ['invested', 'investedAmount']) || r?.snapshot?.investedBeforeRedemption || r?.snapshot?.invested;
+  if (explicit !== '' && explicit != null && Number.isFinite(+explicit)) return Math.abs(clientOutput_xN(explicit));
   const direct = typeof invDeposit === 'function' ? Math.abs(clientOutput_xN(invDeposit(r))) : 0;
   return direct || Math.abs(clientOutput_xN(clientOutput_xPick(r, ['Čistá investice', 'Cista investice', 'investment', 'invested', 'amount'])));
 }
@@ -10580,12 +10601,13 @@ function clientOutput_xFundRows(f) {
       share = totalInvested > 0 ? invested / totalInvested : 0,
       current = direct > 0 ? direct : clientOutput_xN(f.amount) * share,
       realized = typeof investmentRealizedAmount === 'function' ? clientOutput_xN(investmentRealizedAmount(r)) : clientOutput_xN(r?.realized || r?.redemptionAmount || 0),
-      date = clientOutput_xRowDate(r) || clientOutput_xRowEmission(r) || f.date,
+      date = clientOutput_xRowPurchaseDate(r),
       taxStart = clientOutput_xRowTaxStart(r, f.area),
       taxInfo = liquidity_liquidityInfo(f.area === 'FKI' ? 'fki' : 'investice', f.key, f.isin, taxStart),
       valueDate = clientOutput_xValueDate(f.area === 'FKI' ? 'fki' : 'investice', f.key, f.isin, f.valueDate || date),
       perf = clientOutput_xPerf(current, invested, realized),
-      pa = clientOutput_xAnnualized(invested, current, realized, date, valueDate || f.valueDate);
+      reportedPa = typeof investmentReportedAnnualPct === 'function' ? investmentReportedAnnualPct(r) : null,
+      pa = reportedPa == null ? clientOutput_xAnnualized(invested, current, realized, date, valueDate || f.valueDate) : reportedPa;
     return {
       r,
       i,
@@ -13446,8 +13468,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.11-1';
-const VERSION_NOTE = 'Roční výnos FKI se počítá od skutečného data připsání platby; datum emise slouží jen jako náhradní údaj.';
+const VERSION = '2026.10.11-2';
+const VERSION_NOTE = 'Výnosy investic a FKI se počítají od skutečného data nákupu; emise slouží jen pro odkup a časový test.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';

@@ -1,3 +1,11 @@
+## 2026.10.11-2
+
+- Všechny dopočítávané výnosy p.a. u FKI i běžných investic používají datum skutečného nákupu nebo připsání peněz.
+- Datum emise se do výnosu nepoužívá; zůstává samostatně pro pravidla odkupu a splnění časového testu.
+- Stejné pravidlo používají karty klientů, detail pozic, klientské HTML reporty, souhrny fondů i odhady budoucí hodnoty při odkupu.
+- Klientský report u běžných investic nyní důsledně odděluje vloženou částku od aktuální hodnoty, aby se při sjednocených záznamech nezaměnily.
+- Pokud datum nákupu chybí, CRM výnos p.a. raději nezobrazí. Ručně zadaný nebo importovaný MWR/XIRR má nadále přednost před jednoduchým dopočtem.
+
 ## 2026.10.11-1
 
 - Roční výnos FKI se počítá od skutečného data připsání platby. Datum emise se použije pouze tehdy, když datum platby chybí.
