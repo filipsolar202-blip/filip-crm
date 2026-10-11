@@ -1,3 +1,8 @@
+## 2026.10.11-1
+
+- Roční výnos FKI se počítá od skutečného data připsání platby. Datum emise se použije pouze tehdy, když datum platby chybí.
+- U r2p investice 490 000 Kč z 10. 8. 2023 s hodnotou 636 808 Kč k 31. 8. 2026 tak výnos p.a. odpovídá 8,95 % místo chybně vyšších 9,4 % počítaných od emise 29. 9. 2023.
+
 ## 2026.10.10-2
 
 - Z dodatku Broker Trust se podle ISIN přebírá výhradně následné MNG fee z AUM; údaj 48 % ze vstupního poplatku se v CRM neeviduje ani nepoužívá.

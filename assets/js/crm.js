@@ -9743,6 +9743,9 @@ function fundPerformance_annualizedPct(invested, current, realized, start, end) 
   const y = fundPerformance_yearsBetween(start, end);
   return (Math.pow(final / invested, 1 / y) - 1) * 100;
 }
+function fundPerformance_cashFlowDate(r) {
+  return invPaymentDate(r) || invEmissionDate(r);
+}
 function fundPerformance_pctText(v) {
   return v === null || !isFinite(v) ? '-' : (Math.round(v * 10) / 10).toFixed(1) + ' %';
 }
@@ -10002,7 +10005,7 @@ function fundPerformance_fkiPositionRowsPa(clientId, item) {
       issue = invEmissionDate(r),
       taxStart = liquidity_fkiTaxStart(r),
       valueDate = typeof fundValueDateText === 'function' ? fundValueDateText('fki', item.key, invIsin(r) || item.isin, r['Poslední schválená hodnota do']) : r['Poslední schválená hodnota do'] || '',
-      pa = isOut ? null : fundPerformance_annualizedPct(inv, cur, redeemed, issue || invPaymentDate(r), valueDate || new Date()),
+      pa = isOut ? null : fundPerformance_annualizedPct(inv, cur, redeemed, fundPerformance_cashFlowDate(r), valueDate || new Date()),
       info = liquidity_liquidityInfo('fki', item.key, invIsin(r) || item.isin, taxStart),
       rk = encodeURIComponent(invRecordKey(r));
     return `<tr><td><b>${esc(r['Typ transakce'] || 'Platba')} #${i + 1}</b><br><span class="note">Připsání ${esc(invPaymentDate(r) || '-')} · emise ${esc(issue || '-')}</span></td><td class="money">${money(inv)}</td><td class="money">${money(cur)}<br><span class="date-highlight">k ${esc(valueDate || '-')}</span></td><td class="money ${gain >= 0 ? 'green' : 'red'}">${isOut ? 'realizováno ' + money(gain) : money(gain)}</td><td class="money ${pa === null || pa >= 0 ? 'green' : 'red'}">${fundPerformance_pctText(pa)}</td><td>${isOut ? '<span class="badge green">odkup zadán</span>' : `${liquidity_taxBadge(info)}<br><span class="note">${info ? `${num(info.rules.taxMonths)} měsíců od ${liquidity_fmtDate(taxStart)} · ` : ''}${redeemed ? `odkoupeno ${money(redeemed)} · ` : ''}zbývá ${money(cur)}</span>`}</td><td><button class="btn slim" onclick="openFkRecordModal(${clientId},'${esc(encodeURIComponent(item.key))}','${esc(rk)}')">Upravit</button></td></tr>`;
@@ -13443,8 +13446,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.10-2';
-const VERSION_NOTE = 'Z dodatku se přebírá jen MNG fee z AUM; ruční vstupní sazba z objemu se propisuje do pipeline i obchodů při 0 BJ.';
+const VERSION = '2026.10.11-1';
+const VERSION_NOTE = 'Roční výnos FKI se počítá od skutečného data připsání platby; datum emise slouží jen jako náhradní údaj.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';

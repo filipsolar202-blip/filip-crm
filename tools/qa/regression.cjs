@@ -268,6 +268,8 @@ try{
  });
  assert.equal(investmentCommissionSchedule.r2p.trailPct,2.4);assert.equal(investmentCommissionSchedule.vihorev.trailPct,.9);assert.equal(investmentCommissionSchedule.estimate,4000);assert.equal(investmentCommissionSchedule.pipeline,4000);assert.equal(investmentCommissionSchedule.hasEntryFeeShare,false);assert(investmentCommissionSchedule.fields);
  results.push('Avant maps only MNG fee by ISIN; a manually entered 2% entry rate produces CZK 4,000 from CZK 200,000 in pipeline and trades with zero BJ');
+ const fkiAnnualReturn=await page.evaluate(()=>{const r={'Datum připsání platby':'2023-08-10','Datum emise':'2023-09-29'};return{start:fundPerformance_cashFlowDate(r),rate:fundPerformance_annualizedPct(490000,636808,0,fundPerformance_cashFlowDate(r),'2026-08-31'),wrongRate:fundPerformance_annualizedPct(490000,636808,0,invEmissionDate(r),'2026-08-31')}});
+ assert.equal(fkiAnnualReturn.start,'2023-08-10');assert(Math.abs(fkiAnnualReturn.rate-8.947118386253816)<1e-9);assert(fkiAnnualReturn.wrongRate>9.38);results.push('FKI annual return starts on the actual payment date, not the later issue date');
  for(const expr of ["selectClient(1)","selectInvestmentClient(1)","selectFkClient(1)","selectPensionClient(1)","openClientModal(1)","openContractModal(1,10)","openDealModal(1,20)","openOpportunityModal(1,30)","openActivityModal(1,40)","openInvestmentFundModal()","openFkFundModal()","openInvestmentScenarioModal(1,'FKI')"]){await page.evaluate(expr);await page.evaluate(()=>document.querySelectorAll('.modal.show').forEach(x=>x.classList.remove('show')))}
  results.push('Client, investment, pension and editing dialogs');
  // Exercise real downloads; generated reports must be usable as independent files.
