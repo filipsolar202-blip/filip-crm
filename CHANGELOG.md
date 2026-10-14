@@ -1,3 +1,10 @@
+## 2026.10.14-1
+
+- Přidán AI Inbox pro nahrávky ze schůzek, hlasové poznámky a textový test bez externího API.
+- Každý návrh lze potvrdit, upravit nebo vynechat; do klientů, historie, úkolů a pipeline se zapisuje až po závěrečném potvrzení.
+- M4A přepis běží přes lokálního pomocníka a OpenAI API. API klíč není uložený ve veřejném CRM a audio se po zpracování nearchivuje.
+- Originální přepis, nejasnosti, návrhy follow-upu, e-mailu a SMS zůstávají dohledatelné v AI Inboxu.
+
 ## 2026.10.11-2
 
 - Všechny dopočítávané výnosy p.a. u FKI i běžných investic používají datum skutečného nákupu nebo připsání peněz.

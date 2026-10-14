@@ -14,6 +14,7 @@ function renderActiveView() {
       dashboard: [['Dashboard', renderDashboard]],
       clients: [['Klienti', renderClients]],
       notes: [['Poznámky', renderNotes]],
+      aiInbox: [['AI Inbox', renderAiInbox]],
       campaigns: [['Kampaně', renderCampaigns]],
       opportunities: [['Obchodní případy', renderOpportunities]],
       pipeline: [['Pipeline', renderOpportunities]],
@@ -68,6 +69,7 @@ function def() {
     ],
     managementPayouts: [],
     notes: [],
+    aiInbox: [],
     opportunities: [],
     commissionImports: [],
     analysisEntries: [],
@@ -101,7 +103,7 @@ function normalizeState(s) {
     ...s
   };
   delete s.mailHeaders;
-  ['clients', 'contracts', 'deals', 'activities', 'referrals', 'referrerPayouts', 'managementPartners', 'managementPayouts', 'notes', 'opportunities', 'investmentRecords', 'investmentSnapshots', 'commissionImports', 'analysisEntries', 'campaigns', 'externalInvestments', 'investmentForecasts', 'weeklyGoals', 'weeklyReviews'].forEach(k => s[k] = Array.isArray(s[k]) ? s[k] : []);
+  ['clients', 'contracts', 'deals', 'activities', 'referrals', 'referrerPayouts', 'managementPartners', 'managementPayouts', 'notes', 'aiInbox', 'opportunities', 'investmentRecords', 'investmentSnapshots', 'commissionImports', 'analysisEntries', 'campaigns', 'externalInvestments', 'investmentForecasts', 'weeklyGoals', 'weeklyReviews'].forEach(k => s[k] = Array.isArray(s[k]) ? s[k] : []);
   if (!s.managementPartners.length) s.managementPartners = base.managementPartners;
   if (!s.managementPartners.some(x => x.id === 'filip')) s.managementPartners.unshift(base.managementPartners[0]);
   s.clients.forEach(c => { if (!c.managementPartnerId) c.managementPartnerId = 'filip'; });
@@ -114,7 +116,7 @@ function normalizeState(s) {
   Object.values(s.plans).forEach(p => normalizePlan(p, s.settings.bjCoef));
   dedupeInvestmentRecordsInState(s);
   dedupeInvestmentSnapshotsInState(s);
-  let maxId = Math.max(0, ...['clients', 'contracts', 'deals', 'activities', 'referrals', 'referrerPayouts', 'managementPayouts', 'notes', 'opportunities', 'commissionImports', 'investmentSnapshots', 'analysisEntries', 'campaigns', 'externalInvestments', 'investmentForecasts', 'weeklyGoals', 'weeklyReviews'].flatMap(k => s[k].map(x => +x.id || 0)));
+  let maxId = Math.max(0, ...['clients', 'contracts', 'deals', 'activities', 'referrals', 'referrerPayouts', 'managementPayouts', 'notes', 'aiInbox', 'opportunities', 'commissionImports', 'investmentSnapshots', 'analysisEntries', 'campaigns', 'externalInvestments', 'investmentForecasts', 'weeklyGoals', 'weeklyReviews'].flatMap(k => s[k].map(x => +x.id || 0)));
   if (!s.nextId || s.nextId <= maxId) s.nextId = maxId + 1;
   return s;
 }
@@ -13458,6 +13460,136 @@ function renderAnalysis() {
   if (typeof renderAnalysisBusinessChart === 'function') renderAnalysisBusinessChart();
   if (typeof renderAnalysisWeekHistory === 'function') renderAnalysisWeekHistory();
 }
+
+function aiInboxSetSource(source) {
+  aiInboxSource = source === 'text' ? 'text' : 'audio';
+  byId('aiAudioField')?.classList.toggle('hidden', aiInboxSource !== 'audio');
+  byId('aiTextField')?.classList.toggle('hidden', aiInboxSource !== 'text');
+  byId('aiSourceAudioBtn')?.classList.toggle('primary', aiInboxSource === 'audio');
+  byId('aiSourceTextBtn')?.classList.toggle('primary', aiInboxSource === 'text');
+}
+function aiInboxChooseAudio(file) {
+  aiInboxAudioFile = file || null;
+  const el = byId('aiAudioSummary');
+  if (el) el.innerHTML = file ? `<b>${esc(file.name)}</b> · ${decimal(file.size / 1024 / 1024, 1)} MB · audio se do CRM databáze neukládá` : 'Vyber M4A nebo jiný běžný audio soubor.';
+}
+function aiInboxFillClientSelect() {
+  const el = byId('aiMeetingClient'); if (!el) return;
+  const current = el.value;
+  el.innerHTML = '<option value="">Nechat rozpoznat / bez klienta</option>' + [...state.clients].sort((a,b)=>clientName(a).localeCompare(clientName(b),'cs')).map(c=>`<option value="${c.id}">${esc(clientName(c))}</option>`).join('');
+  el.value = current;
+}
+function aiInboxNextWeekday(weekday) {
+  const d = new Date();
+  let add = (weekday - d.getDay() + 7) % 7; if (!add) add = 7;
+  d.setDate(d.getDate() + add); return d.toISOString().slice(0,10);
+}
+function aiInboxDateFromText(text) {
+  const n = norm(text), weekdays = {pondeli:1,utery:2,streda:3,ctvrtek:4,patek:5};
+  for (const [name,day] of Object.entries(weekdays)) if (n.includes('pristi '+name) || n.includes('nasledujici '+name)) return aiInboxNextWeekday(day);
+  if (n.includes('zittra')) { const d=new Date(); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); }
+  const m=String(text).match(/\b(\d{1,2})[.\/]\s*(\d{1,2})[.\/]\s*(\d{4})\b/); return m ? `${m[3]}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}` : '';
+}
+function aiInboxAmount(text) {
+  const m=String(text).match(/(\d[\d\s.,]*)\s*(mil(?:ion(?:u|y|ů)?)?|tis(?:ic|íce|íc)?|kč|kc)/i); if(!m)return 0;
+  let value=parseMoney(m[1]); const unit=norm(m[2]); if(unit.startsWith('mil'))value*=1000000; else if(unit.startsWith('tis'))value*=1000; return value;
+}
+function aiInboxMatchedClient(text, preferredId='') {
+  if (preferredId) return findClient(+preferredId) || null;
+  const n=norm(text); return [...state.clients].sort((a,b)=>clientName(b).length-clientName(a).length).find(c=>n.includes(norm(clientName(c)))) || null;
+}
+function aiInboxLocalAnalysis(text, preferredId='') {
+  const client=aiInboxMatchedClient(text,preferredId), n=norm(text), amount=aiInboxAmount(text), date=aiInboxDateFromText(text), opportunities=[];
+  const defs=[['Hypotéky','hypotek'],['Úvěry','uver'],['Investice','invest'],['Penze','dps'],['Životní pojištění','zivotn'],['Neživotní pojištění','pojist']];
+  defs.forEach(([category,word])=>{if(n.includes(word))opportunities.push({title:category,detail:text.slice(0,260),category,amount});});
+  const tasks=[]; if(/zavolat|kontaktovat|ozvat/i.test(text))tasks.push({title:'Kontaktovat klienta',detail:text.slice(0,260),date});
+  if(/pripravit|poslat|dodat|zjistit|poptat/i.test(n))tasks.push({title:'Navazující úkol ze zápisu',detail:text.slice(0,260),date});
+  const questions=[]; if(!client)questions.push({text:'Ke kterému klientovi tento zápis patří?',answer:''});
+  if(amount&&!opportunities.length)questions.push({text:`V zápisu zazněla částka ${money(amount)}. K jakému produktu nebo účelu patří?`,answer:''});
+  if(/pristi|nasledujici/i.test(n)&&!date)questions.push({text:'Zazněl relativní termín, ale nepodařilo se určit přesné datum. Jaké datum platí?',answer:''});
+  return {clientId:client?.id||null,clientName:client?clientName(client):'',summary:text.replace(/\s+/g,' ').trim().slice(0,600),discussed:[text.replace(/\s+/g,' ').trim().slice(0,500)],agreed:tasks.map(x=>x.title),newClientInfo:[],opportunities,tasks,clientTasks:[],documents:[],followUp:date?{title:'Navazující kontakt',date,detail:text.slice(0,220)}:null,nextMeeting:null,emailDraft:'Dobrý den, děkuji za dnešní jednání. Navazuji na naši domluvu a další kroky.',smsDraft:'Dobrý den, děkuji za dnešní jednání. Ozvu se podle naší domluvy.',questions};
+}
+function aiInboxProposal(kind,title,detail='',extra={}) {
+  return {id:uid(),kind,title:String(title||''),detail:String(detail||''),date:extra.date||'',amount:+extra.amount||0,category:extra.category||'',decision:'pending'};
+}
+function aiInboxBuildProposals(analysis, transcript, meetingType, date) {
+  const p=[];
+  p.push(aiInboxProposal('note','Zápis z jednání',analysis.summary||transcript,{date}));
+  p.push(aiInboxProposal('activity',meetingType||'Klientská schůzka',analysis.summary||transcript,{date}));
+  (analysis.newClientInfo||[]).forEach(x=>p.push(aiInboxProposal('client_info','Nová informace o klientovi',typeof x==='string'?x:x.detail||x.text||'')));
+  (analysis.opportunities||[]).forEach(x=>p.push(aiInboxProposal('opportunity',x.title||x.product||x.category||'Nová příležitost',x.detail||x.note||'',{amount:x.amount,category:x.category||x.type||'Ostatní',date:x.date})));
+  (analysis.tasks||[]).forEach(x=>p.push(aiInboxProposal('task',x.title||x.task||'Úkol',x.detail||x.note||'',{date:x.date||x.deadline})));
+  (analysis.clientTasks||[]).forEach(x=>p.push(aiInboxProposal('note','Úkol klienta',typeof x==='string'?x:x.title||x.detail||'')));
+  (analysis.documents||[]).forEach(x=>p.push(aiInboxProposal('task','Vyžádat dokument',typeof x==='string'?x:x.title||x.detail||'',{date:x.date})));
+  if(analysis.followUp?.title||analysis.followUp?.date)p.push(aiInboxProposal('task',analysis.followUp.title||'Follow-up',analysis.followUp.detail||'',{date:analysis.followUp.date}));
+  if(analysis.nextMeeting?.date)p.push(aiInboxProposal('calendar',analysis.nextMeeting.title||'Další schůzka',analysis.nextMeeting.detail||'',{date:analysis.nextMeeting.date}));
+  if(analysis.emailDraft)p.push(aiInboxProposal('email','Návrh následného e-mailu',analysis.emailDraft));
+  if(analysis.smsDraft)p.push(aiInboxProposal('sms','Návrh SMS',analysis.smsDraft));
+  return p;
+}
+function aiInboxFileDataUrl(file) { return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(r.error||new Error('Soubor nelze načíst.'));r.readAsDataURL(file);}); }
+async function aiInboxProcess() {
+  const date=val('aiMeetingDate')||today(), meetingType=val('aiMeetingType')||'Klientská schůzka', preferredId=val('aiMeetingClient'), status=byId('aiProcessStatus'), button=byId('aiProcessBtn');
+  let transcript='', analysis=null, sourceType=aiInboxSource, audioMeta=null;
+  try {
+    if(button)button.disabled=true; if(status)status.textContent='Zpracovávám…';
+    if(sourceType==='text') { transcript=val('aiSourceText').trim(); if(!transcript)throw new Error('Vlož text poznámky.'); analysis=aiInboxLocalAnalysis(transcript,preferredId); }
+    else {
+      if(!aiInboxAudioFile)throw new Error('Vyber audio nahrávku.');
+      if(aiInboxAudioFile.size>100*1024*1024)throw new Error('Nahrávka je větší než 100 MB. Rozděl ji na dvě části.');
+      audioMeta={name:aiInboxAudioFile.name,type:aiInboxAudioFile.type,size:aiInboxAudioFile.size};
+      const dataUrl=await aiInboxFileDataUrl(aiInboxAudioFile), c=findClient(+preferredId);
+      const response=await fetch(DISK_STORAGE_URL+'/ai/process',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({audio:{...audioMeta,dataUrl},date,meetingType,clientId:preferredId||null,clientName:c?clientName(c):''})});
+      const result=await response.json().catch(()=>({})); if(!response.ok||!result.ok)throw new Error(result.error||'Lokální AI pomocník neodpověděl.');
+      transcript=result.transcript||''; analysis=result.analysis||{};
+    }
+    const matched=aiInboxMatchedClient(transcript,preferredId), clientId=+analysis.clientId||matched?.id||(+preferredId||null);
+    const item={id:uid(),createdAt:new Date().toISOString(),date,meetingType,sourceType,audio:audioMeta,transcript,clientId,clientName:analysis.clientName||clientName(findClient(clientId)),summary:analysis.summary||transcript.slice(0,500),questions:(analysis.questions||[]).map((q,i)=>({id:uid(),text:typeof q==='string'?q:q.text||q.question||'',answer:typeof q==='object'?(q.answer||''):''})),proposals:aiInboxBuildProposals(analysis,transcript,meetingType,date),status:'review'};
+    state.aiInbox.unshift(item); aiInboxSelectedId=item.id; persist(); renderAiInbox(); if(status)status.textContent='Hotovo – zkontroluj návrhy níže.';
+    if(sourceType==='text')setVal('aiSourceText',''); else {aiInboxAudioFile=null;setVal('aiAudioFile','');aiInboxChooseAudio(null);}
+  } catch(error) { if(status)status.textContent=error.message; alert(error.message+(sourceType==='audio'?'\n\nPro skutečný přepis spusť lokálního pomocníka s nastaveným OPENAI_API_KEY. Textový režim můžeš zkoušet hned.':'')); }
+  finally {if(button)button.disabled=false;}
+}
+function aiInboxKindLabel(kind) { return ({note:'Poznámka',activity:'Historie jednání',client_info:'Klient',opportunity:'Příležitost',task:'Úkol',calendar:'Kalendář',email:'E-mail',sms:'SMS'})[kind]||kind; }
+function renderAiInbox() {
+  aiInboxFillClientSelect(); if(!val('aiMeetingDate'))setVal('aiMeetingDate',today()); aiInboxSetSource(aiInboxSource);
+  const items=[...(state.aiInbox||[])].sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt))), list=byId('aiInboxList');
+  setText('aiInboxCount',String(items.filter(x=>x.status!=='applied').length));
+  if(list)list.innerHTML=items.map(x=>`<button class="ai-inbox-row ${String(x.id)===String(aiInboxSelectedId)?'active':''}" onclick="aiInboxSelectedId=${x.id};renderAiInbox()"><span class="ai-inbox-status ${x.status}">${x.status==='applied'?'Zapsáno':'Ke kontrole'}</span><b>${esc(x.clientName||x.audio?.name||x.meetingType)}</b><small>${esc(x.date)} · ${esc(x.sourceType==='audio'?'audio':'text')}</small></button>`).join('')||'<div class="empty-state"><p>Zatím tu nic není.</p></div>';
+  if(!aiInboxSelectedId&&items.length)aiInboxSelectedId=items[0].id;
+  const item=items.find(x=>String(x.id)===String(aiInboxSelectedId)), review=byId('aiInboxReview'); if(!review)return;
+  if(!item){review.innerHTML='<div class="empty-state"><h2>Vyber záznam z fronty</h2><p>Nejdřív nahraj audio nebo vlož textovou poznámku.</p></div>';return;}
+  const c=findClient(item.clientId);
+  review.innerHTML=`<div class="toolbar ai-review-head"><div><div class="eyebrow">Kontrola AI návrhu</div><h2>${esc(c?clientName(c):item.clientName||'Klient neurčen')}</h2><p class="note">${esc(item.date)} · ${esc(item.meetingType)}${item.audio?' · '+esc(item.audio.name):''}</p><label class="ai-review-client">Přiřadit klienta <select onchange="aiInboxAssignClient(${item.id},this.value)"><option value="">Bez klienta</option>${[...state.clients].sort((a,b)=>clientName(a).localeCompare(clientName(b),'cs')).map(client=>`<option value="${client.id}" ${String(client.id)===String(item.clientId)?'selected':''}>${esc(clientName(client))}</option>`).join('')}</select></label></div><div class="actions"><button class="btn" onclick="aiInboxConfirmAll(${item.id})">✓ Potvrdit vše</button><button class="btn primary" ${item.status==='applied'?'disabled':''} onclick="aiInboxApply(${item.id})">Zapsat potvrzené do CRM</button></div></div>
+    ${item.status==='applied'?'<div class="ai-applied-banner">✓ Zápis byl potvrzen a rozdělen do CRM. Původní návrh zůstává v historii AI Inboxu.</div>':''}
+    <div class="ai-review-summary"><label>Souhrn</label><textarea rows="4" onchange="aiInboxSetItem(${item.id},'summary',this.value)">${esc(item.summary||'')}</textarea></div>
+    ${(item.questions||[]).length?`<section class="ai-question-block"><div class="eyebrow">Nejasnosti k potvrzení</div><h3>AI se potřebuje doptat</h3>${item.questions.map(q=>`<label class="ai-question"><span>${esc(q.text)}</span><input value="${esc(q.answer||'')}" placeholder="Napiš správnou odpověď" onchange="aiInboxAnswer(${item.id},${q.id},this.value)"></label>`).join('')}</section>`:''}
+    <section><div class="toolbar"><div><div class="eyebrow">Návrhy zápisu</div><h3>Potvrď, uprav nebo vynech</h3></div><span class="note">${(item.proposals||[]).filter(p=>p.decision==='confirmed').length} potvrzeno</span></div><div class="ai-proposal-list">${(item.proposals||[]).map(p=>`<article class="ai-proposal ${p.decision}"><header><span class="badge blue">${esc(aiInboxKindLabel(p.kind))}</span><div class="ai-decision"><button class="icon-btn ${p.decision==='confirmed'?'active':''}" title="Potvrdit" onclick="aiInboxDecision(${item.id},${p.id},'confirmed')">✓</button><button class="icon-btn ${p.decision==='skipped'?'danger active':''}" title="Nezapisovat" onclick="aiInboxDecision(${item.id},${p.id},'skipped')">×</button></div></header><input class="ai-proposal-title" value="${esc(p.title)}" onchange="aiInboxSetProposal(${item.id},${p.id},'title',this.value)"><textarea rows="3" onchange="aiInboxSetProposal(${item.id},${p.id},'detail',this.value)">${esc(p.detail||'')}</textarea><div class="ai-proposal-meta">${['task','calendar','opportunity'].includes(p.kind)?`<label>Termín <input type="date" value="${esc(p.date||'')}" onchange="aiInboxSetProposal(${item.id},${p.id},'date',this.value)"></label>`:''}${p.kind==='opportunity'?`<label>Objem <input inputmode="decimal" value="${p.amount||''}" onchange="aiInboxSetProposal(${item.id},${p.id},'amount',this.value)"></label><label>Kategorie <input value="${esc(p.category||'')}" onchange="aiInboxSetProposal(${item.id},${p.id},'category',this.value)"></label>`:''}</div></article>`).join('')}</div></section>
+    <details class="ai-transcript"><summary>Originální přepis · zobrazit</summary><pre>${esc(item.transcript||'Přepis není dostupný.')}</pre></details><div class="actions ai-review-foot"><button class="btn danger" onclick="aiInboxDelete(${item.id})">Smazat z AI Inboxu</button></div>`;
+}
+function aiInboxItem(id){return (state.aiInbox||[]).find(x=>String(x.id)===String(id));}
+function aiInboxSetItem(id,field,value){const x=aiInboxItem(id);if(x){x[field]=value;persist();}}
+function aiInboxAssignClient(id,value){const x=aiInboxItem(id);if(x){x.clientId=value?+value:null;x.clientName=value?clientName(findClient(+value)):'';persist();renderAiInbox();}}
+function aiInboxAnswer(id,qid,value){const q=aiInboxItem(id)?.questions?.find(x=>String(x.id)===String(qid));if(q){q.answer=value;persist();}}
+function aiInboxSetProposal(id,pid,field,value){const p=aiInboxItem(id)?.proposals?.find(x=>String(x.id)===String(pid));if(p){p[field]=field==='amount'?parseMoney(value):value;persist();}}
+function aiInboxDecision(id,pid,decision){const p=aiInboxItem(id)?.proposals?.find(x=>String(x.id)===String(pid));if(p){p.decision=decision;persist();renderAiInbox();}}
+function aiInboxConfirmAll(id){const x=aiInboxItem(id);if(!x||x.status==='applied')return;(x.proposals||[]).forEach(p=>p.decision='confirmed');persist();renderAiInbox();}
+function aiInboxApplyProposal(item,p) {
+  const clientId=item.clientId||null, detail=p.detail||p.title, common={clientId,date:p.date||item.date};
+  if(p.kind==='note'||p.kind==='email'||p.kind==='sms'){state.notes.push({id:uid(),createdAt:today(),updatedAt:today(),...common,title:p.title,tags:p.kind==='note'?'AI zápis, schůzka':`AI zápis, ${p.kind}`,text:detail+(p.kind==='note'?`\n\nKompletní přepis:\n${item.transcript||''}`:'')});return;}
+  if(p.kind==='activity'){state.activities.push({id:uid(),...common,type:item.meetingType||p.title,text:detail,outcome:'realized',completed:true,createdAt:today(),updatedAt:today(),audioName:item.audio?.name||''});return;}
+  if(p.kind==='client_info'){const c=findClient(clientId);if(c){c.note=[c.note,detail].filter(Boolean).join('\n');c.updatedAt=today();}return;}
+  if(p.kind==='opportunity'){if(!clientId)return;state.opportunities.push({id:uid(),clientId,managementPartnerId:clientManagementId(clientId),status:'Opportunity',statusDate:item.date,category:p.category||'Ostatní',product:p.title,amount:+p.amount||0,bj:0,note:detail,nextContactDate:p.date||'',createdAt:today(),updatedAt:today(),history:[{d:item.date,t:'Vytvořeno z AI zápisu'}]});return;}
+  if(p.kind==='task'||p.kind==='calendar'){if(!clientId)return;state.activities.push({id:uid(),clientId,type:p.kind==='calendar'?'Schůzka':'Úkol',date:p.date||item.date,time:'',duration:p.kind==='calendar'?60:0,text:[p.title,detail].filter(Boolean).join(' · '),outcome:'agreed',completed:false,createdAt:today(),updatedAt:today(),source:'AI Inbox'});}
+}
+function aiInboxApply(id) {
+  const item=aiInboxItem(id);if(!item||item.status==='applied')return;
+  const unanswered=(item.questions||[]).filter(q=>!String(q.answer||'').trim());if(unanswered.length)return alert('Nejdřív odpověz na nejasnosti označené AI.');
+  const confirmed=(item.proposals||[]).filter(p=>p.decision==='confirmed'&&!p.appliedAt);if(!confirmed.length)return alert('Potvrď alespoň jednu položku, kterou chceš zapsat.');
+  if(!item.clientId&&confirmed.some(p=>['activity','opportunity','task','calendar','client_info'].includes(p.kind)))return alert('Pro tyto položky musí být určen klient. Vyber klienta už při novém zpracování nebo ponech pouze obecnou poznámku.');
+  confirmed.forEach(p=>{aiInboxApplyProposal(item,p);p.appliedAt=new Date().toISOString();});item.status='applied';item.appliedAt=new Date().toISOString();persist();renderAll();saveToast('Potvrzené návrhy byly zapsány do CRM');
+}
+function aiInboxDelete(id){if(!confirm('Smazat tento návrh z AI Inboxu? Zapsaná CRM data tím nesmažeš.'))return;state.aiInbox=(state.aiInbox||[]).filter(x=>String(x.id)!==String(id));aiInboxSelectedId=null;persist();renderAiInbox();}
 var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   investmentTrailPctForItem = commissions_investmentTrailPctForItem,
   investmentTrailAnnualForItem = commissions_investmentTrailAnnualForItem,
@@ -13468,8 +13600,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.11-2';
-const VERSION_NOTE = 'Výnosy investic a FKI se počítají od skutečného data nákupu; emise slouží jen pro odkup a časový test.';
+const VERSION = '2026.10.14-1';
+const VERSION_NOTE = 'Nový AI Inbox připraví z textu nebo M4A kontrolovatelný zápis, úkoly a příležitosti; bez potvrzení nic nemění.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
@@ -13543,6 +13675,9 @@ let state = loadState(),
   diskSaveInFlight = false,
   diskSavePending = false,
   diskLoadDone = false;
+let aiInboxSource = 'audio',
+  aiInboxSelectedId = null,
+  aiInboxAudioFile = null;
 let fkReportManualItems = [];
 let campaignSelectedClientIds = new Set(),
   campaignRecipientRows = [],
@@ -13566,6 +13701,7 @@ const BACKUP_COUNT_LABELS = {
   deals: 'obchodů',
   opportunities: 'obchodních případů',
   notes: 'poznámek',
+  aiInbox: 'AI zápisů',
   activities: 'aktivit',
   analysisEntries: 'analytických aktivit',
   investments: 'investičních záznamů',
@@ -13578,7 +13714,7 @@ const BACKUP_COUNT_LABELS = {
   weeklyGoals: 'týdenních cílů',
   weeklyReviews: 'uzavřených týdnů'
 };
-const BACKUP_PROTECTED_KEYS = ['clients', 'contracts', 'deals', 'opportunities', 'notes', 'activities', 'analysisEntries', 'campaigns', 'investments', 'investmentSnapshots', 'externalInvestments', 'investmentForecasts', 'commissionImports', 'referrerPayouts', 'referrals', 'weeklyGoals', 'weeklyReviews'];
+const BACKUP_PROTECTED_KEYS = ['clients', 'contracts', 'deals', 'opportunities', 'notes', 'aiInbox', 'activities', 'analysisEntries', 'campaigns', 'investments', 'investmentSnapshots', 'externalInvestments', 'investmentForecasts', 'commissionImports', 'referrerPayouts', 'referrals', 'weeklyGoals', 'weeklyReviews'];
 let scenario_editableScope = '';
 let fkiEditor_editingFkRecordKey = '',
   fkiEditor_editingFkClientId = null;

@@ -6,6 +6,9 @@ import re
 import shutil
 import sys
 import tempfile
+import urllib.error
+import urllib.request
+import uuid
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -20,6 +23,9 @@ BACKUP_DIR = BASE_DIR / "backups"
 ATTACHMENT_DIR = BASE_DIR / "attachments"
 LOG_DIR = BASE_DIR / "logs"
 MAX_BODY = 250 * 1024 * 1024
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
+OPENAI_TRANSCRIBE_MODEL = os.environ.get("FILIP_CRM_TRANSCRIBE_MODEL", "gpt-4o-transcribe")
+OPENAI_ANALYSIS_MODEL = os.environ.get("FILIP_CRM_AI_MODEL", "gpt-4o-mini")
 
 
 def now_stamp():
@@ -104,6 +110,72 @@ def decode_data_url(data_url):
     if m:
         mime = m.group(1)
     return mime, base64.b64decode(raw)
+
+
+def openai_json(path, payload):
+    if not OPENAI_API_KEY:
+        raise RuntimeError("Lokální pomocník nemá nastavený OPENAI_API_KEY.")
+    request = urllib.request.Request(
+        "https://api.openai.com/v1" + path,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Authorization": "Bearer " + OPENAI_API_KEY, "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=180) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode("utf-8", errors="replace")[:1200]
+        raise RuntimeError("OpenAI API odmítlo požadavek: " + detail) from error
+
+
+def transcribe_audio(audio):
+    if not OPENAI_API_KEY:
+        raise RuntimeError("Lokální pomocník nemá nastavený OPENAI_API_KEY.")
+    mime, binary = decode_data_url(audio.get("dataUrl"))
+    if not binary:
+        raise RuntimeError("Audio soubor je prázdný nebo má neplatný formát.")
+    if len(binary) > 100 * 1024 * 1024:
+        raise RuntimeError("Audio je větší než 100 MB. Rozděl nahrávku na části.")
+    boundary = "----FilipCrm" + uuid.uuid4().hex
+    filename = safe_name(audio.get("name") or "nahravka.m4a")
+    parts = []
+    def field(name, value):
+        parts.extend([f"--{boundary}\r\n".encode(), f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode(), str(value).encode("utf-8"), b"\r\n"])
+    field("model", OPENAI_TRANSCRIBE_MODEL)
+    field("language", "cs")
+    field("response_format", "json")
+    parts.extend([f"--{boundary}\r\n".encode(), f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'.encode("utf-8"), f"Content-Type: {mime or audio.get('type') or 'audio/mp4'}\r\n\r\n".encode(), binary, b"\r\n", f"--{boundary}--\r\n".encode()])
+    request = urllib.request.Request("https://api.openai.com/v1/audio/transcriptions", data=b"".join(parts), headers={"Authorization":"Bearer "+OPENAI_API_KEY,"Content-Type":"multipart/form-data; boundary="+boundary}, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=300) as response:
+            result = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode("utf-8", errors="replace")[:1200]
+        raise RuntimeError("Přepis audia selhal: " + detail) from error
+    return str(result.get("text") or "").strip()
+
+
+def meeting_schema():
+    text_item = {"type":"object","additionalProperties":False,"properties":{"title":{"type":"string"},"detail":{"type":"string"},"date":{"type":"string"}},"required":["title","detail","date"]}
+    opportunity = {"type":"object","additionalProperties":False,"properties":{"title":{"type":"string"},"detail":{"type":"string"},"category":{"type":"string"},"amount":{"type":"number"},"date":{"type":"string"}},"required":["title","detail","category","amount","date"]}
+    return {"type":"object","additionalProperties":False,"properties":{
+        "clientName":{"type":"string"},"summary":{"type":"string"},"discussed":{"type":"array","items":{"type":"string"}},"agreed":{"type":"array","items":{"type":"string"}},"newClientInfo":{"type":"array","items":{"type":"string"}},"opportunities":{"type":"array","items":opportunity},"tasks":{"type":"array","items":text_item},"clientTasks":{"type":"array","items":{"type":"string"}},"documents":{"type":"array","items":{"type":"string"}},"followUp":text_item,"nextMeeting":text_item,"emailDraft":{"type":"string"},"smsDraft":{"type":"string"},"questions":{"type":"array","items":{"type":"object","additionalProperties":False,"properties":{"text":{"type":"string"},"answer":{"type":"string"}},"required":["text","answer"]}}
+    },"required":["clientName","summary","discussed","agreed","newClientInfo","opportunities","tasks","clientTasks","documents","followUp","nextMeeting","emailDraft","smsDraft","questions"]}
+
+
+def analyze_transcript(transcript, context):
+    system = """Jsi pečlivý asistent českého finančního poradce. Z přepisu připrav pouze věcné návrhy k ruční kontrole. Nic si nedomýšlej. Nejasné částky, termíny, produkty nebo identitu klienta přidej jako otázku. Rozliš úkol poradce, úkol klienta, obchodní příležitost, další schůzku a požadovaný dokument. Datum zapisuj YYYY-MM-DD; pokud není jisté, nech prázdné a polož otázku. Návrh e-mailu a SMS nesmí tvrdit nic, co v přepisu nezaznělo."""
+    user = "Datum: {date}\nTyp: {kind}\nPředvolený klient: {client}\n\nPŘEPIS:\n{transcript}".format(date=context.get("date") or "", kind=context.get("meetingType") or "", client=context.get("clientName") or "neurčen", transcript=transcript)
+    result = openai_json("/responses", {"model":OPENAI_ANALYSIS_MODEL,"store":False,"input":[{"role":"system","content":system},{"role":"user","content":user}],"text":{"format":{"type":"json_schema","name":"crm_meeting_analysis","strict":True,"schema":meeting_schema()}}})
+    output_text = result.get("output_text") or ""
+    if not output_text:
+        for item in result.get("output") or []:
+            for content in item.get("content") or []:
+                if content.get("type") == "output_text": output_text += content.get("text") or ""
+    if not output_text:
+        raise RuntimeError("AI analýza nevrátila použitelný výstup.")
+    return json.loads(output_text)
 
 
 def attachment_ref(contract_id, attachment):
@@ -253,6 +325,18 @@ class Handler(BaseHTTPRequestHandler):
             payload = json.loads(raw.decode("utf-8") or "{}")
         except Exception as e:
             json_response(self, 400, {"ok": False, "error": "Neplatný JSON: " + str(e)})
+            return
+        if parsed.path == "/ai/process":
+            try:
+                audio = payload.get("audio") or {}
+                transcript = transcribe_audio(audio)
+                if not transcript:
+                    raise RuntimeError("V nahrávce se nepodařilo rozpoznat žádný text.")
+                analysis = analyze_transcript(transcript, payload)
+                # Audio zůstává pouze v paměti po dobu požadavku. Na disk se neukládá.
+                json_response(self, 200, {"ok": True, "transcript": transcript, "analysis": analysis, "audioStored": False})
+            except Exception as error:
+                json_response(self, 500, {"ok": False, "error": str(error)})
             return
         if parsed.path == "/state":
             state = payload.get("state")
