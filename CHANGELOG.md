@@ -1,3 +1,9 @@
+## 2026.10.14-4
+
+- AI Inbox přednostně používá již nainstalovaný MacWhisper a jeho stažený český model; audio neopouští Mac a nevzniká poplatek za OpenAI API.
+- Po místním přepisu CRM vytvoří kontrolní návrhy vlastními pravidly v prohlížeči. OpenAI klíč zůstává jen jako volitelná záložní cesta.
+- Stavová karta jasně rozlišuje bezplatný místní přepis a placenou cloudovou variantu.
+
 ## 2026.10.14-3
 
 - AI Inbox automaticky zmenší a rozdělí nahrávky větší než 24 MB na půlhodinové části a jejich přepisy znovu spojí.

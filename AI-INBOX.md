@@ -8,18 +8,20 @@ V záložce **AI Inbox** přepněte na **Textová poznámka**, vložte diktovan�
 
 Zvuk zpracovává lokální pomocník `tools/local_crm_storage.py`. Tajný OpenAI klíč není součástí HTML, JavaScriptu, GitHubu ani zálohy CRM.
 
-Lokální pomocník se po instalaci spouští automaticky. AI Inbox přímo ukazuje jeho stav. Pokud klíč chybí, vložte jej do zobrazeného pole a zvolte **Uložit bezpečně do Klíčenky**. Klíč se uloží do Klíčenky macOS a nebude součástí CRM, GitHubu ani zálohy.
+Lokální pomocník se po instalaci spouští automaticky. AI Inbox přímo ukazuje jeho stav. OpenAI klíč v Klíčence je pouze volitelná placená záloha; pro místní přepis ho nepotřebujete.
+
+Bezplatná výchozí varianta používá aplikaci MacWhisper/Whisper Transcription. V aplikaci jednou otevřete **Settings → Advanced → Command-Line Tool → Install**. Pomocník pak použije stažený český model přímo na Macu a OpenAI API se nevolá.
 
 Pokud pomocník neběží, jednou otevřete `install-local-crm-storage-autostart.command`.
 
-Potom v AI Inboxu nahrajte `.m4a`. Pro přepis se používá model nastavený proměnnou `FILIP_CRM_TRANSCRIBE_MODEL` (výchozí `gpt-4o-transcribe`) a pro strukturovanou analýzu `FILIP_CRM_AI_MODEL` (výchozí `gpt-4o-mini`).
+Potom v AI Inboxu nahrajte `.m4a`. MacWhisper vytvoří místní český přepis a CRM z něj v prohlížeči připraví návrhy ke kontrole. Pokud místní nástroj není zapnutý, pomocník může použít OpenAI jen tehdy, když je v Klíčence uložený funkční API klíč.
 
-Nahrávky nad limitem OpenAI 25 MB pomocník automaticky převede na úsporný hlasový formát, rozdělí na půlhodinové části a dílčí přepisy spojí. Uživatel tedy nahrávku ručně nedělí. Maximální vstupní velikost v CRM je 100 MB.
+Maximální vstupní velikost nahrávky v CRM je 100 MB. Při případném použití cloudové zálohy pomocník větší audio automaticky zmenší a rozdělí na půlhodinové části.
 
 ## Tok a uchování dat
 
 - Prohlížeč odešle audio pouze pomocníkovi na `127.0.0.1:48730`. Přístup je omezený na oficiální adresu FILIP CRM a lokální stránku.
-- Pomocník pošle audio do OpenAI API pro český přepis a přepis pro strukturovanou analýzu.
+- Při místním režimu pomocník předá audio aplikaci MacWhisper na stejném Macu. OpenAI API se nevolá.
 - Audio se v CRM, lokálním pomocníkovi ani GitHubu neukládá. Po dokončení požadavku zůstane pouze v provozní paměti a je uvolněno.
 - CRM uloží originální přepis, kontrolní návrhy, odpovědi na nejasnosti a název/velikost původního souboru.
 - Automatické odeslání e-mailu nebo SMS není povolené; ukládá se jen návrh textu.

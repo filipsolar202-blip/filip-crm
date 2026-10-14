@@ -13479,11 +13479,12 @@ async function aiInboxCheckBackend(force=false) {
   try{
     const response=await fetch(DISK_STORAGE_URL+'/status',{cache:'no-store'}),data=await response.json();
     if(!response.ok||!data.ok)throw new Error(data.error||'Pomocník neodpověděl.');
-    aiBackendState={checking:false,checked:Date.now(),online:true,configured:!!data.aiConfigured};
-    card?.classList.toggle('ready',!!data.aiConfigured);card?.classList.toggle('warning',!data.aiConfigured);
-    if(title)title.textContent=data.aiConfigured?'Lokální přepis je připravený':'Pomocník běží, chybí klíč pro přepis';
-    if(detail)detail.textContent=data.aiConfigured?'M4A můžeš rovnou zpracovat. Audio se po přepisu neukládá.':'Vlož jednou OpenAI API klíč. Uloží se do Klíčenky macOS, nikoliv do CRM nebo GitHubu.';
-    setup?.classList.toggle('hidden',!!data.aiConfigured);
+    const local=!!data.localTranscriptionConfigured,cloud=!!data.aiConfigured,configured=local||cloud;
+    aiBackendState={checking:false,checked:Date.now(),online:true,configured,local,cloud,mode:data.transcriptionMode||'none'};
+    card?.classList.toggle('ready',configured);card?.classList.toggle('warning',!configured);
+    if(title)title.textContent=local?'Místní přepis je připravený – bez poplatku':cloud?'Cloudový přepis je připravený':'Pomocník běží, přepis zatím není zapnutý';
+    if(detail)detail.textContent=local?'Audio zpracuje MacWhisper pouze na tomto Macu. OpenAI API se nepoužije.':cloud?'Audio zpracuje OpenAI API podle jeho ceníku.':'Bezplatná volba: v MacWhisper zapni Settings → Advanced → Command-Line Tool → Install.';
+    setup?.classList.toggle('hidden',local||cloud);
   }catch(error){
     aiBackendState={checking:false,checked:Date.now(),online:false,configured:false};card?.classList.remove('ready');card?.classList.add('offline');
     if(title)title.textContent='Lokální pomocník na Macu neběží';
@@ -13573,13 +13574,13 @@ async function aiInboxProcess() {
       if(!aiInboxAudioFile)throw new Error('Vyber audio nahrávku.');
       const backend=await aiInboxCheckBackend(true);
       if(!backend.online)throw new Error('Lokální pomocník na tomto Macu neběží. Spusť install-local-crm-storage-autostart.command.');
-      if(!backend.configured)throw new Error('Nejdřív ulož OpenAI API klíč do Klíčenky v modrém bloku nad tlačítkem.');
+      if(!backend.configured)throw new Error('Nejdřív zapni místní MacWhisper: Settings → Advanced → Command-Line Tool → Install.');
       if(aiInboxAudioFile.size>100*1024*1024)throw new Error('Nahrávka je větší než 100 MB. Rozděl ji na dvě části.');
       audioMeta={name:aiInboxAudioFile.name,type:aiInboxAudioFile.type,size:aiInboxAudioFile.size};
       const dataUrl=await aiInboxFileDataUrl(aiInboxAudioFile), c=findClient(+preferredId);
       const response=await fetch(DISK_STORAGE_URL+'/ai/process',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({audio:{...audioMeta,dataUrl},date,meetingType,clientId:preferredId||null,clientName:c?clientName(c):''})});
       const result=await response.json().catch(()=>({})); if(!response.ok||!result.ok)throw new Error(result.error||'Lokální AI pomocník neodpověděl.');
-      transcript=result.transcript||''; analysis=result.analysis||{};
+      transcript=result.transcript||''; analysis=result.analysis||aiInboxLocalAnalysis(transcript,preferredId);
     }
     const matched=aiInboxMatchedClient(transcript,preferredId), clientId=+analysis.clientId||matched?.id||(+preferredId||null);
     const item={id:uid(),createdAt:new Date().toISOString(),date,meetingType,sourceType,audio:audioMeta,transcript,clientId,clientName:analysis.clientName||clientName(findClient(clientId)),summary:analysis.summary||transcript.slice(0,500),questions:(analysis.questions||[]).map((q,i)=>({id:uid(),text:typeof q==='string'?q:q.text||q.question||'',answer:typeof q==='object'?(q.answer||''):''})),proposals:aiInboxBuildProposals(analysis,transcript,meetingType,date),status:'review'};
@@ -13639,8 +13640,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.14-3';
-const VERSION_NOTE = 'AI Inbox automaticky zmenší a rozdělí i dlouhé nahrávky do 100 MB a bezpečně spojí jejich přepis.';
+const VERSION = '2026.10.14-4';
+const VERSION_NOTE = 'AI Inbox používá přednostně místní MacWhisper bez poplatků a bez odeslání audia do cloudu.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
