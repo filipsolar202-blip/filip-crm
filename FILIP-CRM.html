@@ -120,7 +120,7 @@ body{font-family:Fustat,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}b
             <div class="field full" id="aiAudioField"><label>Nahrávka</label><input id="aiAudioFile" type="file" accept="audio/*,.m4a,.mp3,.mp4,.wav,.webm,.ogg" onchange="aiInboxChooseAudio(this.files[0])"><div class="ai-file-summary" id="aiAudioSummary">Vyber M4A nebo jiný běžný audio soubor.</div></div>
             <div class="field full hidden" id="aiTextField"><label>Text poznámky</label><textarea id="aiSourceText" rows="7" placeholder="Např. Novotný – připravit úvěr 3 miliony, Codya necháváme 5 000 Kč měsíčně, zavolat příští úterý..."></textarea></div>
           </div>
-          <div class="ai-privacy-note"><b>Soukromí:</b> textový test se zpracuje v prohlížeči. Audio se přednostně přepisuje místně přes MacWhisper a po dokončení se neukládá. Cloudový přepis je pouze záložní volba.</div>
+          <div class="ai-privacy-note"><b>Soukromí:</b> textový test se zpracuje v prohlížeči. Audio přepisuje bezplatný místní Whisper na tomto Macu a po dokončení se neukládá. Placený cloudový přepis je vypnutý.</div>
           <div class="ai-backend-card" id="aiBackendCard">
             <div><span class="ai-backend-dot"></span><b id="aiBackendTitle">Kontroluji lokálního pomocníka…</b><p class="note" id="aiBackendDetail">Pro přepis audia musí na tomto Macu běžet lokální služba.</p></div>
             <div class="ai-key-setup hidden" id="aiKeySetup"><input id="aiApiKey" type="password" autocomplete="off" placeholder="OpenAI API klíč sk-…"><button class="btn" onclick="aiInboxSaveApiKey()">Uložit bezpečně do Klíčenky</button></div>
