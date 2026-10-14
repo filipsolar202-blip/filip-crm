@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 import base64
+import getpass
 import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import urllib.error
@@ -16,16 +18,17 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 
 PORT = int(os.environ.get("FILIP_CRM_STORAGE_PORT", "48730"))
-DEFAULT_BASE_DIR = Path(__file__).resolve().parents[1] / "FILIP-CRM-data"
+DEFAULT_BASE_DIR = Path.home() / "Library" / "Application Support" / "FILIP CRM" / "data"
 BASE_DIR = Path(os.environ.get("FILIP_CRM_DATA_DIR", str(DEFAULT_BASE_DIR))).expanduser()
 STATE_FILE = BASE_DIR / "state" / "crm-state.json"
 BACKUP_DIR = BASE_DIR / "backups"
 ATTACHMENT_DIR = BASE_DIR / "attachments"
 LOG_DIR = BASE_DIR / "logs"
 MAX_BODY = 250 * 1024 * 1024
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
 OPENAI_TRANSCRIBE_MODEL = os.environ.get("FILIP_CRM_TRANSCRIBE_MODEL", "gpt-4o-transcribe")
 OPENAI_ANALYSIS_MODEL = os.environ.get("FILIP_CRM_AI_MODEL", "gpt-4o-mini")
+KEYCHAIN_SERVICE = "filip-crm-openai"
+ALLOWED_ORIGINS = {"https://filipsolar202-blip.github.io", "http://127.0.0.1:48730", "http://localhost:48730", "null"}
 
 
 def now_stamp():
@@ -41,6 +44,32 @@ def safe_name(value, fallback="soubor"):
 def ensure_dirs():
     for path in (STATE_FILE.parent, BACKUP_DIR, ATTACHMENT_DIR, LOG_DIR):
         path.mkdir(parents=True, exist_ok=True)
+
+
+def openai_api_key():
+    env_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    if env_key:
+        return env_key
+    try:
+        result = subprocess.run(["/usr/bin/security", "find-generic-password", "-a", getpass.getuser(), "-s", KEYCHAIN_SERVICE, "-w"], capture_output=True, text=True, timeout=8)
+        return result.stdout.strip() if result.returncode == 0 else ""
+    except Exception:
+        return ""
+
+
+def save_openai_api_key(key):
+    key = str(key or "").strip()
+    if not key.startswith("sk-") or len(key) < 20:
+        raise RuntimeError("Klíč nemá očekávaný formát OpenAI API klíče.")
+    result = subprocess.run(["/usr/bin/security", "add-generic-password", "-U", "-a", getpass.getuser(), "-s", KEYCHAIN_SERVICE, "-w", key], capture_output=True, text=True, timeout=15)
+    if result.returncode != 0:
+        raise RuntimeError("Klíč se nepodařilo uložit do Klíčenky macOS: " + result.stderr.strip())
+    return True
+
+
+def origin_allowed(handler):
+    origin = handler.headers.get("Origin")
+    return not origin or origin in ALLOWED_ORIGINS
 
 
 def atomic_write(path: Path, text: str):
@@ -113,12 +142,13 @@ def decode_data_url(data_url):
 
 
 def openai_json(path, payload):
-    if not OPENAI_API_KEY:
+    api_key = openai_api_key()
+    if not api_key:
         raise RuntimeError("Lokální pomocník nemá nastavený OPENAI_API_KEY.")
     request = urllib.request.Request(
         "https://api.openai.com/v1" + path,
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        headers={"Authorization": "Bearer " + OPENAI_API_KEY, "Content-Type": "application/json"},
+        headers={"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
         method="POST",
     )
     try:
@@ -130,7 +160,8 @@ def openai_json(path, payload):
 
 
 def transcribe_audio(audio):
-    if not OPENAI_API_KEY:
+    api_key = openai_api_key()
+    if not api_key:
         raise RuntimeError("Lokální pomocník nemá nastavený OPENAI_API_KEY.")
     mime, binary = decode_data_url(audio.get("dataUrl"))
     if not binary:
@@ -146,7 +177,7 @@ def transcribe_audio(audio):
     field("language", "cs")
     field("response_format", "json")
     parts.extend([f"--{boundary}\r\n".encode(), f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'.encode("utf-8"), f"Content-Type: {mime or audio.get('type') or 'audio/mp4'}\r\n\r\n".encode(), binary, b"\r\n", f"--{boundary}--\r\n".encode()])
-    request = urllib.request.Request("https://api.openai.com/v1/audio/transcriptions", data=b"".join(parts), headers={"Authorization":"Bearer "+OPENAI_API_KEY,"Content-Type":"multipart/form-data; boundary="+boundary}, method="POST")
+    request = urllib.request.Request("https://api.openai.com/v1/audio/transcriptions", data=b"".join(parts), headers={"Authorization":"Bearer "+api_key,"Content-Type":"multipart/form-data; boundary="+boundary}, method="POST")
     try:
         with urllib.request.urlopen(request, timeout=300) as response:
             result = json.loads(response.read().decode("utf-8"))
@@ -234,9 +265,13 @@ def json_response(handler, status, payload):
     handler.send_response(status)
     handler.send_header("Content-Type", "application/json; charset=utf-8")
     handler.send_header("Content-Length", str(len(body)))
-    handler.send_header("Access-Control-Allow-Origin", "*")
+    origin = handler.headers.get("Origin")
+    if origin in ALLOWED_ORIGINS:
+        handler.send_header("Access-Control-Allow-Origin", origin)
+        handler.send_header("Vary", "Origin")
     handler.send_header("Access-Control-Allow-Headers", "Content-Type")
     handler.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+    handler.send_header("Access-Control-Allow-Private-Network", "true")
     handler.end_headers()
     handler.wfile.write(body)
 
@@ -253,10 +288,18 @@ class Handler(BaseHTTPRequestHandler):
             pass
 
     def do_OPTIONS(self):
+        if not origin_allowed(self):
+            self.send_response(403)
+            self.end_headers()
+            return
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
+        origin = self.headers.get("Origin")
+        if origin in ALLOWED_ORIGINS:
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+        self.send_header("Access-Control-Allow-Private-Network", "true")
         self.end_headers()
 
     def do_GET(self):
@@ -271,6 +314,7 @@ class Handler(BaseHTTPRequestHandler):
                 "hasState": state is not None,
                 "updatedAt": datetime.fromtimestamp(STATE_FILE.stat().st_mtime).isoformat(timespec="seconds") if STATE_FILE.exists() else "",
                 "counts": counts(state),
+                "aiConfigured": bool(openai_api_key()),
             })
             return
         if parsed.path == "/state":
@@ -307,7 +351,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", mime)
             self.send_header("Content-Length", str(len(payload)))
-            self.send_header("Access-Control-Allow-Origin", "*")
+            origin = self.headers.get("Origin")
+            if origin in ALLOWED_ORIGINS:
+                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Vary", "Origin")
             self.end_headers()
             self.wfile.write(payload)
             return
@@ -316,6 +363,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         ensure_dirs()
         parsed = urlparse(self.path)
+        if not origin_allowed(self):
+            json_response(self, 403, {"ok": False, "error": "Tento web nemá povolený přístup k lokálnímu CRM pomocníkovi."})
+            return
         length = int(self.headers.get("Content-Length") or 0)
         if length > MAX_BODY:
             json_response(self, 413, {"ok": False, "error": "Data jsou moc velká."})
@@ -325,6 +375,13 @@ class Handler(BaseHTTPRequestHandler):
             payload = json.loads(raw.decode("utf-8") or "{}")
         except Exception as e:
             json_response(self, 400, {"ok": False, "error": "Neplatný JSON: " + str(e)})
+            return
+        if parsed.path == "/ai/config":
+            try:
+                save_openai_api_key(payload.get("apiKey"))
+                json_response(self, 200, {"ok": True, "aiConfigured": True})
+            except Exception as error:
+                json_response(self, 400, {"ok": False, "error": str(error)})
             return
         if parsed.path == "/ai/process":
             try:

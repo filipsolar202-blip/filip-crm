@@ -1,3 +1,11 @@
+## 2026.10.14-2
+
+- Opraven pád lokálního pomocníka způsobený ochranou složky Dokumenty v macOS.
+- Program i pracovní data pomocníka nyní běží ze složky `Library/Application Support/FILIP CRM`; instalační skript bezpečně zkopíruje dosavadní data.
+- AI Inbox zobrazuje, zda pomocník běží a zda je přepis nakonfigurovaný.
+- OpenAI API klíč lze jednorázově uložit přímo z AI Inboxu do Klíčenky macOS. Nezapisuje se do HTML, localStorage, GitHubu ani zálohy.
+- Lokální rozhraní omezuje přístup na oficiální GitHub Pages CRM a podporuje bezpečnostní kontrolu privátní sítě v Chrome.
+
 ## 2026.10.14-1
 
 - Přidán AI Inbox pro nahrávky ze schůzek, hlasové poznámky a textový test bez externího API.

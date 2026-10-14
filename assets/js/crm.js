@@ -284,6 +284,10 @@ function diskBackupLabel(b) {
 function diskFileUrl(ref) {
   return DISK_STORAGE_URL + '/file?ref=' + encodeURIComponent(ref || '');
 }
+function diskStateWeight(source) {
+  const keys=['clients','contracts','deals','opportunities','notes','activities','investmentRecords','investmentSnapshots','analysisEntries','aiInbox'];
+  return keys.reduce((sum,key)=>sum+(Array.isArray(source?.[key])?source[key].length:0),0);
+}
 function queueDiskSave(reason = 'autosave') {
   if (!diskLoadDone) return;
   clearTimeout(diskSaveTimer);
@@ -352,7 +356,14 @@ async function loadStateFromDisk(manual = false) {
     if (!response.ok) throw new Error('disk ' + response.status);
     const payload = await response.json();
     if (payload.ok && payload.hasState && payload.state) {
-      state = normalizeState(payload.state);
+      const diskState=normalizeState(payload.state), localState=normalizeState(state), localAhead=!manual&&((+localState.nextId||0)>(+diskState.nextId||0)||diskStateWeight(localState)>diskStateWeight(diskState));
+      if(localAhead){
+        state=localState;diskLoadDone=true;
+        await saveStateToDisk('ochrana-novejsich-dat-z-prohlizece',false);
+        setDiskStorageStatus(`<b>Novější data z prohlížeče byla bezpečně zapsána na disk.</b><br>${stateCountsText()} · původní disková verze zůstala v automatické záloze.`);
+        return true;
+      }
+      state = diskState;
       localStorageWriteState();
       diskLoadDone = true;
       diskStorageStatus = {
@@ -13461,6 +13472,30 @@ function renderAnalysis() {
   if (typeof renderAnalysisWeekHistory === 'function') renderAnalysisWeekHistory();
 }
 
+async function aiInboxCheckBackend(force=false) {
+  if(aiBackendState.checking||(!force&&aiBackendState.checked&&Date.now()-aiBackendState.checked<15000))return aiBackendState;
+  aiBackendState.checking=true;
+  const card=byId('aiBackendCard'),title=byId('aiBackendTitle'),detail=byId('aiBackendDetail'),setup=byId('aiKeySetup');
+  try{
+    const response=await fetch(DISK_STORAGE_URL+'/status',{cache:'no-store'}),data=await response.json();
+    if(!response.ok||!data.ok)throw new Error(data.error||'Pomocník neodpověděl.');
+    aiBackendState={checking:false,checked:Date.now(),online:true,configured:!!data.aiConfigured};
+    card?.classList.toggle('ready',!!data.aiConfigured);card?.classList.toggle('warning',!data.aiConfigured);
+    if(title)title.textContent=data.aiConfigured?'Lokální přepis je připravený':'Pomocník běží, chybí klíč pro přepis';
+    if(detail)detail.textContent=data.aiConfigured?'M4A můžeš rovnou zpracovat. Audio se po přepisu neukládá.':'Vlož jednou OpenAI API klíč. Uloží se do Klíčenky macOS, nikoliv do CRM nebo GitHubu.';
+    setup?.classList.toggle('hidden',!!data.aiConfigured);
+  }catch(error){
+    aiBackendState={checking:false,checked:Date.now(),online:false,configured:false};card?.classList.remove('ready');card?.classList.add('offline');
+    if(title)title.textContent='Lokální pomocník na Macu neběží';
+    if(detail)detail.textContent='Spusť v projektu soubor install-local-crm-storage-autostart.command a potom klikni na „Zkontrolovat znovu“.';
+    setup?.classList.add('hidden');
+  }
+  return aiBackendState;
+}
+async function aiInboxSaveApiKey(){
+  const key=val('aiApiKey').trim();if(!key)return alert('Vlož OpenAI API klíč začínající sk-.');
+  try{const response=await fetch(DISK_STORAGE_URL+'/ai/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:key})}),data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||'Klíč se nepodařilo uložit.');setVal('aiApiKey','');aiBackendState.checked=0;await aiInboxCheckBackend(true);saveToast('Klíč je bezpečně uložený v Klíčence macOS');}catch(error){alert(error.message);}
+}
 function aiInboxSetSource(source) {
   aiInboxSource = source === 'text' ? 'text' : 'audio';
   byId('aiAudioField')?.classList.toggle('hidden', aiInboxSource !== 'audio');
@@ -13536,6 +13571,9 @@ async function aiInboxProcess() {
     if(sourceType==='text') { transcript=val('aiSourceText').trim(); if(!transcript)throw new Error('Vlož text poznámky.'); analysis=aiInboxLocalAnalysis(transcript,preferredId); }
     else {
       if(!aiInboxAudioFile)throw new Error('Vyber audio nahrávku.');
+      const backend=await aiInboxCheckBackend(true);
+      if(!backend.online)throw new Error('Lokální pomocník na tomto Macu neběží. Spusť install-local-crm-storage-autostart.command.');
+      if(!backend.configured)throw new Error('Nejdřív ulož OpenAI API klíč do Klíčenky v modrém bloku nad tlačítkem.');
       if(aiInboxAudioFile.size>100*1024*1024)throw new Error('Nahrávka je větší než 100 MB. Rozděl ji na dvě části.');
       audioMeta={name:aiInboxAudioFile.name,type:aiInboxAudioFile.type,size:aiInboxAudioFile.size};
       const dataUrl=await aiInboxFileDataUrl(aiInboxAudioFile), c=findClient(+preferredId);
@@ -13547,12 +13585,13 @@ async function aiInboxProcess() {
     const item={id:uid(),createdAt:new Date().toISOString(),date,meetingType,sourceType,audio:audioMeta,transcript,clientId,clientName:analysis.clientName||clientName(findClient(clientId)),summary:analysis.summary||transcript.slice(0,500),questions:(analysis.questions||[]).map((q,i)=>({id:uid(),text:typeof q==='string'?q:q.text||q.question||'',answer:typeof q==='object'?(q.answer||''):''})),proposals:aiInboxBuildProposals(analysis,transcript,meetingType,date),status:'review'};
     state.aiInbox.unshift(item); aiInboxSelectedId=item.id; persist(); renderAiInbox(); if(status)status.textContent='Hotovo – zkontroluj návrhy níže.';
     if(sourceType==='text')setVal('aiSourceText',''); else {aiInboxAudioFile=null;setVal('aiAudioFile','');aiInboxChooseAudio(null);}
-  } catch(error) { if(status)status.textContent=error.message; alert(error.message+(sourceType==='audio'?'\n\nPro skutečný přepis spusť lokálního pomocníka s nastaveným OPENAI_API_KEY. Textový režim můžeš zkoušet hned.':'')); }
+  } catch(error) { if(status)status.textContent=error.message; alert(error.message+(sourceType==='audio'?'\n\nStav připojení vidíš přímo v bloku AI Inboxu. Textový režim můžeš zkoušet i bez pomocníka.':'')); }
   finally {if(button)button.disabled=false;}
 }
 function aiInboxKindLabel(kind) { return ({note:'Poznámka',activity:'Historie jednání',client_info:'Klient',opportunity:'Příležitost',task:'Úkol',calendar:'Kalendář',email:'E-mail',sms:'SMS'})[kind]||kind; }
 function renderAiInbox() {
   aiInboxFillClientSelect(); if(!val('aiMeetingDate'))setVal('aiMeetingDate',today()); aiInboxSetSource(aiInboxSource);
+  aiInboxCheckBackend();
   const items=[...(state.aiInbox||[])].sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt))), list=byId('aiInboxList');
   setText('aiInboxCount',String(items.filter(x=>x.status!=='applied').length));
   if(list)list.innerHTML=items.map(x=>`<button class="ai-inbox-row ${String(x.id)===String(aiInboxSelectedId)?'active':''}" onclick="aiInboxSelectedId=${x.id};renderAiInbox()"><span class="ai-inbox-status ${x.status}">${x.status==='applied'?'Zapsáno':'Ke kontrole'}</span><b>${esc(x.clientName||x.audio?.name||x.meetingType)}</b><small>${esc(x.date)} · ${esc(x.sourceType==='audio'?'audio':'text')}</small></button>`).join('')||'<div class="empty-state"><p>Zatím tu nic není.</p></div>';
@@ -13600,8 +13639,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.14-1';
-const VERSION_NOTE = 'Nový AI Inbox připraví z textu nebo M4A kontrolovatelný zápis, úkoly a příležitosti; bez potvrzení nic nemění.';
+const VERSION = '2026.10.14-2';
+const VERSION_NOTE = 'Opravené připojení AI Inboxu k Macu, automatický pomocník a bezpečné uložení OpenAI klíče do Klíčenky.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
@@ -13677,7 +13716,8 @@ let state = loadState(),
   diskLoadDone = false;
 let aiInboxSource = 'audio',
   aiInboxSelectedId = null,
-  aiInboxAudioFile = null;
+  aiInboxAudioFile = null,
+  aiBackendState = {checking:false,checked:0,online:false,configured:false};
 let fkReportManualItems = [];
 let campaignSelectedClientIds = new Set(),
   campaignRecipientRows = [],

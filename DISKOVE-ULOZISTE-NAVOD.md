@@ -4,9 +4,9 @@
 
 Hlavni data CRM jsou ulozena zde:
 
-`~/Documents/Codex/FILIP-CRM/FILIP-CRM-data`
+`~/Library/Application Support/FILIP CRM/data`
 
-To je hlavni datova slozka vedle projektu FILIP CRM. Neni uvnitr Git repozitare `FILIP-CRM`, takze se pri beznem `git push` neposila na GitHub.
+Je mimo Git repozitář a macOS dovolí pomocníkovi bezpečně běžet na pozadí bez přístupu do Dokumentů. Instalační skript při prvním spuštění zkopíruje dosavadní data ze starého umístění.
 
 Uvnitř jsou hlavni slozky:
 
