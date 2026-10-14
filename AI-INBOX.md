@@ -14,6 +14,8 @@ Pokud pomocník neběží, jednou otevřete `install-local-crm-storage-autostart
 
 Potom v AI Inboxu nahrajte `.m4a`. Pro přepis se používá model nastavený proměnnou `FILIP_CRM_TRANSCRIBE_MODEL` (výchozí `gpt-4o-transcribe`) a pro strukturovanou analýzu `FILIP_CRM_AI_MODEL` (výchozí `gpt-4o-mini`).
 
+Nahrávky nad limitem OpenAI 25 MB pomocník automaticky převede na úsporný hlasový formát, rozdělí na půlhodinové části a dílčí přepisy spojí. Uživatel tedy nahrávku ručně nedělí. Maximální vstupní velikost v CRM je 100 MB.
+
 ## Tok a uchování dat
 
 - Prohlížeč odešle audio pouze pomocníkovi na `127.0.0.1:48730`. Přístup je omezený na oficiální adresu FILIP CRM a lokální stránku.

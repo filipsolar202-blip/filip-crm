@@ -1,3 +1,9 @@
+## 2026.10.14-3
+
+- AI Inbox automaticky zmenší a rozdělí nahrávky větší než 24 MB na půlhodinové části a jejich přepisy znovu spojí.
+- Původní nahrávka se neukládá; dočasné zvukové části se po zpracování automaticky odstraní.
+- Maximální vstupní velikost zůstává 100 MB, aby velký soubor nezablokoval prohlížeč ani lokálního pomocníka.
+
 ## 2026.10.14-2
 
 - Opraven pád lokálního pomocníka způsobený ochranou složky Dokumenty v macOS.

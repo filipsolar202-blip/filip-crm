@@ -25,6 +25,9 @@ BACKUP_DIR = BASE_DIR / "backups"
 ATTACHMENT_DIR = BASE_DIR / "attachments"
 LOG_DIR = BASE_DIR / "logs"
 MAX_BODY = 250 * 1024 * 1024
+MAX_AUDIO_INPUT_BYTES = 100 * 1024 * 1024
+MAX_OPENAI_AUDIO_BYTES = 24 * 1024 * 1024
+FFMPEG = os.environ.get("FILIP_CRM_FFMPEG", "/opt/homebrew/bin/ffmpeg")
 OPENAI_TRANSCRIBE_MODEL = os.environ.get("FILIP_CRM_TRANSCRIBE_MODEL", "gpt-4o-transcribe")
 OPENAI_ANALYSIS_MODEL = os.environ.get("FILIP_CRM_AI_MODEL", "gpt-4o-mini")
 KEYCHAIN_SERVICE = "filip-crm-openai"
@@ -159,24 +162,17 @@ def openai_json(path, payload):
         raise RuntimeError("OpenAI API odmítlo požadavek: " + detail) from error
 
 
-def transcribe_audio(audio):
-    api_key = openai_api_key()
-    if not api_key:
-        raise RuntimeError("Lokální pomocník nemá nastavený OPENAI_API_KEY.")
-    mime, binary = decode_data_url(audio.get("dataUrl"))
-    if not binary:
-        raise RuntimeError("Audio soubor je prázdný nebo má neplatný formát.")
-    if len(binary) > 100 * 1024 * 1024:
-        raise RuntimeError("Audio je větší než 100 MB. Rozděl nahrávku na části.")
+def transcribe_audio_part(binary, filename, mime, api_key):
+    if len(binary) > MAX_OPENAI_AUDIO_BYTES:
+        raise RuntimeError("Část nahrávky je stále větší než 24 MB.")
     boundary = "----FilipCrm" + uuid.uuid4().hex
-    filename = safe_name(audio.get("name") or "nahravka.m4a")
     parts = []
     def field(name, value):
         parts.extend([f"--{boundary}\r\n".encode(), f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode(), str(value).encode("utf-8"), b"\r\n"])
     field("model", OPENAI_TRANSCRIBE_MODEL)
     field("language", "cs")
     field("response_format", "json")
-    parts.extend([f"--{boundary}\r\n".encode(), f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'.encode("utf-8"), f"Content-Type: {mime or audio.get('type') or 'audio/mp4'}\r\n\r\n".encode(), binary, b"\r\n", f"--{boundary}--\r\n".encode()])
+    parts.extend([f"--{boundary}\r\n".encode(), f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'.encode("utf-8"), f"Content-Type: {mime}\r\n\r\n".encode(), binary, b"\r\n", f"--{boundary}--\r\n".encode()])
     request = urllib.request.Request("https://api.openai.com/v1/audio/transcriptions", data=b"".join(parts), headers={"Authorization":"Bearer "+api_key,"Content-Type":"multipart/form-data; boundary="+boundary}, method="POST")
     try:
         with urllib.request.urlopen(request, timeout=300) as response:
@@ -185,6 +181,58 @@ def transcribe_audio(audio):
         detail = error.read().decode("utf-8", errors="replace")[:1200]
         raise RuntimeError("Přepis audia selhal: " + detail) from error
     return str(result.get("text") or "").strip()
+
+
+def split_large_audio(binary, filename):
+    ffmpeg = FFMPEG if Path(FFMPEG).exists() else shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("Nahrávka je větší než 24 MB a na Macu chybí FFmpeg pro její automatické rozdělení.")
+    suffix = Path(filename).suffix.lower()
+    if suffix not in {".m4a", ".mp3", ".mp4", ".mpeg", ".mpga", ".wav", ".webm", ".ogg", ".flac"}:
+        suffix = ".m4a"
+    with tempfile.TemporaryDirectory(prefix="filip-crm-audio-") as tmp:
+        tmp_path = Path(tmp)
+        source = tmp_path / ("source" + suffix)
+        source.write_bytes(binary)
+        pattern = tmp_path / "cast-%03d.mp3"
+        command = [
+            str(ffmpeg), "-hide_banner", "-loglevel", "error", "-y",
+            "-i", str(source), "-vn", "-ac", "1", "-ar", "16000",
+            "-c:a", "libmp3lame", "-b:a", "48k", "-f", "segment",
+            "-segment_time", "1800", "-reset_timestamps", "1", str(pattern),
+        ]
+        result = subprocess.run(command, capture_output=True, text=True, timeout=900)
+        if result.returncode != 0:
+            raise RuntimeError("Velkou nahrávku se nepodařilo připravit: " + result.stderr.strip()[-800:])
+        chunks = [(path.name, path.read_bytes(), "audio/mpeg") for path in sorted(tmp_path.glob("cast-*.mp3"))]
+        if not chunks:
+            raise RuntimeError("Po rozdělení nahrávky nevznikla žádná zvuková část.")
+        if any(len(chunk[1]) > MAX_OPENAI_AUDIO_BYTES for chunk in chunks):
+            raise RuntimeError("Nahrávku se nepodařilo rozdělit na dostatečně malé části.")
+        return chunks
+
+
+def transcribe_audio(audio):
+    api_key = openai_api_key()
+    if not api_key:
+        raise RuntimeError("Lokální pomocník nemá nastavený OPENAI_API_KEY.")
+    mime, binary = decode_data_url(audio.get("dataUrl"))
+    if not binary:
+        raise RuntimeError("Audio soubor je prázdný nebo má neplatný formát.")
+    if len(binary) > MAX_AUDIO_INPUT_BYTES:
+        raise RuntimeError("Audio je větší než 100 MB. Rozděl nahrávku na části.")
+    filename = safe_name(audio.get("name") or "nahravka.m4a")
+    if len(binary) <= MAX_OPENAI_AUDIO_BYTES:
+        return transcribe_audio_part(binary, filename, mime or audio.get("type") or "audio/mp4", api_key)
+    chunks = split_large_audio(binary, filename)
+    transcripts = []
+    for chunk_name, chunk_binary, chunk_mime in chunks:
+        text = transcribe_audio_part(chunk_binary, chunk_name, chunk_mime, api_key)
+        if text:
+            transcripts.append(text)
+    if not transcripts:
+        raise RuntimeError("Přepis velké nahrávky nevrátil žádný text.")
+    return "\n\n".join(transcripts)
 
 
 def meeting_schema():
