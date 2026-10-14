@@ -1,3 +1,9 @@
+## 2026.10.14-5
+
+- AI Inbox používá bezplatný open-source `whisper.cpp` a místní český model; není potřeba kredit, předplatné ani placené napojení MacWhisperu.
+- M4A a další běžné formáty se místně převedou do úsporného pracovního formátu a po přepisu se smažou.
+- OpenAI zůstává pouze jako volitelná záložní cesta, pokud místní model chybí.
+
 ## 2026.10.14-4
 
 - AI Inbox přednostně používá již nainstalovaný MacWhisper a jeho stažený český model; audio neopouští Mac a nevzniká poplatek za OpenAI API.

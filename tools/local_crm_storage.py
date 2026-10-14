@@ -30,8 +30,14 @@ MAX_OPENAI_AUDIO_BYTES = 24 * 1024 * 1024
 FFMPEG = os.environ.get("FILIP_CRM_FFMPEG", "/opt/homebrew/bin/ffmpeg")
 OPENAI_TRANSCRIBE_MODEL = os.environ.get("FILIP_CRM_TRANSCRIBE_MODEL", "gpt-4o-transcribe")
 OPENAI_ANALYSIS_MODEL = os.environ.get("FILIP_CRM_AI_MODEL", "gpt-4o-mini")
+ALLOW_OPENAI_FALLBACK = os.environ.get("FILIP_CRM_ALLOW_OPENAI_FALLBACK", "").strip() == "1"
 KEYCHAIN_SERVICE = "filip-crm-openai"
 MACWHISPER_CLI = os.environ.get("FILIP_CRM_MACWHISPER_CLI", "/usr/local/bin/mw")
+WHISPER_CPP_CLI = os.environ.get("FILIP_CRM_WHISPER_CPP_CLI", "/opt/homebrew/bin/whisper-cli")
+WHISPER_CPP_MODEL = Path(os.environ.get(
+    "FILIP_CRM_WHISPER_CPP_MODEL",
+    str(Path.home() / "Library" / "Application Support" / "FILIP CRM" / "models" / "ggml-large-v3-turbo-q5_0.bin"),
+)).expanduser()
 ALLOWED_ORIGINS = {"https://filipsolar202-blip.github.io", "http://127.0.0.1:48730", "http://localhost:48730", "null"}
 
 
@@ -77,6 +83,22 @@ def macwhisper_cli():
         return str(configured)
     found = shutil.which("mw")
     return found or ""
+
+
+def whisper_cpp_cli():
+    configured = Path(WHISPER_CPP_CLI)
+    if configured.exists() and os.access(configured, os.X_OK):
+        return str(configured)
+    found = shutil.which("whisper-cli")
+    return found or ""
+
+
+def local_transcription_backend():
+    if whisper_cpp_cli() and WHISPER_CPP_MODEL.exists():
+        return "whisper.cpp"
+    if macwhisper_cli():
+        return "macwhisper"
+    return ""
 
 
 def origin_allowed(handler):
@@ -221,10 +243,10 @@ def split_large_audio(binary, filename):
         return chunks
 
 
-def transcribe_audio_local(audio):
-    cli = macwhisper_cli()
-    if not cli:
-        raise RuntimeError("Místní přepis není zapnutý. V MacWhisper otevři Nastavení → Advanced → Command-Line Tool → Install.")
+def transcribe_audio_whisper_cpp(audio):
+    cli = whisper_cpp_cli()
+    if not cli or not WHISPER_CPP_MODEL.exists():
+        raise RuntimeError("Bezplatný místní model Whisper zatím není nainstalovaný.")
     mime, binary = decode_data_url(audio.get("dataUrl"))
     if not binary:
         raise RuntimeError("Audio soubor je prázdný nebo má neplatný formát.")
@@ -232,21 +254,64 @@ def transcribe_audio_local(audio):
         raise RuntimeError("Audio je větší než 100 MB. Rozděl nahrávku na části.")
     filename = safe_name(audio.get("name") or "nahravka.m4a")
     suffix = Path(filename).suffix.lower() or ".m4a"
-    with tempfile.TemporaryDirectory(prefix="filip-crm-macwhisper-") as tmp:
-        source = Path(tmp) / ("nahravka" + suffix)
+    ffmpeg = FFMPEG if Path(FFMPEG).exists() else shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("Na Macu chybí FFmpeg pro přípravu nahrávky.")
+    with tempfile.TemporaryDirectory(prefix="filip-crm-whisper-") as tmp:
+        tmp_path = Path(tmp)
+        source = tmp_path / ("zdroj" + suffix)
         source.write_bytes(binary)
-        command = [cli, "transcribe", str(source), "--language", "cs", "--no-speakers"]
+        prepared = tmp_path / "nahravka.wav"
+        convert = subprocess.run([
+            str(ffmpeg), "-hide_banner", "-loglevel", "error", "-y", "-i", str(source),
+            "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(prepared),
+        ], capture_output=True, text=True, timeout=1800)
+        if convert.returncode != 0:
+            raise RuntimeError("Nahrávku se nepodařilo připravit: " + convert.stderr.strip()[-800:])
+        output = tmp_path / "prepis"
+        command = [
+            cli, "-ng", "-m", str(WHISPER_CPP_MODEL), "-f", str(prepared), "-l", "cs",
+            "-otxt", "-of", str(output), "-nt", "-np", "-sns",
+        ]
         try:
             result = subprocess.run(command, capture_output=True, text=True, timeout=7200)
         except subprocess.TimeoutExpired as error:
             raise RuntimeError("Místní přepis trval déle než dvě hodiny a byl ukončen.") from error
         if result.returncode != 0:
-            detail = (result.stderr or result.stdout or "Neznámá chyba MacWhisperu.").strip()[-1200:]
+            detail = (result.stderr or result.stdout or "Neznámá chyba místního Whisperu.").strip()[-1200:]
             raise RuntimeError("Místní přepis selhal: " + detail)
-        transcript = result.stdout.strip()
+        transcript_file = Path(str(output) + ".txt")
+        transcript = transcript_file.read_text(encoding="utf-8").strip() if transcript_file.exists() else result.stdout.strip()
         if not transcript:
-            raise RuntimeError("MacWhisper nevrátil žádný rozpoznaný text.")
+            raise RuntimeError("Místní Whisper nevrátil žádný rozpoznaný text.")
         return transcript
+
+
+def transcribe_audio_macwhisper(audio):
+    cli = macwhisper_cli()
+    if not cli:
+        raise RuntimeError("MacWhisper CLI není nainstalovaný.")
+    mime, binary = decode_data_url(audio.get("dataUrl"))
+    if not binary:
+        raise RuntimeError("Audio soubor je prázdný nebo má neplatný formát.")
+    filename = safe_name(audio.get("name") or "nahravka.m4a")
+    suffix = Path(filename).suffix.lower() or ".m4a"
+    with tempfile.TemporaryDirectory(prefix="filip-crm-macwhisper-") as tmp:
+        source = Path(tmp) / ("nahravka" + suffix)
+        source.write_bytes(binary)
+        result = subprocess.run([cli, "transcribe", str(source), "--language", "cs", "--no-speakers"], capture_output=True, text=True, timeout=7200)
+        if result.returncode != 0:
+            raise RuntimeError("Místní přepis selhal: " + (result.stderr or result.stdout).strip()[-1200:])
+        return result.stdout.strip()
+
+
+def transcribe_audio_local(audio):
+    backend = local_transcription_backend()
+    if backend == "whisper.cpp":
+        return transcribe_audio_whisper_cpp(audio)
+    if backend == "macwhisper":
+        return transcribe_audio_macwhisper(audio)
+    raise RuntimeError("Bezplatný místní přepis zatím není nainstalovaný.")
 
 
 def transcribe_audio(audio):
@@ -400,8 +465,10 @@ class Handler(BaseHTTPRequestHandler):
                 "updatedAt": datetime.fromtimestamp(STATE_FILE.stat().st_mtime).isoformat(timespec="seconds") if STATE_FILE.exists() else "",
                 "counts": counts(state),
                 "aiConfigured": bool(openai_api_key()),
-                "localTranscriptionConfigured": bool(macwhisper_cli()),
-                "transcriptionMode": "local" if macwhisper_cli() else ("openai" if openai_api_key() else "none"),
+                "cloudTranscriptionEnabled": bool(ALLOW_OPENAI_FALLBACK and openai_api_key()),
+                "localTranscriptionConfigured": bool(local_transcription_backend()),
+                "localTranscriptionBackend": local_transcription_backend(),
+                "transcriptionMode": "local" if local_transcription_backend() else ("openai" if ALLOW_OPENAI_FALLBACK and openai_api_key() else "none"),
             })
             return
         if parsed.path == "/state":
@@ -473,7 +540,9 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/ai/process":
             try:
                 audio = payload.get("audio") or {}
-                local_mode = bool(macwhisper_cli())
+                local_mode = bool(local_transcription_backend())
+                if not local_mode and not ALLOW_OPENAI_FALLBACK:
+                    raise RuntimeError("Místní přepis zatím není připravený. Placená cloudová záloha je vypnutá.")
                 transcript = transcribe_audio_local(audio) if local_mode else transcribe_audio(audio)
                 if not transcript:
                     raise RuntimeError("V nahrávce se nepodařilo rozpoznat žádný text.")

@@ -10,18 +10,18 @@ Zvuk zpracovává lokální pomocník `tools/local_crm_storage.py`. Tajný OpenA
 
 Lokální pomocník se po instalaci spouští automaticky. AI Inbox přímo ukazuje jeho stav. OpenAI klíč v Klíčence je pouze volitelná placená záloha; pro místní přepis ho nepotřebujete.
 
-Bezplatná výchozí varianta používá aplikaci MacWhisper/Whisper Transcription. V aplikaci jednou otevřete **Settings → Advanced → Command-Line Tool → Install**. Pomocník pak použije stažený český model přímo na Macu a OpenAI API se nevolá.
+Bezplatná výchozí varianta používá open-source `whisper.cpp` a místní český model. Pomocník ho spouští přímo na Macu; OpenAI API se nevolá.
 
 Pokud pomocník neběží, jednou otevřete `install-local-crm-storage-autostart.command`.
 
-Potom v AI Inboxu nahrajte `.m4a`. MacWhisper vytvoří místní český přepis a CRM z něj v prohlížeči připraví návrhy ke kontrole. Pokud místní nástroj není zapnutý, pomocník může použít OpenAI jen tehdy, když je v Klíčence uložený funkční API klíč.
+Potom v AI Inboxu nahrajte `.m4a`. Místní Whisper vytvoří český přepis a CRM z něj v prohlížeči připraví návrhy ke kontrole. Placená cloudová záloha je ve výchozím nastavení vypnutá, takže uložený OpenAI klíč se nepoužije.
 
 Maximální vstupní velikost nahrávky v CRM je 100 MB. Při případném použití cloudové zálohy pomocník větší audio automaticky zmenší a rozdělí na půlhodinové části.
 
 ## Tok a uchování dat
 
 - Prohlížeč odešle audio pouze pomocníkovi na `127.0.0.1:48730`. Přístup je omezený na oficiální adresu FILIP CRM a lokální stránku.
-- Při místním režimu pomocník předá audio aplikaci MacWhisper na stejném Macu. OpenAI API se nevolá.
+- Při místním režimu pomocník zpracuje audio přes open-source Whisper na stejném Macu. OpenAI API se nevolá.
 - Audio se v CRM, lokálním pomocníkovi ani GitHubu neukládá. Po dokončení požadavku zůstane pouze v provozní paměti a je uvolněno.
 - CRM uloží originální přepis, kontrolní návrhy, odpovědi na nejasnosti a název/velikost původního souboru.
 - Automatické odeslání e-mailu nebo SMS není povolené; ukládá se jen návrh textu.
