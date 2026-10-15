@@ -8,6 +8,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import urllib.error
 import urllib.request
 import uuid
@@ -39,6 +41,9 @@ WHISPER_CPP_MODEL = Path(os.environ.get(
     str(Path.home() / "Library" / "Application Support" / "FILIP CRM" / "models" / "ggml-large-v3-turbo-q5_0.bin"),
 )).expanduser()
 ALLOWED_ORIGINS = {"https://filipsolar202-blip.github.io", "http://127.0.0.1:48730", "http://localhost:48730", "null"}
+AI_JOBS = {}
+AI_JOBS_LOCK = threading.Lock()
+AI_JOB_TTL_SECONDS = 24 * 60 * 60
 
 
 def now_stamp():
@@ -243,25 +248,25 @@ def split_large_audio(binary, filename):
         return chunks
 
 
-def transcribe_audio_whisper_cpp(audio):
+def transcribe_audio_whisper_cpp_file(source, filename, progress=None):
     cli = whisper_cpp_cli()
     if not cli or not WHISPER_CPP_MODEL.exists():
         raise RuntimeError("Bezplatný místní model Whisper zatím není nainstalovaný.")
-    mime, binary = decode_data_url(audio.get("dataUrl"))
-    if not binary:
-        raise RuntimeError("Audio soubor je prázdný nebo má neplatný formát.")
-    if len(binary) > MAX_AUDIO_INPUT_BYTES:
+    source = Path(source)
+    if not source.exists() or not source.stat().st_size:
+        raise RuntimeError("Audio soubor je prázdný nebo ho nelze přečíst.")
+    if source.stat().st_size > MAX_AUDIO_INPUT_BYTES:
         raise RuntimeError("Audio je větší než 100 MB. Rozděl nahrávku na části.")
-    filename = safe_name(audio.get("name") or "nahravka.m4a")
+    filename = safe_name(filename or source.name or "nahravka.m4a")
     suffix = Path(filename).suffix.lower() or ".m4a"
     ffmpeg = FFMPEG if Path(FFMPEG).exists() else shutil.which("ffmpeg")
     if not ffmpeg:
         raise RuntimeError("Na Macu chybí FFmpeg pro přípravu nahrávky.")
     with tempfile.TemporaryDirectory(prefix="filip-crm-whisper-") as tmp:
         tmp_path = Path(tmp)
-        source = tmp_path / ("zdroj" + suffix)
-        source.write_bytes(binary)
         prepared = tmp_path / "nahravka.wav"
+        if progress:
+            progress("preparing", "Připravuji zvuk pro přepis")
         convert = subprocess.run([
             str(ffmpeg), "-hide_banner", "-loglevel", "error", "-y", "-i", str(source),
             "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(prepared),
@@ -269,6 +274,8 @@ def transcribe_audio_whisper_cpp(audio):
         if convert.returncode != 0:
             raise RuntimeError("Nahrávku se nepodařilo připravit: " + convert.stderr.strip()[-800:])
         output = tmp_path / "prepis"
+        if progress:
+            progress("transcribing", "Místní Whisper přepisuje nahrávku")
         command = [
             cli, "-ng", "-m", str(WHISPER_CPP_MODEL), "-f", str(prepared), "-l", "cs",
             "-otxt", "-of", str(output), "-nt", "-np", "-sns",
@@ -287,10 +294,31 @@ def transcribe_audio_whisper_cpp(audio):
         return transcript
 
 
-def transcribe_audio_macwhisper(audio):
+def transcribe_audio_whisper_cpp(audio):
+    mime, binary = decode_data_url(audio.get("dataUrl"))
+    if not binary:
+        raise RuntimeError("Audio soubor je prázdný nebo má neplatný formát.")
+    filename = safe_name(audio.get("name") or "nahravka.m4a")
+    suffix = Path(filename).suffix.lower() or ".m4a"
+    with tempfile.TemporaryDirectory(prefix="filip-crm-upload-") as tmp:
+        source = Path(tmp) / ("nahravka" + suffix)
+        source.write_bytes(binary)
+        return transcribe_audio_whisper_cpp_file(source, filename)
+
+
+def transcribe_audio_macwhisper_file(source, progress=None):
     cli = macwhisper_cli()
     if not cli:
         raise RuntimeError("MacWhisper CLI není nainstalovaný.")
+    if progress:
+        progress("transcribing", "Místní MacWhisper přepisuje nahrávku")
+    result = subprocess.run([cli, "transcribe", str(source), "--language", "cs", "--no-speakers"], capture_output=True, text=True, timeout=7200)
+    if result.returncode != 0:
+        raise RuntimeError("Místní přepis selhal: " + (result.stderr or result.stdout).strip()[-1200:])
+    return result.stdout.strip()
+
+
+def transcribe_audio_macwhisper(audio):
     mime, binary = decode_data_url(audio.get("dataUrl"))
     if not binary:
         raise RuntimeError("Audio soubor je prázdný nebo má neplatný formát.")
@@ -299,10 +327,7 @@ def transcribe_audio_macwhisper(audio):
     with tempfile.TemporaryDirectory(prefix="filip-crm-macwhisper-") as tmp:
         source = Path(tmp) / ("nahravka" + suffix)
         source.write_bytes(binary)
-        result = subprocess.run([cli, "transcribe", str(source), "--language", "cs", "--no-speakers"], capture_output=True, text=True, timeout=7200)
-        if result.returncode != 0:
-            raise RuntimeError("Místní přepis selhal: " + (result.stderr or result.stdout).strip()[-1200:])
-        return result.stdout.strip()
+        return transcribe_audio_macwhisper_file(source)
 
 
 def transcribe_audio_local(audio):
@@ -312,6 +337,69 @@ def transcribe_audio_local(audio):
     if backend == "macwhisper":
         return transcribe_audio_macwhisper(audio)
     raise RuntimeError("Bezplatný místní přepis zatím není nainstalovaný.")
+
+
+def ai_job_public(job):
+    return {key: value for key, value in job.items() if key not in {"sourcePath"}}
+
+
+def ai_job_update(job_id, **values):
+    with AI_JOBS_LOCK:
+        job = AI_JOBS.get(job_id)
+        if job:
+            job.update(values)
+            job["updatedAt"] = datetime.now().isoformat(timespec="seconds")
+
+
+def ai_job_cleanup():
+    cutoff = time.time() - AI_JOB_TTL_SECONDS
+    with AI_JOBS_LOCK:
+        stale = [job_id for job_id, job in AI_JOBS.items() if job.get("createdUnix", 0) < cutoff]
+        for job_id in stale:
+            job = AI_JOBS.pop(job_id, None) or {}
+            source = Path(job.get("sourcePath") or "")
+            if source.exists():
+                try:
+                    source.unlink()
+                except OSError:
+                    pass
+
+
+def cleanup_orphaned_transcriptions():
+    upload_dir = BASE_DIR / "temporary-transcriptions"
+    if not upload_dir.exists():
+        return
+    for source in upload_dir.iterdir():
+        if source.is_file():
+            try:
+                source.unlink()
+            except OSError:
+                pass
+
+
+def ai_job_worker(job_id):
+    with AI_JOBS_LOCK:
+        job = dict(AI_JOBS.get(job_id) or {})
+    source = Path(job.get("sourcePath") or "")
+    try:
+        ai_job_update(job_id, status="running", phase="preparing", message="Připravuji nahrávku")
+        backend = local_transcription_backend()
+        progress = lambda phase, message: ai_job_update(job_id, status="running", phase=phase, message=message)
+        if backend == "whisper.cpp":
+            transcript = transcribe_audio_whisper_cpp_file(source, job.get("fileName") or source.name, progress)
+        elif backend == "macwhisper":
+            transcript = transcribe_audio_macwhisper_file(source, progress)
+        else:
+            raise RuntimeError("Bezplatný místní přepis zatím není nainstalovaný.")
+        ai_job_update(job_id, status="done", phase="done", message="Přepis je hotový", transcript=transcript, finishedAt=datetime.now().isoformat(timespec="seconds"))
+    except Exception as error:
+        ai_job_update(job_id, status="error", phase="error", message="Přepis se nezdařil", error=str(error), finishedAt=datetime.now().isoformat(timespec="seconds"))
+    finally:
+        if source.exists():
+            try:
+                source.unlink()
+            except OSError:
+                pass
 
 
 def transcribe_audio(audio):
@@ -471,6 +559,16 @@ class Handler(BaseHTTPRequestHandler):
                 "transcriptionMode": "local" if local_transcription_backend() else ("openai" if ALLOW_OPENAI_FALLBACK and openai_api_key() else "none"),
             })
             return
+        if parsed.path.startswith("/ai/jobs/"):
+            ai_job_cleanup()
+            job_id = parsed.path.rsplit("/", 1)[-1]
+            with AI_JOBS_LOCK:
+                job = dict(AI_JOBS.get(job_id) or {})
+            if not job:
+                json_response(self, 404, {"ok": False, "error": "Přepis už není dostupný. Zkus nahrávku odeslat znovu."})
+                return
+            json_response(self, 200, {"ok": True, "job": ai_job_public(job)})
+            return
         if parsed.path == "/state":
             state = read_state()
             json_response(self, 200, {
@@ -523,6 +621,60 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length") or 0)
         if length > MAX_BODY:
             json_response(self, 413, {"ok": False, "error": "Data jsou moc velká."})
+            return
+        if parsed.path == "/ai/jobs":
+            if not local_transcription_backend():
+                json_response(self, 503, {"ok": False, "error": "Místní Whisper zatím není připravený."})
+                return
+            if length <= 0:
+                json_response(self, 400, {"ok": False, "error": "Nahrávka je prázdná."})
+                return
+            if length > MAX_AUDIO_INPUT_BYTES:
+                json_response(self, 413, {"ok": False, "error": "Nahrávka je větší než 100 MB. Rozděl ji na dvě části."})
+                return
+            qs = parse_qs(parsed.query)
+            file_name = safe_name(unquote((qs.get("name") or ["nahravka.m4a"])[0]))
+            suffix = Path(file_name).suffix.lower() or ".m4a"
+            upload_dir = BASE_DIR / "temporary-transcriptions"
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            job_id = uuid.uuid4().hex
+            source = upload_dir / (job_id + suffix)
+            try:
+                remaining = length
+                with source.open("wb") as output:
+                    while remaining:
+                        chunk = self.rfile.read(min(1024 * 1024, remaining))
+                        if not chunk:
+                            break
+                        output.write(chunk)
+                        remaining -= len(chunk)
+                if remaining or source.stat().st_size != length:
+                    raise RuntimeError("Nahrávku se nepodařilo celou přijmout.")
+                now = datetime.now().isoformat(timespec="seconds")
+                job = {
+                    "id": job_id,
+                    "status": "queued",
+                    "phase": "queued",
+                    "message": "Nahrávka byla přijata a čeká na místní přepis",
+                    "fileName": file_name,
+                    "fileSize": length,
+                    "sourcePath": str(source),
+                    "createdAt": now,
+                    "updatedAt": now,
+                    "createdUnix": time.time(),
+                }
+                ai_job_cleanup()
+                with AI_JOBS_LOCK:
+                    AI_JOBS[job_id] = job
+                threading.Thread(target=ai_job_worker, args=(job_id,), daemon=True).start()
+                json_response(self, 202, {"ok": True, "job": ai_job_public(job)})
+            except Exception as error:
+                if source.exists():
+                    try:
+                        source.unlink()
+                    except OSError:
+                        pass
+                json_response(self, 500, {"ok": False, "error": str(error)})
             return
         raw = self.rfile.read(length)
         try:
@@ -602,6 +754,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     ensure_dirs()
+    cleanup_orphaned_transcriptions()
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     print(f"FILIP CRM lokální úložiště běží.")
     print(f"Data: {BASE_DIR}")

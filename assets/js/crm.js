@@ -13503,6 +13503,7 @@ function aiInboxSetSource(source) {
   byId('aiTextField')?.classList.toggle('hidden', aiInboxSource !== 'text');
   byId('aiSourceAudioBtn')?.classList.toggle('primary', aiInboxSource === 'audio');
   byId('aiSourceTextBtn')?.classList.toggle('primary', aiInboxSource === 'text');
+  const processButton=byId('aiProcessBtn');if(processButton)processButton.textContent=aiInboxSource==='audio'?'Přepsat a připravit výstupy':'Připravit výstupy z textu';
 }
 function aiInboxChooseAudio(file) {
   aiInboxAudioFile = file || null;
@@ -13563,7 +13564,42 @@ function aiInboxBuildProposals(analysis, transcript, meetingType, date) {
   if(analysis.smsDraft)p.push(aiInboxProposal('sms','Návrh SMS',analysis.smsDraft));
   return p;
 }
-function aiInboxFileDataUrl(file) { return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(r.error||new Error('Soubor nelze načíst.'));r.readAsDataURL(file);}); }
+function aiInboxWait(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
+function aiInboxElapsed(started){const seconds=Math.max(0,Math.round((Date.now()-started)/1000)),minutes=Math.floor(seconds/60),rest=seconds%60;return minutes?`${minutes} min ${rest} s`:`${rest} s`;}
+async function aiInboxTranscribeAudio(file,status){
+  const jobUrl=DISK_STORAGE_URL+'/ai/jobs?name='+encodeURIComponent(file.name||'nahravka.m4a');
+  if(status)status.textContent=`Odesílám nahrávku (${decimal(file.size/1024/1024,1)} MB)…`;
+  let response;
+  try{response=await fetch(jobUrl,{method:'POST',headers:{'Content-Type':file.type||'application/octet-stream'},body:file});}
+  catch(error){throw new Error('Nahrávku se nepodařilo předat místnímu Whisperu. Pomocník se během odesílání odpojil.');}
+  const created=await response.json().catch(()=>({}));
+  if(!response.ok||!created.ok||!created.job?.id)throw new Error(created.error||'Místní pomocník nahrávku nepřijal.');
+  const jobId=created.job.id,started=Date.now();
+  try{localStorage.setItem('filip_crm_ai_active_job',JSON.stringify({id:jobId,name:file.name,startedAt:new Date().toISOString()}));}catch(error){}
+  let failures=0;
+  while(Date.now()-started<2*60*60*1000){
+    await aiInboxWait(2500);
+    let poll;
+    try{poll=await fetch(`${DISK_STORAGE_URL}/ai/jobs/${encodeURIComponent(jobId)}`,{cache:'no-store'});}
+    catch(error){
+      failures++;
+      if(status)status.textContent=`Whisper pracuje · čekám na spojení (${aiInboxElapsed(started)})`;
+      if(failures<8)continue;
+      throw new Error('Místní pomocník se během přepisu odpojil. Nahrávka se do CRM neuložila.');
+    }
+    const result=await poll.json().catch(()=>({}));
+    if(!poll.ok||!result.ok)throw new Error(result.error||'Stav místního přepisu se nepodařilo načíst.');
+    failures=0;
+    const job=result.job||{};
+    if(status)status.textContent=`${job.message||'Whisper pracuje'} · ${aiInboxElapsed(started)}`;
+    if(job.status==='done'){
+      try{localStorage.removeItem('filip_crm_ai_active_job');}catch(error){}
+      return String(job.transcript||'').trim();
+    }
+    if(job.status==='error')throw new Error(job.error||'Místní přepis se nezdařil.');
+  }
+  throw new Error('Přepis trvá déle než dvě hodiny. Zkus kratší nahrávku.');
+}
 async function aiInboxProcess() {
   const date=val('aiMeetingDate')||today(), meetingType=val('aiMeetingType')||'Klientská schůzka', preferredId=val('aiMeetingClient'), status=byId('aiProcessStatus'), button=byId('aiProcessBtn');
   let transcript='', analysis=null, sourceType=aiInboxSource, audioMeta=null;
@@ -13577,16 +13613,15 @@ async function aiInboxProcess() {
       if(!backend.configured)throw new Error('Místní Whisper zatím není připravený. Spusť znovu instalační soubor pomocníka CRM.');
       if(aiInboxAudioFile.size>100*1024*1024)throw new Error('Nahrávka je větší než 100 MB. Rozděl ji na dvě části.');
       audioMeta={name:aiInboxAudioFile.name,type:aiInboxAudioFile.type,size:aiInboxAudioFile.size};
-      const dataUrl=await aiInboxFileDataUrl(aiInboxAudioFile), c=findClient(+preferredId);
-      const response=await fetch(DISK_STORAGE_URL+'/ai/process',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({audio:{...audioMeta,dataUrl},date,meetingType,clientId:preferredId||null,clientName:c?clientName(c):''})});
-      const result=await response.json().catch(()=>({})); if(!response.ok||!result.ok)throw new Error(result.error||'Lokální AI pomocník neodpověděl.');
-      transcript=result.transcript||''; analysis=result.analysis||aiInboxLocalAnalysis(transcript,preferredId);
+      transcript=await aiInboxTranscribeAudio(aiInboxAudioFile,status);
+      if(!transcript)throw new Error('Whisper dokončil práci, ale nevrátil žádný text.');
+      analysis=aiInboxLocalAnalysis(transcript,preferredId);
     }
     const matched=aiInboxMatchedClient(transcript,preferredId), clientId=+analysis.clientId||matched?.id||(+preferredId||null);
     const item={id:uid(),createdAt:new Date().toISOString(),date,meetingType,sourceType,audio:audioMeta,transcript,clientId,clientName:analysis.clientName||clientName(findClient(clientId)),summary:analysis.summary||transcript.slice(0,500),questions:(analysis.questions||[]).map((q,i)=>({id:uid(),text:typeof q==='string'?q:q.text||q.question||'',answer:typeof q==='object'?(q.answer||''):''})),proposals:aiInboxBuildProposals(analysis,transcript,meetingType,date),status:'review'};
     state.aiInbox.unshift(item); aiInboxSelectedId=item.id; persist(); renderAiInbox(); if(status)status.textContent='Hotovo – zkontroluj návrhy níže.';
     if(sourceType==='text')setVal('aiSourceText',''); else {aiInboxAudioFile=null;setVal('aiAudioFile','');aiInboxChooseAudio(null);}
-  } catch(error) { if(status)status.textContent=error.message; alert(error.message+(sourceType==='audio'?'\n\nStav připojení vidíš přímo v bloku AI Inboxu. Textový režim můžeš zkoušet i bez pomocníka.':'')); }
+  } catch(error) { if(status)status.textContent=error.message; alert(error.message+(sourceType==='audio'?'\n\nAudio se nikam nezapsalo. Můžeš zkusit krátkou nahrávku nebo přepnout na Textovou poznámku a vložit již hotový přepis.':'')); }
   finally {if(button)button.disabled=false;}
 }
 function aiInboxKindLabel(kind) { return ({note:'Poznámka',activity:'Historie jednání',client_info:'Klient',opportunity:'Příležitost',task:'Úkol',calendar:'Kalendář',email:'E-mail',sms:'SMS'})[kind]||kind; }
@@ -13640,8 +13675,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.14-5';
-const VERSION_NOTE = 'AI Inbox používá bezplatný open-source Whisper přímo na Macu; přepis nečerpá API kredit.';
+const VERSION = '2026.10.15-1';
+const VERSION_NOTE = 'AI Inbox zpracovává audio jako sledovanou místní úlohu a průběžně ukazuje stav bez placeného API.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';

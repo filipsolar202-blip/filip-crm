@@ -1,3 +1,10 @@
+## 2026.10.15-1
+
+- Dlouhý místní přepis už neběží v jediném otevřeném požadavku prohlížeče. Pomocník přijme audio jako samostatnou úlohu a CRM průběžně zobrazuje odesílání, přípravu, přepis a dokončení.
+- Nahrávka se posílá přímo jako audio místo objemného Base64 JSON, takže má podstatně menší paměťovou režii a menší riziko chyby `Failed to fetch`.
+- AI Inbox nově vysvětluje tři kroky: místní přepis, kontrolu výstupů a ručně potvrzené přiřazení ke klientovi.
+- Dočasný zvukový soubor se po dokončení nebo chybě smaže; nedokončené soubory pomocník odstraní při dalším spuštění.
+
 ## 2026.10.14-5
 
 - AI Inbox používá bezplatný open-source `whisper.cpp` a místní český model; není potřeba kredit, předplatné ani placené napojení MacWhisperu.

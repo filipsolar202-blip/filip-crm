@@ -61,7 +61,23 @@ cat > "$PLIST" <<PLIST
 </plist>
 PLIST
 launchctl bootout "gui/$(id -u)/cz.filipcrm.local-storage" >/dev/null 2>&1 || true
+: > "$LOG_DIR/local-crm-storage.log"
+: > "$LOG_DIR/local-crm-storage-error.log"
 launchctl bootstrap "gui/$(id -u)" "$PLIST"
+READY=""
+for attempt in {1..20}; do
+  if /usr/bin/curl -fsS --max-time 2 "http://127.0.0.1:48730/status" >/dev/null 2>&1; then
+    READY="1"
+    break
+  fi
+  sleep 0.25
+done
+if [ -z "$READY" ]; then
+  echo "Pomocnik se nespustil. Posledni chyba:"
+  tail -20 "$LOG_DIR/local-crm-storage-error.log" 2>/dev/null || true
+  if [ -t 0 ]; then read -k 1 "?Stiskni libovolnou klavesu pro zavreni..."; fi
+  exit 1
+fi
 echo "FILIP CRM - diskove uloziste je nastavene na pozadi."
 echo ""
 echo "Data:"

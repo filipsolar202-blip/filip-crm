@@ -108,7 +108,12 @@ body{font-family:Fustat,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}b
             <div><div class="eyebrow">AI zápis ze schůzky</div><h2>Nahrávka nebo hlasová poznámka</h2></div>
             <span class="badge blue">Nejdřív kontrola, potom zápis</span>
           </div>
-          <p class="note">Nahraj M4A z iPhone Diktafonu, nebo vlož text pro okamžité vyzkoušení. Žádný návrh se bez tvého potvrzení nezapíše do klientských dat.</p>
+          <p class="note">Nahraj M4A z iPhone Diktafonu, nebo vlož již hotový přepis. Žádný návrh se bez tvého potvrzení nezapíše do klientských dat.</p>
+          <div class="ai-flow" aria-label="Postup zpracování poznámky">
+            <div><b>1. Přepis</b><span>Audio zpracuje místní Whisper na tomto Macu.</span></div>
+            <div><b>2. Kontrola</b><span>Uvidíš celý text, shrnutí, úkoly a návrh zprávy.</span></div>
+            <div><b>3. Přiřazení</b><span>Teprve ty vybereš klienta a potvrdíš, co se má zapsat.</span></div>
+          </div>
           <div class="ai-source-tabs">
             <button class="btn primary" id="aiSourceAudioBtn" onclick="aiInboxSetSource('audio')">🎙 Audio</button>
             <button class="btn" id="aiSourceTextBtn" onclick="aiInboxSetSource('text')">✎ Textová poznámka</button>
@@ -126,7 +131,7 @@ body{font-family:Fustat,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}b
             <div class="ai-key-setup hidden" id="aiKeySetup"><input id="aiApiKey" type="password" autocomplete="off" placeholder="OpenAI API klíč sk-…"><button class="btn" onclick="aiInboxSaveApiKey()">Uložit bezpečně do Klíčenky</button></div>
             <button class="btn slim" onclick="aiInboxCheckBackend(true)">Zkontrolovat znovu</button>
           </div>
-          <div class="actions"><button class="btn primary" id="aiProcessBtn" onclick="aiInboxProcess()">Připravit zápis ke kontrole</button><span class="note" id="aiProcessStatus"></span></div>
+          <div class="actions"><button class="btn primary" id="aiProcessBtn" onclick="aiInboxProcess()">Přepsat a připravit výstupy</button><span class="note ai-process-status" id="aiProcessStatus"></span></div>
         </section>
 
         <aside class="card ai-inbox-queue">

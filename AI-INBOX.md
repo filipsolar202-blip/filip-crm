@@ -14,7 +14,7 @@ Bezplatná výchozí varianta používá open-source `whisper.cpp` a místní č
 
 Pokud pomocník neběží, jednou otevřete `install-local-crm-storage-autostart.command`.
 
-Potom v AI Inboxu nahrajte `.m4a`. Místní Whisper vytvoří český přepis a CRM z něj v prohlížeči připraví návrhy ke kontrole. Placená cloudová záloha je ve výchozím nastavení vypnutá, takže uložený OpenAI klíč se nepoužije.
+Potom v AI Inboxu nahrajte `.m4a`. CRM nahrávku předá místnímu pomocníkovi jako samostatnou úlohu a průběžně ukazuje, zda se audio odesílá, připravuje nebo přepisuje. Místní Whisper vytvoří český přepis a CRM z něj v prohlížeči připraví návrhy ke kontrole. Placená cloudová záloha je ve výchozím nastavení vypnutá, takže uložený OpenAI klíč se nepoužije.
 
 Maximální vstupní velikost nahrávky v CRM je 100 MB. Při případném použití cloudové zálohy pomocník větší audio automaticky zmenší a rozdělí na půlhodinové části.
 
@@ -22,7 +22,7 @@ Maximální vstupní velikost nahrávky v CRM je 100 MB. Při případném použ
 
 - Prohlížeč odešle audio pouze pomocníkovi na `127.0.0.1:48730`. Přístup je omezený na oficiální adresu FILIP CRM a lokální stránku.
 - Při místním režimu pomocník zpracuje audio přes open-source Whisper na stejném Macu. OpenAI API se nevolá.
-- Audio se v CRM, lokálním pomocníkovi ani GitHubu neukládá. Po dokončení požadavku zůstane pouze v provozní paměti a je uvolněno.
+- Audio se nikdy neukládá do CRM ani na GitHub. Pomocník ho během zpracování drží v místním dočasném souboru na tomto Macu a po dokončení nebo chybě ho smaže. Při novém spuštění odstraní i případné nedokončené dočasné soubory.
 - CRM uloží originální přepis, kontrolní návrhy, odpovědi na nejasnosti a název/velikost původního souboru.
 - Automatické odeslání e-mailu nebo SMS není povolené; ukládá se jen návrh textu.
 - Záznam lze z AI Inboxu smazat. Už potvrzené klientské položky se tím automaticky nemažou, aby nedošlo k nechtěné ztrátě historie.
