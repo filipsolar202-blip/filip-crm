@@ -30,7 +30,6 @@ body{font-family:Fustat,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}b
       <button class="tab" data-view="fki">FKI</button>
       <button class="tab" data-view="pensions">Penze</button>
       <button class="tab" data-view="notes">Poznámky</button>
-      <button class="tab" data-view="aiInbox">AI Inbox</button>
       <button class="tab" data-view="campaigns">Kampaně</button>
       <button class="tab" data-view="plan">Roční plán</button>
       <button class="tab" data-view="reports">Report</button>
@@ -98,50 +97,6 @@ body{font-family:Fustat,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}b
         </div>
         <div id="noteMetrics" class="metric-strip"></div>
         <div class="table-wrap"><table id="notesList"></table></div>
-      </div>
-    </section>
-
-    <section id="aiInbox" class="view">
-      <div class="ai-inbox-layout">
-        <section class="card ai-inbox-intake">
-          <div class="toolbar">
-            <div><div class="eyebrow">AI zápis ze schůzky</div><h2>Nahrávka nebo hlasová poznámka</h2></div>
-            <span class="badge blue">Nejdřív kontrola, potom zápis</span>
-          </div>
-          <p class="note">Nahraj M4A z iPhone Diktafonu, nebo vlož již hotový přepis. Žádný návrh se bez tvého potvrzení nezapíše do klientských dat.</p>
-          <div class="ai-flow" aria-label="Postup zpracování poznámky">
-            <div><b>1. Přepis</b><span>Audio zpracuje místní Whisper na tomto Macu.</span></div>
-            <div><b>2. Kontrola</b><span>Uvidíš celý text, shrnutí, úkoly a návrh zprávy.</span></div>
-            <div><b>3. Přiřazení</b><span>Teprve ty vybereš klienta a potvrdíš, co se má zapsat.</span></div>
-          </div>
-          <div class="ai-source-tabs">
-            <button class="btn primary" id="aiSourceAudioBtn" onclick="aiInboxSetSource('audio')">🎙 Audio</button>
-            <button class="btn" id="aiSourceTextBtn" onclick="aiInboxSetSource('text')">✎ Textová poznámka</button>
-          </div>
-          <div class="form-grid ai-inbox-form">
-            <div class="field"><label>Datum jednání</label><input id="aiMeetingDate" type="date"></div>
-            <div class="field"><label>Typ záznamu</label><select id="aiMeetingType"><option>Klientská schůzka</option><option>Hlasová poznámka po schůzce</option><option>Telefonát</option><option>Interní poznámka</option></select></div>
-            <div class="field"><label>Klient, pokud ho znáš</label><select id="aiMeetingClient"><option value="">Nechat rozpoznat / bez klienta</option></select></div>
-            <div class="field full" id="aiAudioField"><label>Nahrávka</label><input id="aiAudioFile" type="file" accept="audio/*,.m4a,.mp3,.mp4,.wav,.webm,.ogg" onchange="aiInboxChooseAudio(this.files[0])"><div class="ai-file-summary" id="aiAudioSummary">Vyber M4A nebo jiný běžný audio soubor.</div></div>
-            <div class="field full hidden" id="aiTextField"><label>Text poznámky</label><textarea id="aiSourceText" rows="7" placeholder="Např. Novotný – připravit úvěr 3 miliony, Codya necháváme 5 000 Kč měsíčně, zavolat příští úterý..."></textarea></div>
-          </div>
-          <div class="ai-privacy-note"><b>Soukromí:</b> textový test se zpracuje v prohlížeči. Audio přepisuje bezplatný místní Whisper na tomto Macu a po dokončení se neukládá. Placený cloudový přepis je vypnutý.</div>
-          <div class="ai-backend-card" id="aiBackendCard">
-            <div><span class="ai-backend-dot"></span><b id="aiBackendTitle">Kontroluji lokálního pomocníka…</b><p class="note" id="aiBackendDetail">Pro přepis audia musí na tomto Macu běžet lokální služba.</p></div>
-            <div class="ai-key-setup hidden" id="aiKeySetup"><input id="aiApiKey" type="password" autocomplete="off" placeholder="OpenAI API klíč sk-…"><button class="btn" onclick="aiInboxSaveApiKey()">Uložit bezpečně do Klíčenky</button></div>
-            <button class="btn slim" onclick="aiInboxCheckBackend(true)">Zkontrolovat znovu</button>
-          </div>
-          <div class="actions"><button class="btn primary" id="aiProcessBtn" onclick="aiInboxProcess()">Přepsat a připravit výstupy</button><span class="note ai-process-status" id="aiProcessStatus"></span></div>
-        </section>
-
-        <aside class="card ai-inbox-queue">
-          <div class="toolbar"><div><div class="eyebrow">Fronta</div><h2>Čeká na kontrolu</h2></div><span class="badge blue" id="aiInboxCount">0</span></div>
-          <div id="aiInboxList" class="ai-inbox-list"></div>
-        </aside>
-
-        <section class="card ai-review-card" id="aiInboxReview">
-          <div class="empty-state"><h2>Vyber záznam z fronty</h2><p>Nejdřív nahraj audio nebo vlož textovou poznámku.</p></div>
-        </section>
       </div>
     </section>
 

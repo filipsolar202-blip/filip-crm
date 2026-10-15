@@ -1,3 +1,9 @@
+## 2026.10.15-2
+
+- AI Inbox byl na přání odstraněn z navigace, obrazovek, datového modelu i lokálního pomocníka.
+- Nevyřízená fronta AI Inboxu se při načtení zahodí. Již potvrzené poznámky, aktivity, úkoly a obchodní případy zůstávají jako běžná CRM data.
+- Lokální diskové úložiště a zálohy pokračují bez přepisovacích a OpenAI rozhraní.
+
 ## 2026.10.15-1
 
 - Dlouhý místní přepis už neběží v jediném otevřeném požadavku prohlížeče. Pomocník přijme audio jako samostatnou úlohu a CRM průběžně zobrazuje odesílání, přípravu, přepis a dokončení.
