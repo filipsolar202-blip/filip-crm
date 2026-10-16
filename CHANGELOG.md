@@ -1,3 +1,11 @@
+## 2026.10.16-1
+- Hlavní navigace je přesunutá do pevného levého panelu; široké pracovní části a pipeline zůstávají vodorovně posuvné.
+- Klienti mají nový centrální seznam s kontakty, správcem, počtem produktů, otevřenými případy, posledním kontaktem a datem založení.
+- Karta klienta má výraznou hlavičku, kontakty, čtyři hlavní ukazatele, zjednodušené záložky a kontextová tlačítka uvnitř jednotlivých částí.
+- Timeline automaticky spojuje aktivity, poznámky, změny obchodních případů, smlouvy a uzavřené obchody.
+- Obchodní případ se z tabulky i pipeline otevírá do samostatného detailu s osou fází, dalším krokem, parametry, historií a očekávanou provizí.
+- Datový model, AUM, smlouvy, obchody, provize a existující klientská data zůstávají beze změny.
+
 ## 2026.10.15-2
 
 - AI Inbox byl na přání odstraněn z navigace, obrazovek, datového modelu i lokálního pomocníka.

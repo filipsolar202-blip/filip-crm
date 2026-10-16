@@ -17,6 +17,7 @@ function renderActiveView() {
       campaigns: [['Kampaně', renderCampaigns]],
       opportunities: [['Obchodní případy', renderOpportunities]],
       pipeline: [['Pipeline', renderOpportunities]],
+      caseDetail: [['Detail obchodního případu', renderCaseDetail]],
       contracts: [['Smlouvy', renderContracts]],
       investments: [['Investice', renderInvestments]],
       fki: [['FKI', renderFk]],
@@ -2325,8 +2326,10 @@ function renderDuplicateWarnings() {
   });
   el.innerHTML = `<thead><tr><th>Typ duplicity</th><th>Klient</th><th>Detail</th><th>Oprava</th></tr></thead><tbody>${rows.join('') || '<tr><td colspan="4" class="note">Vypadá to čistě. Nenašel jsem stejné klienty, smlouvy ani obchody.</td></tr>'}</tbody>`;
 }
-function showView(id) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === id));
+function showView(id, options = {}) {
+  if (id === 'clients') clientDirectoryMode = options.directory === true ? true : selectedClientId ? false : true;
+  const navId = id === 'caseDetail' ? (caseDetailReturnView === 'opportunities' ? 'opportunities' : 'pipeline') : id;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === navId));
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === id));
   renderActiveView();
 }
@@ -2901,10 +2904,47 @@ function setCaseFilter(key,value) {
   window.businessCaseFilters ||= {query:'',category:'',status:'',sort:'status'};
   window.businessCaseFilters[key]=value;renderOpportunities();
 }
+function openClientWorkspace(id, section = 'overview') {
+  selectedClientId = +id || id;
+  clientSection = section;
+  clientDirectoryMode = false;
+  showView('clients');
+}
 function caseEdit(id) {
   const o=allOpenOpportunities().find(o=>String(o.id)===String(id)) || state.opportunities.find(o=>String(o.id)===String(id));
   if(!o)return;
-  if(o.isContractOpportunity)openContractModal(o.clientId,o.contractId);else openOpportunityModal(o.clientId,o.id);
+  if(o.isContractOpportunity)openContractModal(o.clientId,o.contractId);else openCaseDetail(o.id);
+}
+function openCaseDetail(id) {
+  const active = document.querySelector('.view.active')?.id;
+  if (active && active !== 'caseDetail') caseDetailReturnView = active;
+  selectedCaseId = id;
+  showView('caseDetail');
+}
+function closeCaseDetail() {
+  showView(caseDetailReturnView === 'caseDetail' ? 'pipeline' : caseDetailReturnView || 'pipeline');
+}
+function caseDetailChecklist(o) {
+  const stages = caseStages(), index = Math.max(0, stages.indexOf(caseStage(o.status))), definitions = {
+    Opportunity:['První kontakt s klientem','Popsat potřebu a očekávání','Naplánovat další krok'],
+    Nabídka:['Připravit variantu řešení','Prezentovat nabídku','Zapsat reakci klienta'],
+    Scoring:['Ověřit vstupní údaje','Doplnit potřebné dokumenty','Potvrdit průchod scoringem'],
+    Kompletace:['Získat všechny podklady','Zkontrolovat správnost údajů','Připravit žádost nebo návrh'],
+    Schvalování:['Odeslat producentovi','Sledovat připomínky','Doplnit požadované podklady'],
+    Podpis:['Domluvit podpis','Zkontrolovat finální dokumenty','Potvrdit datum účinnosti'],
+    'K zadání (BeTy)':['Zadat obchod do evidence','Zkontrolovat smlouvu a provizi','Uzavřít případ']
+  };
+  return (definitions[caseStage(o.status)] || []).map((text,i) => `<div class="case-history-row"><b>${i === 0 ? 'Teď: ' : ''}${esc(text)}</b><small>${i === 0 ? 'hlavní krok aktuální fáze' : 'navazující kontrola'}</small></div>`).join('') + `<p class="note" style="margin-top:9px">Případ je ve fázi ${num(index + 1)} ze ${num(stages.length)}. Fázi změníte kliknutím v horní ose.</p>`;
+}
+function renderCaseDetail() {
+  const root = byId('caseDetailContent');
+  if (!root) return;
+  const o = state.opportunities.find(x => String(x.id) === String(selectedCaseId));
+  if (!o) { root.innerHTML = `<div class="case-detail-panel"><p class="note">Obchodní případ už není dostupný.</p><button class="btn" onclick="closeCaseDetail()">Zpět</button></div>`; return; }
+  const c = findClient(o.clientId), stages = caseStages(), current = caseStage(o.status), currentIndex = stages.indexOf(current),
+    history = [...(o.history || [])].sort((a,b)=>String(b.d || '').localeCompare(String(a.d || ''))), commission = caseExpectedCommission(o),
+    next = opportunityNextContactDate(o), replacement = o.replacesContractId ? state.contracts.find(x=>String(x.id)===String(o.replacesContractId)) : null;
+  root.innerHTML = `<div class="case-detail-shell"><section class="case-detail-top"><div class="case-detail-breadcrumb"><button class="client-back-button" onclick="closeCaseDetail()">← Zpět na seznam</button><div class="actions"><button class="btn" onclick="openQuickActivity(${Number(o.clientId)})">Zaznamenat kontakt</button><button class="btn primary" onclick="openOpportunityModal(${Number(o.clientId)},${Number(o.id)})">Upravit případ</button></div></div><div class="case-detail-title"><div><div class="chips"><span class="badge blue">${esc(o.category || 'Obchodní případ')}</span>${opportunityBadge(current)}${replacementBadge(o)}</div><h2>${esc(o.product || o.category || 'Obchodní případ')}</h2><p class="note">${esc(clientName(c))} · ${esc(o.company || 'bez společnosti')} · poslední změna ${esc(caseLastUpdate(o) ? dateObj(caseLastUpdate(o)).toLocaleDateString('cs-CZ') : 'bez data')}</p></div><div class="client-summary-tile"><small>Očekávaná provize</small><b>${money(commission)}</b><span>objem ${money(o.amount)} · ${num(o.bj)} BJ</span></div></div><div class="case-stage-track">${stages.map((stage,i)=>`<button class="case-stage-step ${i < currentIndex ? 'done' : i === currentIndex ? 'active' : ''}" onclick="updateOpportunityStatus('${esc(o.id)}','${esc(stage)}')">${esc(stage)}</button>`).join('')}</div></section><div class="case-detail-grid"><div class="case-detail-shell"><section class="case-detail-panel"><div class="toolbar"><div><div class="eyebrow">Aktuální fáze</div><h3>${esc(current)}</h3></div></div><div class="case-history-list">${caseDetailChecklist(o)}</div></section><section class="case-detail-panel"><div class="toolbar"><div><div class="eyebrow">Podrobnosti</div><h3>Parametry případu</h3></div><button class="btn slim" onclick="openOpportunityModal(${Number(o.clientId)},${Number(o.id)})">Upravit</button></div><div class="case-detail-facts"><div class="case-detail-fact"><span>Klient</span><button class="case-title" onclick="openClientWorkspace(${Number(o.clientId)},'opportunities')">${esc(clientName(c))}</button></div><div class="case-detail-fact"><span>Kategorie</span><b>${esc(o.category || '-')}</b></div><div class="case-detail-fact"><span>Společnost</span><b>${esc(o.company || '-')}</b></div><div class="case-detail-fact"><span>Produkt</span><b>${esc(o.product || '-')}</b></div><div class="case-detail-fact"><span>Objem</span><b>${money(o.amount)}</b></div><div class="case-detail-fact"><span>BJ</span><b>${num(o.bj)}</b></div><div class="case-detail-fact"><span>Termín dokončení</span><b>${esc(o.expectedDate || '-')}</b></div><div class="case-detail-fact"><span>Původní smlouva</span><b>${esc(replacement ? [replacement.company,replacement.product,replacement.number].filter(Boolean).join(' · ') : '-')}</b></div></div>${o.note ? `<div class="notice small" style="margin-top:12px"><b>Poznámky k jednání</b><div style="white-space:pre-wrap;margin-top:5px">${esc(o.note)}</div></div>` : ''}</section></div><aside class="case-detail-shell"><section class="case-detail-panel"><div class="eyebrow">Další krok</div><div class="case-next-action"><b>${next ? dateObj(next).toLocaleDateString('cs-CZ') : 'Termín není naplánovaný'}</b><p class="note">${esc(o.lastContactMethod || (current === 'Opportunity' ? 'Klienta je potřeba kontaktovat.' : 'Doplňte další návaznost.'))}</p></div><button class="btn primary" onclick="openQuickActivity(${Number(o.clientId)})">+ Naplánovat aktivitu</button></section><section class="case-detail-panel"><div class="eyebrow">Historie případu</div><h3>Posuny a kontakty</h3><div class="case-history-list">${history.map(x=>`<div class="case-history-row"><b>${esc(x.t || 'Aktualizace')}</b><small>${esc(x.d || '')}</small></div>`).join('') || '<p class="note">Zatím bez zaznamenané změny.</p>'}</div></section><section class="case-detail-panel"><div class="eyebrow">Provize</div><h3>${money(commission)}</h3><p class="note">${pipelineStageCommissionEnabled(current) ? 'Tato fáze se počítá do očekávané provize.' : 'Tato fáze je z očekávané provize vypnutá.'}</p></section></aside></div></div>`;
 }
 function caseEncodedId(id) { return esc(encodeURIComponent(String(id)).replace(/'/g,'%27')); }
 function caseDrop(event,stage) {
@@ -3004,19 +3044,81 @@ function dashboardContactAction(row) {
   if (row.type === 'WhatsApp') return `<a class="btn slim" target="_blank" href="${c.phone ? 'https://wa.me/' + normId(c.phone) : '#'}">WA</a>`;
   return '';
 }
-function renderClients() {
-  const q = norm(val('clientSearch')),
-    selectedManager = val('clientManagementFilter');
-  fillManagementSelect('clientManagementFilter', selectedManager, true);
-  const list = state.clients.filter(c => !selectedManager || clientManagementId(c) === selectedManager).filter(c => !q || norm([c.name, c.phone, c.email, c.altEmails, c.birthId, c.address].join(' ')).includes(q)).sort((a, b) => clientName(a).localeCompare(clientName(b), 'cs'));
-  setText('clientCountLabel', `(${num(list.length)}/${num(state.clients.length)})`);
-  if ((!selectedClientId || !list.some(c => String(c.id) === String(selectedClientId))) && list[0]) selectedClientId = list[0].id;
-  byId('clientList').innerHTML = list.map(c => `<div class="client-row ${String(c.id) === String(selectedClientId) ? 'active' : ''}" onclick="selectClient(${c.id})"><div class="avatar">${esc(initials(c.name))}</div><div><b>${esc(clientName(c))}</b><small>${esc(c.phone || 'bez telefonu')} · ${esc(contactLabel(c))}</small><div>${managementBadge(c)}</div></div></div>`).join('') || '<p class="note">Zatím žádný klient.</p>';
-  renderClientDetail();
+function clientDateOnly(value) {
+  const raw = String(value || '').slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : '';
 }
-function selectClient(id) {
-  selectedClientId = id;
+function clientDaysSince(value) {
+  const date = clientDateOnly(value);
+  if (!date) return null;
+  return Math.max(0, Math.floor((Date.parse(today() + 'T00:00:00Z') - Date.parse(date + 'T00:00:00Z')) / 86400000));
+}
+function clientLastContact(c) {
+  const now = today(), dates = [];
+  clientActivities(c.id).forEach(a => {
+    const date = clientDateOnly(a.date);
+    if (date && date <= now && (a.completed || a.outcome === 'realized' || ['Telefon', 'Hovor', 'Volání', 'Schůzka', 'Email', 'WhatsApp', 'SMS'].includes(a.type))) dates.push(date);
+  });
+  clientOpenOpportunities(c.id).forEach(o => {
+    const date = clientDateOnly(o.lastContactDate);
+    if (date && date <= now) dates.push(date);
+  });
+  return dates.sort().at(-1) || '';
+}
+function clientCreatedDate(c) {
+  return clientDateOnly(c.createdAt || c.created || c.date) || '';
+}
+function clientProductCount(c) {
+  const keys = new Set();
+  clientContracts(c.id).forEach(x => keys.add(['s', x.type, x.company, x.product, x.number || x.id].join('|')));
+  clientDisplayInvestmentItems(c.id).forEach(x => keys.add(['i', investmentAreaOfItem(x), x.isin || '', x.company || '', x.product || x.kind || ''].join('|')));
+  if (typeof pensions_pItems === 'function') pensions_pItems().filter(x => String(x.clientId) === String(c.id)).forEach(x => keys.add(['p', x.company, x.product, x.number || x.id].join('|')));
+  return keys.size;
+}
+function clientDirectoryStats(c) {
+  const products = clientProductCount(c), open = clientOpenOpportunities(c.id).filter(isOpenOpportunity).length,
+    last = clientLastContact(c), contactDays = clientDaysSince(last), created = clientCreatedDate(c), createdDays = clientDaysSince(created);
+  return {products, open, last, contactDays, created, createdDays};
+}
+function renderClientDirectoryMetrics(rows) {
+  const el = byId('clientDirectoryMetrics');
+  if (!el) return;
+  const all = state.clients.map(c => ({c, s:clientDirectoryStats(c)})), recent = all.filter(x => x.s.createdDays !== null && x.s.createdDays <= 30).length,
+    stale = all.filter(x => x.s.contactDays === null || x.s.contactDays > 180).length, one = all.filter(x => x.s.products === 1).length,
+    open = all.filter(x => x.s.open > 0).length;
+  el.innerHTML = `<div class="client-directory-metric"><strong>${num(state.clients.length)}</strong><span>Klientů celkem</span><small>${num(rows.length)} v aktuálním výběru</small></div><div class="client-directory-metric"><strong>${num(open)}</strong><span>S otevřeným případem</span><small>aktivní obchodní práce</small></div><div class="client-directory-metric"><strong>${num(recent)}</strong><span>Noví za 30 dní</span><small>nově založené karty</small></div><div class="client-directory-metric attention"><strong>${num(stale)}</strong><span>Bez kontaktu přes 180 dní</span><small>včetně nikdy nekontaktovaných</small></div><div class="client-directory-metric"><strong>${num(one)}</strong><span>Jen jeden produkt</span><small>prostor pro další potřeby</small></div>`;
+}
+function renderClients() {
+  const q = norm(val('clientSearch')), selectedManager = val('clientManagementFilter'), contactFilter = val('clientContactFilter'),
+    productFilter = val('clientProductFilter'), sort = val('clientSort') || 'name';
+  fillManagementSelect('clientManagementFilter', selectedManager, true);
+  let list = state.clients.map(c => ({c, s:clientDirectoryStats(c)})).filter(x => !selectedManager || clientManagementId(x.c) === selectedManager)
+    .filter(x => !q || norm([x.c.name, x.c.phone, x.c.email, x.c.altEmails, x.c.birthId, x.c.address].join(' ')).includes(q))
+    .filter(x => !contactFilter || contactFilter === 'never' && !x.s.last || contactFilter === 'stale' && (x.s.contactDays === null || x.s.contactDays > 180) || contactFilter === 'recent' && x.s.contactDays !== null && x.s.contactDays <= 30)
+    .filter(x => !productFilter || productFilter === 'one' && x.s.products === 1 || productFilter === 'open' && x.s.open > 0);
+  list.sort((a, b) => sort === 'created' ? String(b.s.created).localeCompare(String(a.s.created)) : sort === 'products' ? b.s.products - a.s.products || clientName(a.c).localeCompare(clientName(b.c), 'cs') : sort === 'contact' ? (b.s.contactDays ?? 999999) - (a.s.contactDays ?? 999999) : clientName(a.c).localeCompare(clientName(b.c), 'cs'));
+  setText('clientCountLabel', `(${num(list.length)}/${num(state.clients.length)})`);
+  renderClientDirectoryMetrics(list);
+  const body = byId('clientList');
+  if (body) body.innerHTML = list.map(({c, s}) => {
+    const p = managementPartner(clientManagementId(c)), contact = [c.email, c.phone].filter(Boolean).join(' · ') || 'bez kontaktu',
+      last = s.last ? `${dateObj(s.last).toLocaleDateString('cs-CZ')} (${num(s.contactDays)} d)` : 'nikdy', created = s.created ? dateObj(s.created).toLocaleDateString('cs-CZ') : 'neuvedeno';
+    return `<tr class="client-directory-row client-row" onclick="selectClient(${c.id})"><td><div class="client-directory-person"><div class="avatar">${esc(initials(c.name))}</div><div><b>${esc(clientName(c))}</b><small>${esc(contact)}</small></div></div></td><td><div class="manager-avatar ${p.own ? '' : 'partner'}" title="${esc((p.company || '') + ' · ' + p.name)}">${esc(initials(p.name))}</div></td><td><b>${num(s.products)}</b><span class="client-contact-age">produktů</span></td><td>${s.open ? `<span class="badge blue">${num(s.open)} v řešení</span>` : '<span class="note">0</span>'}</td><td><b>${esc(last)}</b><span class="client-contact-age ${s.contactDays === null || s.contactDays > 180 ? 'stale' : ''}">${s.contactDays === null ? 'kontakt chybí' : s.contactDays > 180 ? 'zkontrolovat kontakt' : 'kontakt evidován'}</span></td><td>${esc(created)}${s.createdDays !== null ? `<span class="client-contact-age">před ${num(s.createdDays)} dny</span>` : ''}</td><td><button class="btn slim" onclick="event.stopPropagation();selectClient(${c.id})">Otevřít</button></td></tr>`;
+  }).join('') || '<tr><td colspan="7" class="note">Tomuto výběru neodpovídá žádný klient.</td></tr>';
+  const directory = byId('clientDirectory'), detail = byId('clientDetail');
+  if (directory) directory.classList.toggle('hidden', !clientDirectoryMode);
+  if (detail) detail.classList.toggle('active', !clientDirectoryMode);
+  if (!clientDirectoryMode) renderClientDetail();
+}
+function openClientDirectory() {
+  clientDirectoryMode = true;
   clientSection = 'overview';
+  showView('clients', {directory:true});
+}
+function selectClient(id, section = 'overview') {
+  selectedClientId = id;
+  clientSection = section;
+  clientDirectoryMode = false;
   renderClients();
 }
 function contactLabel(c) {
@@ -3404,6 +3506,24 @@ function clientReportHtml(c, sections, note) {
   const css = 'body{margin:0;font-family:Inter,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;background:#f6f8fc;color:#152034}.wrap{max-width:1040px;margin:0 auto;padding:34px}header,section{background:rgba(255,255,255,.82);border:1px solid #d8e4f2;border-radius:24px;padding:22px;margin-bottom:16px;box-shadow:0 20px 70px rgba(70,90,120,.12)}h1{font-size:34px;margin:0 0 6px}h2{font-size:20px;margin:0 0 14px}.muted{color:#61708a}.chips{display:flex;gap:8px;flex-wrap:wrap}.chip{background:#eaf2ff;color:#1d63d8;border-radius:999px;padding:5px 9px;font-weight:800;font-size:12px}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.kpis div{background:#f8fbff;border:1px solid #dde8f5;border-radius:16px;padding:12px}.kpis span{display:block;color:#61708a;font-size:12px;font-weight:800;text-transform:uppercase}.kpis b{font-size:22px}table{width:100%;border-collapse:collapse;font-size:13px}th{text-align:left;color:#61708a;text-transform:uppercase;font-size:11px;background:#f1f6fd}td,th{border-bottom:1px solid #dce6f2;padding:9px 8px}p{line-height:1.55}@media(max-width:760px){.wrap{padding:18px}.kpis{grid-template-columns:1fr 1fr}table{font-size:12px}}';
   return `<!doctype html><html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Report - ${esc(clientName(c))}</title><style>${css}</style></head><body><div class="wrap"><header><div class="muted">Klientský report</div><h1>${esc(clientName(c))}</h1><div class="chips"><span class="chip">Kontakt: ${esc(contactLabel(c))}</span>${c.phone ? `<span class="chip">Tel: ${esc(c.phone)}</span>` : ''}${c.email ? `<span class="chip">E-mail: ${esc(c.email)}</span>` : ''}<span class="chip">${new Date().toLocaleDateString('cs-CZ')}</span></div></header>${note ? `<section><h2>Poznámka poradce</h2><p>${esc(note).replace(/\n/g, '<br>')}</p></section>` : ''}${sections.map(s => s.html()).join('')}</div></body></html>`;
 }
+function clientNextAction(clientId) {
+  const todayKey = today(), rows = [];
+  clientActivities(clientId).filter(a => !a.completed && clientDateOnly(a.date) >= todayKey).forEach(a => rows.push({date:clientDateOnly(a.date), title:a.type || 'Aktivita', text:a.text || ''}));
+  clientOpenOpportunities(clientId).filter(isOpenOpportunity).forEach(o => {
+    const date = clientDateOnly(opportunityNextContactDate(o));
+    if (date && date >= todayKey) rows.push({date, title:o.lastContactMethod || 'Další krok', text:o.product || o.category || 'Obchodní případ'});
+  });
+  return rows.sort((a,b) => a.date.localeCompare(b.date))[0] || null;
+}
+function clientSectionAction(c) {
+  if (clientSection === 'portfolio') return `<button class="btn primary" onclick="openInvestmentScenarioModal(${c.id},'Investice')">+ Investice</button>`;
+  if (clientSection === 'opportunities') return `<button class="btn primary" onclick="openOpportunityModal(${c.id})">+ Obchodní případ</button>`;
+  if (clientSection === 'contracts') return `<button class="btn primary" onclick="openContractModal(${c.id})">+ Smlouva</button>`;
+  if (clientSection === 'history') return `<button class="btn primary" onclick="openQuickActivity(${c.id})">+ Aktivita</button>`;
+  if (clientSection === 'recommendations') return `<button class="btn primary" onclick="openClientReferralModal(${c.id})">+ Doporučení</button>`;
+  if (clientSection === 'notes') return `<button class="btn primary" onclick="openNoteModal(${c.id})">+ Poznámka</button>`;
+  return `<button class="btn primary" onclick="openQuickActivity(${c.id})">Zaznamenat kontakt</button>`;
+}
 function renderClientDetail() {
   const c = findClient(selectedClientId),
     el = byId('clientDetail');
@@ -3418,20 +3538,19 @@ function renderClientDetail() {
     opps = clientOpenOpportunities(c.id),
     notes = clientNotes(c.id),
     year = new Date().getFullYear();
-  const age = clientAgeFromBirthId(c.birthId);
-  el.innerHTML = `<div class="client-hero"><div class="avatar">${esc(initials(c.name))}</div><div class="detail-title"><div class="eyebrow">Karta klienta</div><h2>${esc(clientName(c))}${age !== null ? `<span class="client-age">· ${num(age)} let</span>` : ''}</h2><div class="chips"><span class="badge blue">Kontakt: ${esc(contactLabel(c))}</span>${c.birthId ? `<span class="chip">RČ/IČO: ${esc(c.birthId)}</span>` : ''}<span class="chip">${contracts.length} produktů</span><span class="chip">${deals.length} obchodů</span><span class="chip">${opps.filter(isOpenOpportunity).length} obchodních případů</span>${clientSourceSummary(c)}</div></div>${contactGrid(c)}</div><div class="actions client-actions"><button class="btn primary" onclick="openClientReportModal(${c.id})">Report pro klienta</button><button class="btn" onclick="openClientReferralModal(${c.id})">+ Doporučení</button><button class="btn" onclick="openActivityModal(${c.id})">+ Aktivita</button><button class="btn" onclick="openOpportunityModal(${c.id})">+ Obchodní případ</button><button class="btn" onclick="openDealModal(${c.id})">+ Obchod</button><button class="btn" onclick="openContractModal(${c.id})">+ Smlouva</button><button class="btn" onclick="openNoteModal(${c.id})">+ Poznámka</button><button class="btn" onclick="openClientModal(${c.id})">Upravit klienta</button></div><div class="subnav"></div>`;
+  const age = clientAgeFromBirthId(c.birthId), invSummary = clientInvestmentSummary(c.id), pensionSummary = clientPensionSummary(c.id),
+    last = clientLastContact(c), lastDays = clientDaysSince(last), next = clientNextAction(c.id), activeOpps = opps.filter(isOpenOpportunity),
+    totalAum = invSummary.total + pensionSummary.total;
+  el.innerHTML = `<div class="client-back-row"><button class="client-back-button" onclick="openClientDirectory()">← Zpět na seznam klientů</button><div class="client-primary-actions">${clientSectionAction(c)}<button class="btn" onclick="openNoteModal(${c.id})">+ Poznámka</button><button class="btn" onclick="openClientModal(${c.id})">Upravit klienta</button></div></div><div class="client-hero"><div class="avatar">${esc(initials(c.name))}</div><div class="detail-title"><div class="eyebrow">Karta klienta · ${managementBadge(c)}</div><h2>${esc(clientName(c))}${age !== null ? `<span class="client-age">· ${num(age)} let</span>` : ''}</h2><div class="chips"><span class="badge ${lastDays === null || lastDays > 180 ? 'orange' : 'green'}">${last ? `Poslední kontakt ${dateObj(last).toLocaleDateString('cs-CZ')} · před ${num(lastDays)} dny` : 'Kontakt zatím neevidován'}</span>${c.birthId ? `<span class="chip">RČ/IČO: ${esc(c.birthId)}</span>` : ''}${clientSourceSummary(c)}</div></div>${contactGrid(c)}</div><div class="client-summary-strip"><div class="client-summary-tile"><small>Aktivní případy</small><b>${num(activeOpps.length)}</b><span>${activeOpps[0] ? esc(activeOpps[0].product || activeOpps[0].category) : 'nic není v řešení'}</span></div><div class="client-summary-tile"><small>Portfolio a penze</small><b>${money(totalAum)}</b><span>${num(invSummary.items.length + pensionSummary.items.length)} evidovaných pozic</span></div><div class="client-summary-tile"><small>Smlouvy</small><b>${num(contracts.length)}</b><span>${num(deals.length)} uzavřených obchodů</span></div><div class="client-summary-tile"><small>Další krok</small><b>${next ? dateObj(next.date).toLocaleDateString('cs-CZ') : 'Není'}</b><span>${next ? esc([next.title,next.text].filter(Boolean).join(' · ')) : 'naplánujte další kontakt'}</span></div></div><div class="subnav"></div>`;
   const labels = {
     overview: 'Přehled',
     portfolio: 'Portfolio',
-    family: 'Rodina',
     opportunities: 'Obchodní případy',
     contracts: 'Smlouvy',
-    deals: 'Obchody',
-    recommendations: 'Doporučení',
-    notes: 'Poznámky',
-    history: 'Historie'
+    history: 'Timeline'
   };
-  el.querySelector('.subnav').innerHTML = Object.entries(labels).map(([k, l]) => `<button class="subtab ${clientSection === k ? 'active' : ''}" onclick="clientSection='${k}';renderClientDetail()">${l}</button>`).join('');
+  const more = {family:'Rodina',recommendations:'Doporučení',notes:'Poznámky',deals:'Obchody'}, moreActive = Object.keys(more).includes(clientSection);
+  el.querySelector('.subnav').innerHTML = Object.entries(labels).map(([k, l]) => `<button class="subtab ${clientSection === k ? 'active' : ''}" onclick="clientSection='${k}';renderClientDetail()">${l}</button>`).join('') + `<details class="client-more-menu"><summary class="subtab ${moreActive ? 'active' : ''}">Více ▾</summary><div class="client-more-panel">${Object.entries(more).map(([k,l])=>`<button onclick="clientSection='${k}';this.closest('details').open=false;renderClientDetail()">${l}</button>`).join('')}<button onclick="openClientReportModal(${c.id})">Report pro klienta</button></div></details>`;
   el.insertAdjacentHTML('beforeend', clientSection === 'overview' ? clientOverview(c, contracts, deals, acts, year) : clientSection === 'family' ? clientFamilyHtml(c) : clientSection === 'portfolio' ? clientPortfolio(c, contracts, deals) : clientSection === 'opportunities' ? opportunitiesMini(opps) : clientSection === 'contracts' ? contractsMini(contracts) : clientSection === 'deals' ? dealsMini(deals, year) : clientSection === 'recommendations' ? recommendationsMini(c) : clientSection === 'notes' ? notesMini(notes) : historyMini(c, acts, contracts, deals));
   if (clientSection === 'overview') el.insertAdjacentHTML('beforeend', clientFamilyHtml(c) + clientReferralOverview(c));
 }
@@ -3552,6 +3671,12 @@ function investmentMini(items, clientId) {
   if (!items.length) return `<p class="note">U klienta zatím nevidím investiční produkt ani FKI. Nový návrh založ v záložce Investice nebo FKI.</p><button class="btn slim" onclick="openClientProductArea(${clientId},'investice')">Otevřít Investice</button> <button class="btn slim primary" onclick="openClientProductArea(${clientId},'fki')">Otevřít FKI</button>`;
   return `<div>${items.slice(0, 5).map(x => `<div class="product-row"><div><b>${esc(x.product || areaLabel(investmentAreaOfItem(x)))}</b><span class="note">${esc(x.company || 'bez producenta')} · ${esc(areaLabel(investmentAreaOfItem(x)))} · ${esc(x.kind)}</span></div><div class="actions"><div class="money">${money(x.amount)}</div><button class="btn slim" onclick="openClientProductArea(${clientId},'${investmentAreaOfItem(x)}')">Detail</button></div></div>`).join('')}</div>`;
 }
+function clientPortfolioAddAction(clientId, area) {
+  if (area === 'investice') return `openInvestmentScenarioModal(${clientId},'Investice')`;
+  if (area === 'fki') return `openInvestmentScenarioModal(${clientId},'FKI')`;
+  if (area === 'penze') return `openPensionContractModal(${clientId})`;
+  return `openContractModal(${clientId})`;
+}
 function clientPortfolio(c, contracts, deals) {
   const providerItems=[...clientDisplayInvestmentItems(c.id),...contracts,...deals];
   const providerBar=clientProviderBar('portfolio',c.id,providerItems),provider=clientProviderSelection('portfolio',c.id);
@@ -3590,7 +3715,7 @@ function clientPortfolio(c, contracts, deals) {
       action: `openDealModal(${d.clientId},${d.id})`
     });
   });
-  return `${providerBar}<div class="portfolio-grid">${Object.entries(groups).map(([k, rows]) => `<div class="portfolio-card ${clientPortfolioFocus === k ? 'focus' : ''}" data-portfolio-area="${k}"><h3>${esc(areaLabel(k))}</h3>${rows.map(r => `<div class="product-row"><div><b>${esc(r.title)}</b><span class="note">${esc(r.sub)}</span></div><button class="btn slim" onclick="${r.action}">Detail</button></div>`).join('') || `<div class="product-row"><span class="note">Zatím nic sjednáno.</span><button class="btn slim" onclick="openDealModal(${c.id})">+ Přidat</button></div>`}</div>`).join('')}</div>${clientForecastPanel(c)}`;
+  return `${providerBar}<div class="portfolio-grid">${Object.entries(groups).map(([k, rows]) => `<div class="portfolio-card ${clientPortfolioFocus === k ? 'focus' : ''}" data-portfolio-area="${k}"><h3>${esc(areaLabel(k))} · ${num(rows.length)}</h3>${rows.map(r => `<div class="product-row"><div><b>${esc(r.title)}</b><span class="note">${esc(r.sub)}</span></div><button class="btn slim" onclick="${r.action}">Detail</button></div>`).join('') || `<div class="product-row"><span class="note">Zatím nic sjednáno.</span><button class="btn slim" onclick="${clientPortfolioAddAction(c.id,k)}">Založit</button></div>`}${rows.length ? `<div class="product-row portfolio-add-row"><span class="note">Přidat další produkt</span><button class="btn slim" onclick="${clientPortfolioAddAction(c.id,k)}">+ Přidat</button></div>` : ''}</div>`).join('')}</div>${clientForecastPanel(c)}`;
 }
 function opportunityMiniList(rows) {
   if (!rows.length) return '';
@@ -3612,11 +3737,11 @@ function opportunitiesMini(rows) {
   }).join('')}</div>`;
 }
 function opportunityFolderRow(o) {
-  const edit = o.isContractOpportunity ? `openContractModal(${o.clientId},${o.contractId})` : `openOpportunityModal(${o.clientId},${o.id})`,
+  const edit = o.isContractOpportunity ? `openContractModal(${o.clientId},${o.contractId})` : `openCaseDetail(${o.id})`,
     contractBadge = o.contractStatusLabel ? `<span class="chip">Smlouva: ${esc(o.contractStatusLabel)}</span>` : '',
     amount = +o.amount || 0 ? money(o.amount) : '',
     bj = +o.bj || 0 ? num(o.bj) + ' BJ' : '';
-  return `<div class="opp-folder-row ${isOpenOpportunity(o) ? 'open' : ''}"><div class="opp-folder-main"><div><b>${esc(o.product || o.category || 'Obchodní případ')}</b><br><span class="note">${esc([o.company, o.statusDate || o.date, o.expectedDate ? 'termín ' + o.expectedDate : ''].filter(Boolean).join(' · '))}</span><div class="chips">${opportunityBadge(o.status)}${replacementBadge(o)}${o.isContractOpportunity ? '<span class="chip">ze smlouvy</span>' : ''}${contractBadge}${opportunityAttachmentBadge(o)}</div></div><div class="actions"><div class="money">${esc([amount, bj].filter(Boolean).join(' · '))}</div><button class="btn slim" onclick="${edit}">Upravit</button></div></div>${o.note ? `<div class="opp-folder-note note">${esc(o.note)}</div>` : ''}</div>`;
+  return `<div class="opp-folder-row ${isOpenOpportunity(o) ? 'open' : ''}"><div class="opp-folder-main"><div><button class="case-title" onclick="${edit}">${esc(o.product || o.category || 'Obchodní případ')}</button><br><span class="note">${esc([o.company, o.statusDate || o.date, o.expectedDate ? 'termín ' + o.expectedDate : ''].filter(Boolean).join(' · '))}</span><div class="chips">${opportunityBadge(o.status)}${replacementBadge(o)}${o.isContractOpportunity ? '<span class="chip">ze smlouvy</span>' : ''}${contractBadge}${opportunityAttachmentBadge(o)}</div></div><div class="actions"><div class="money">${esc([amount, bj].filter(Boolean).join(' · '))}</div><button class="btn slim" onclick="${edit}">Detail</button></div></div>${o.note ? `<div class="opp-folder-note note">${esc(o.note)}</div>` : ''}</div>`;
 }
 function notesMini(rows) {
   return `<div class="table-wrap"><table><thead><tr><th>Název</th><th>Datum</th><th>Štítky</th><th>Typ</th><th></th></tr></thead><tbody>${rows.map(n => `<tr><td><button class="note-title-btn" onclick="openNoteViewModal(${n.id})">▧ ${esc(n.title || 'Poznámka')}</button></td><td>${esc(n.date || '')}</td><td>${noteTags(n).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</td><td><span class="badge blue">${esc(noteType(n))}</span></td><td><button class="icon-btn" onclick="openNoteModal(${n.clientId || 'null'},${n.id})">✎</button></td></tr>`).join('') || '<tr><td colspan="5" class="note">Bez poznámek.</td></tr>'}</tbody></table></div>`;
@@ -3633,21 +3758,15 @@ function dealsMini(rows, year) {
   return `${clientPerformanceMini(rows, year)}<div class="table-wrap"><table><thead><tr><th>Datum</th><th>Kategorie</th><th>Produkt</th><th>Objem</th><th>BJ</th><th>Oček. provize</th><th>Akce</th></tr></thead><tbody>${rows.map(d => `<tr><td>${esc(d.date || '')}</td><td>${esc(d.category || '')}</td><td><b>${esc(d.product || '')}</b><br><span class="note">${esc(d.company || '')}</span></td><td class="money">${money(dealVolume(d))}</td><td class="num">${num(dealBJ(d))}</td><td class="money">${money(dealCash(d, yearOf(d.date)))}</td><td><button class="btn slim" onclick="openDealModal(${d.clientId},${d.id})">Upravit</button></td></tr>`).join('') || '<tr><td colspan="7" class="note">Bez obchodů.</td></tr>'}</tbody></table></div>`;
 }
 function historyMini(c, acts, contracts, deals) {
-  const items = [...acts.map(a => ({
-    d: a.date,
-    time: a.time || '',
-    text: [a.type, a.text].filter(Boolean).join(' : ')
-  })), ...contracts.flatMap(s => (s.log || []).map(l => ({
-    d: l.d,
-    time: l.time || '',
-    text: ['Smlouva', s.product || s.type, l.t].filter(Boolean).join(' : ')
-  }))), ...deals.map(d => ({
-    d: d.date,
-    time: '',
-    text: ['Obchod', d.category, d.product || '', num(dealBJ(d)) + ' BJ'].filter(Boolean).join(' : ')
-  }))].sort((a, b) => String((b.d || '') + ' ' + (b.time || '')).localeCompare(String((a.d || '') + ' ' + (a.time || ''))));
-  if (!items.length) return '<p class="note">Historie je zatím prázdná.</p>';
-  return `<div class="timeline history-compact">${items.map(i => `<div class="history-line"><b>${esc([i.d, i.time].filter(Boolean).join(' '))}</b><span>: ${esc(i.text || '')}</span></div>`).join('')}</div>`;
+  const notes = clientNotes(c.id), opportunities = clientOpenOpportunities(c.id), items = [
+    ...acts.map(a => ({kind:'activity', d:a.date, time:a.time || '', title:a.type || 'Aktivita', text:a.text || '', meta:a.outcome === 'realized' || a.completed ? 'Dokončeno' : 'Naplánováno'})),
+    ...notes.map(n => ({kind:'note', d:n.date, time:'', title:n.title || 'Poznámka', text:n.text || n.body || '', meta:noteTags(n).join(' · ')})),
+    ...opportunities.flatMap(o => (o.history || []).map(l => ({kind:'case', d:l.d, time:l.time || '', title:'Obchodní případ · ' + (o.product || o.category || ''), text:l.t || '', meta:caseStage(o.status)}))),
+    ...contracts.flatMap(s => (s.log || []).map(l => ({kind:'contract', d:l.d, time:l.time || '', title:'Smlouva · ' + (s.product || s.type || ''), text:l.t || '', meta:s.company || ''}))),
+    ...deals.map(d => ({kind:'deal', d:d.date, time:'', title:'Uzavřený obchod · ' + (d.product || d.category || ''), text:[d.company, num(dealBJ(d)) + ' BJ', money(dealVolume(d))].filter(Boolean).join(' · '), meta:d.category || ''}))
+  ].filter(x => x.d || x.text).sort((a, b) => String((b.d || '') + ' ' + (b.time || '')).localeCompare(String((a.d || '') + ' ' + (a.time || ''))));
+  const content = items.length ? `<div class="history-timeline">${items.map(i => `<article class="history-event ${esc(i.kind)}"><div class="history-event-head"><div><b>${esc(i.title)}</b>${i.meta ? `<div class="chips"><span class="chip">${esc(i.meta)}</span></div>` : ''}</div><time>${esc([i.d, i.time].filter(Boolean).join(' · '))}</time></div>${i.text ? `<p>${esc(i.text)}</p>` : ''}</article>`).join('')}</div>` : '<p class="note">Timeline je zatím prázdná.</p>';
+  return `<div class="timeline-toolbar"><div><div class="eyebrow">Historie spolupráce</div><h3>Timeline klienta</h3><p class="note">Kontakty, poznámky, změny případů, smlouvy a obchody se skládají automaticky.</p></div><div class="actions"><button class="btn" onclick="openNoteModal(${c.id})">+ Poznámka</button><button class="btn primary" onclick="openQuickActivity(${c.id})">+ Kontakt</button></div></div>${content}`;
 }
 function contractLineClass(s) {
   return contractVisualClass(s);
@@ -5376,6 +5495,8 @@ function saveClient() {
   syncClientReferral(c);
   const dups = clientDuplicatesFor(c);
   selectedClientId = c.id;
+  clientDirectoryMode = false;
+  clientSection = 'overview';
   addActivity(c.id, 'Poznámka', (editingClientId ? 'Upraven klient' : 'Založen klient') + (linked ? ' · spárováno FKI podle RČ/IČO' : ''), true);
   closeModal('clientModal');
   renderAll();
@@ -5404,6 +5525,7 @@ function deleteClient() {
     clientId: null
   } : a);
   selectedClientId = state.clients[0]?.id || null;
+  clientDirectoryMode = true;
   closeModal('clientModal');
   renderAll();
 }
@@ -13482,8 +13604,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.15-2';
-const VERSION_NOTE = 'AI Inbox byl odstraněn; ostatní části CRM a již potvrzená data zůstávají beze změny.';
+const VERSION = '2026.10.16-1';
+const VERSION_NOTE = 'Nová levá navigace, centrální seznam klientů, pracovní karta klienta, timeline a detail obchodního případu.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
@@ -13518,6 +13640,9 @@ const STATUS_LABELS = {
 const ACTIVE_STATUS_IDS = ['reseni', 'prepojistit', 'vypoved', 'nabidka', 'ceka_nabidka', 'ceka_podklady', 'domluveno', 'kontakt', 'nedovolano', 'sms', 'email', 'telefon', 'whatsapp'];
 let state = loadState(),
   selectedClientId = null,
+  selectedCaseId = null,
+  caseDetailReturnView = 'pipeline',
+  clientDirectoryMode = true,
   selectedInvestmentClientId = null,
   selectedInvestmentFundKey = null,
   selectedFkClientId = null,
@@ -13570,7 +13695,7 @@ let investmentScenario = {
 };
 let editingExternalInvestmentId = null,
   editingExternalInvestmentClientId = null;
-document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => showView(t.dataset.view)));
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => t.dataset.view === 'clients' ? openClientDirectory() : showView(t.dataset.view)));
 document.querySelectorAll('.modal').forEach(m => m.addEventListener('click', e => {
   if (e.target === m) m.classList.remove('show');
 }));
