@@ -1,3 +1,8 @@
+## 2026.10.16-2
+- Klientský adresář počítá kontakty, produkty a otevřené případy jedním průchodem místo opakovaného přepočtu celého CRM pro každého klienta.
+- Karta klienta načítá investice pouze vybraného klienta a znovu používá už vypočtené souhrny.
+- Filtry klientů používají připravený souhrn, takže vyhledávání a řazení reagují okamžitě i u velké databáze.
+
 ## 2026.10.16-1
 - Hlavní navigace je přesunutá do pevného levého panelu; široké pracovní části a pipeline zůstávají vodorovně posuvné.
 - Klienti mají nový centrální seznam s kontakty, správcem, počtem produktů, otevřenými případy, posledním kontaktem a datem založení.

@@ -168,6 +168,9 @@ function managementBadge(clientOrId) {
 }
 function persist() {
   state = normalizeState(state);
+  clientDirectoryStatsCache = null;
+  clientInvestmentSummaryCache.clear();
+  clientPensionSummaryCache.clear();
   try {
     localStorage.setItem(STORE, JSON.stringify(state));
     window.__lastPersistOk = true;
@@ -969,7 +972,7 @@ function clientAreaStats(clientId) {
     stats[k].count++;
     stats[k].volume += dealVolume(d);
   });
-  clientDisplayInvestmentItems(clientId).forEach(x => {
+  clientInvestmentSummary(clientId).items.forEach(x => {
     const k = investmentAreaOfItem(x);
     stats[k].count++;
     stats[k].volume += x.amount;
@@ -3080,34 +3083,92 @@ function clientDirectoryStats(c) {
     last = clientLastContact(c), contactDays = clientDaysSince(last), created = clientCreatedDate(c), createdDays = clientDaysSince(created);
   return {products, open, last, contactDays, created, createdDays};
 }
-function renderClientDirectoryMetrics(rows) {
+function buildClientDirectoryDataset() {
+  if (clientDirectoryStatsCache) return clientDirectoryStatsCache;
+  const now = today(), byClient = new Map(), clientsById = new Map(), clientsByBirthId = new Map(), clientsByName = new Map();
+  state.clients.forEach(c => {
+    const id = String(c.id), created = clientCreatedDate(c);
+    byClient.set(id, {c, s:{products:0, open:0, last:'', contactDays:null, created, createdDays:clientDaysSince(created)}, productKeys:new Set()});
+    clientsById.set(id, c);
+    const birthId = normalizeStrongId(c.birthId);
+    if (birthId) clientsByBirthId.set(birthId, c);
+    clientAliasNames(c).forEach(name => {
+      clientsByName.set(norm(name), c);
+      clientsByName.set(personNameKey(name), c);
+    });
+  });
+  const rowFor = id => byClient.get(String(id));
+  const keepLatestContact = (row, value) => {
+    const date = clientDateOnly(value);
+    if (row && date && date <= now && (!row.s.last || date > row.s.last)) row.s.last = date;
+  };
+  (state.activities || []).forEach(a => {
+    const row = rowFor(a.clientId), contact = a.completed || a.outcome === 'realized' || ['Telefon','Hovor','Volání','Schůzka','Email','WhatsApp','SMS'].includes(a.type);
+    if (contact) keepLatestContact(row, a.date);
+  });
+  allOpenOpportunities().forEach(o => {
+    const row = rowFor(o.clientId);
+    if (!row) return;
+    row.s.open++;
+    keepLatestContact(row, o.lastContactDate);
+  });
+  (state.contracts || []).forEach(x => {
+    const row = rowFor(x.clientId);
+    if (row) row.productKeys.add(['s', x.type, x.company, x.product, x.number || x.id].join('|'));
+  });
+  (state.investmentSnapshots || []).filter(x => !x.portfolioReplacedBy).forEach(x => {
+    const row = rowFor(x.clientId);
+    if (!row) return;
+    const area = isPensionReportItem(x) ? 'p' : 'i';
+    row.productKeys.add([area, x.isin || '', x.company || '', x.product || x.kind || '', x.number || ''].join('|'));
+  });
+  (state.investmentRecords || []).filter(r => !r.portfolioReplacedBy && isFkiReportRecord(r)).forEach(r => {
+    const rc = normalizeStrongId(invBirthId(r)), rawId = String(invClientId(r) || '').replace(/^CL[_-]?/i, ''), name = invInvestor(r),
+      client = (rc && clientsByBirthId.get(rc)) || clientsById.get(rawId) || clientsByName.get(norm(name)) || clientsByName.get(personNameKey(name)), row = client && rowFor(client.id);
+    if (row) row.productKeys.add(['i', 'fki', invPositionKey(r)].join('|'));
+  });
+  visibleDeals().filter(d => !d.portfolioReplacedBy && !d.portfolioPending && ['investice','fki'].includes(areaForDeal(d))).forEach(d => {
+    const row = rowFor(d.clientId);
+    if (row) row.productKeys.add(['i', areaForDeal(d), d.isin || '', d.company || '', d.product || d.category || ''].join('|'));
+  });
+  const rows = [...byClient.values()].map(row => {
+    row.s.products = row.productKeys.size;
+    row.s.contactDays = clientDaysSince(row.s.last);
+    delete row.productKeys;
+    return row;
+  });
+  clientDirectoryStatsCache = rows;
+  return rows;
+}
+function renderClientDirectoryMetrics(all, rows) {
   const el = byId('clientDirectoryMetrics');
   if (!el) return;
-  const all = state.clients.map(c => ({c, s:clientDirectoryStats(c)})), recent = all.filter(x => x.s.createdDays !== null && x.s.createdDays <= 30).length,
+  const recent = all.filter(x => x.s.createdDays !== null && x.s.createdDays <= 30).length,
     stale = all.filter(x => x.s.contactDays === null || x.s.contactDays > 180).length, one = all.filter(x => x.s.products === 1).length,
     open = all.filter(x => x.s.open > 0).length;
   el.innerHTML = `<div class="client-directory-metric"><strong>${num(state.clients.length)}</strong><span>Klientů celkem</span><small>${num(rows.length)} v aktuálním výběru</small></div><div class="client-directory-metric"><strong>${num(open)}</strong><span>S otevřeným případem</span><small>aktivní obchodní práce</small></div><div class="client-directory-metric"><strong>${num(recent)}</strong><span>Noví za 30 dní</span><small>nově založené karty</small></div><div class="client-directory-metric attention"><strong>${num(stale)}</strong><span>Bez kontaktu přes 180 dní</span><small>včetně nikdy nekontaktovaných</small></div><div class="client-directory-metric"><strong>${num(one)}</strong><span>Jen jeden produkt</span><small>prostor pro další potřeby</small></div>`;
 }
 function renderClients() {
+  const directory = byId('clientDirectory'), detail = byId('clientDetail');
+  if (directory) directory.classList.toggle('hidden', !clientDirectoryMode);
+  if (detail) detail.classList.toggle('active', !clientDirectoryMode);
   const q = norm(val('clientSearch')), selectedManager = val('clientManagementFilter'), contactFilter = val('clientContactFilter'),
     productFilter = val('clientProductFilter'), sort = val('clientSort') || 'name';
   fillManagementSelect('clientManagementFilter', selectedManager, true);
-  let list = state.clients.map(c => ({c, s:clientDirectoryStats(c)})).filter(x => !selectedManager || clientManagementId(x.c) === selectedManager)
+  const all = buildClientDirectoryDataset();
+  let list = all.filter(x => !selectedManager || clientManagementId(x.c) === selectedManager)
     .filter(x => !q || norm([x.c.name, x.c.phone, x.c.email, x.c.altEmails, x.c.birthId, x.c.address].join(' ')).includes(q))
     .filter(x => !contactFilter || contactFilter === 'never' && !x.s.last || contactFilter === 'stale' && (x.s.contactDays === null || x.s.contactDays > 180) || contactFilter === 'recent' && x.s.contactDays !== null && x.s.contactDays <= 30)
     .filter(x => !productFilter || productFilter === 'one' && x.s.products === 1 || productFilter === 'open' && x.s.open > 0);
   list.sort((a, b) => sort === 'created' ? String(b.s.created).localeCompare(String(a.s.created)) : sort === 'products' ? b.s.products - a.s.products || clientName(a.c).localeCompare(clientName(b.c), 'cs') : sort === 'contact' ? (b.s.contactDays ?? 999999) - (a.s.contactDays ?? 999999) : clientName(a.c).localeCompare(clientName(b.c), 'cs'));
   setText('clientCountLabel', `(${num(list.length)}/${num(state.clients.length)})`);
-  renderClientDirectoryMetrics(list);
+  renderClientDirectoryMetrics(all, list);
   const body = byId('clientList');
   if (body) body.innerHTML = list.map(({c, s}) => {
     const p = managementPartner(clientManagementId(c)), contact = [c.email, c.phone].filter(Boolean).join(' · ') || 'bez kontaktu',
       last = s.last ? `${dateObj(s.last).toLocaleDateString('cs-CZ')} (${num(s.contactDays)} d)` : 'nikdy', created = s.created ? dateObj(s.created).toLocaleDateString('cs-CZ') : 'neuvedeno';
     return `<tr class="client-directory-row client-row" onclick="selectClient(${c.id})"><td><div class="client-directory-person"><div class="avatar">${esc(initials(c.name))}</div><div><b>${esc(clientName(c))}</b><small>${esc(contact)}</small></div></div></td><td><div class="manager-avatar ${p.own ? '' : 'partner'}" title="${esc((p.company || '') + ' · ' + p.name)}">${esc(initials(p.name))}</div></td><td><b>${num(s.products)}</b><span class="client-contact-age">produktů</span></td><td>${s.open ? `<span class="badge blue">${num(s.open)} v řešení</span>` : '<span class="note">0</span>'}</td><td><b>${esc(last)}</b><span class="client-contact-age ${s.contactDays === null || s.contactDays > 180 ? 'stale' : ''}">${s.contactDays === null ? 'kontakt chybí' : s.contactDays > 180 ? 'zkontrolovat kontakt' : 'kontakt evidován'}</span></td><td>${esc(created)}${s.createdDays !== null ? `<span class="client-contact-age">před ${num(s.createdDays)} dny</span>` : ''}</td><td><button class="btn slim" onclick="event.stopPropagation();selectClient(${c.id})">Otevřít</button></td></tr>`;
   }).join('') || '<tr><td colspan="7" class="note">Tomuto výběru neodpovídá žádný klient.</td></tr>';
-  const directory = byId('clientDirectory'), detail = byId('clientDetail');
-  if (directory) directory.classList.toggle('hidden', !clientDirectoryMode);
-  if (detail) detail.classList.toggle('active', !clientDirectoryMode);
   if (!clientDirectoryMode) renderClientDetail();
 }
 function openClientDirectory() {
@@ -3555,11 +3616,13 @@ function renderClientDetail() {
   if (clientSection === 'overview') el.insertAdjacentHTML('beforeend', clientFamilyHtml(c) + clientReferralOverview(c));
 }
 function clientInvestmentSummary(clientId) {
+  const cacheKey = String(clientId);
+  if (clientInvestmentSummaryCache.has(cacheKey)) return clientInvestmentSummaryCache.get(cacheKey);
   const items = clientDisplayInvestmentItems(clientId),
     classic = items.filter(x => investmentAreaOfItem(x) === 'investice').reduce((s, x) => s + (+x.amount || 0), 0),
     fki = items.filter(x => investmentAreaOfItem(x) === 'fki').reduce((s, x) => s + (+x.amount || 0), 0),
     invested = items.reduce((s, x) => s + investmentInvestedAmount(x), 0);
-  return {
+  const summary = {
     items,
     classic,
     fki,
@@ -3567,12 +3630,18 @@ function clientInvestmentSummary(clientId) {
     invested,
     gain: classic + fki - invested
   };
+  clientInvestmentSummaryCache.set(cacheKey, summary);
+  return summary;
 }
 function clientPensionSummary(clientId) {
-  const id = String(clientId),
+  const id = String(clientId);
+  if (clientPensionSummaryCache.has(id)) return clientPensionSummaryCache.get(id);
+  const
     items = typeof pensions_pItems === 'function' ? pensions_pItems().filter(x => String(x.clientId) === id) : [],
     total = items.reduce((sum, x) => sum + (+x.amount || 0), 0);
-  return {items, total};
+  const summary = {items, total};
+  clientPensionSummaryCache.set(id, summary);
+  return summary;
 }
 function clientExternalInvestments(clientId) {
   return (state.externalInvestments || []).filter(x => String(x.clientId) === String(clientId));
@@ -3646,8 +3715,8 @@ function clientForecastPanel(c) {
 }
 function clientOverview(c, contracts, deals, acts, year) {
   const stats = clientAreaStats(c.id),
-    inv = clientDisplayInvestmentItems(c.id),
     sum = clientInvestmentSummary(c.id),
+    inv = sum.items,
     pensions = clientPensionSummary(c.id),
     totalAum = sum.total + pensions.total,
     opps = clientOpenOpportunities(c.id).filter(isOpenOpportunity);
@@ -3678,7 +3747,7 @@ function clientPortfolioAddAction(clientId, area) {
   return `openContractModal(${clientId})`;
 }
 function clientPortfolio(c, contracts, deals) {
-  const providerItems=[...clientDisplayInvestmentItems(c.id),...contracts,...deals];
+  const investmentItems=clientInvestmentSummary(c.id).items,providerItems=[...investmentItems,...contracts,...deals];
   const providerBar=clientProviderBar('portfolio',c.id,providerItems),provider=clientProviderSelection('portfolio',c.id);
   const matches=x=>!provider||(x.company||'Bez společnosti')===provider;
   const groups = {
@@ -3690,7 +3759,7 @@ function clientPortfolio(c, contracts, deals) {
       ostatni: []
     },
     contractIds = new Set(contracts.map(s => String(s.id)));
-  clientDisplayInvestmentItems(c.id).filter(matches).forEach(x => groups[investmentAreaOfItem(x)].push({
+  investmentItems.filter(matches).forEach(x => groups[investmentAreaOfItem(x)].push({
     title: x.product || x.kind || 'Investice',
     sub: [x.company, x.isin, money(x.amount)].filter(Boolean).join(' · '),
     action: `openClientProductArea(${c.id},'${investmentAreaOfItem(x)}')`
@@ -4206,9 +4275,17 @@ function classicInvestmentItems() {
     orphans = snapshots.filter(s => (s.scope === 'provider-total' || !replacedProviders.has([String(s.clientId || ''), investmentProviderIdentity(s)].join('|'))) && !keys.has(investmentSnapshotKeyForSnapshot(s)) && !isPensionReportItem(s)).map(investmentSnapshotItem);
   return mergeClassicInvestmentItems([...base, ...orphans]).filter(x => !isPensionReportItem(x));
 }
+function classicInvestmentItemsForClient(clientId) {
+  const id = String(clientId), snapshots = latestInvestmentSnapshots(clientId), providerTotals = snapshots.filter(s => s.scope === 'provider-total'),
+    replacedProviders = new Set(providerTotals.map(s => [id, norm(s.providerKey || investmentProviderIdentity(s))].join('|'))),
+    base = clientInvestmentItems(clientId).filter(x => investmentAreaOfItem(x) === 'investice' && !isPensionReportItem(x))
+      .filter(x => !replacedProviders.has([String(x.clientId || x.client?.id || ''), investmentProviderIdentity(x)].join('|'))).map(applyInvestmentSnapshot),
+    keys = new Set(base.map(investmentItemKey)),
+    orphans = snapshots.filter(s => (s.scope === 'provider-total' || !replacedProviders.has([String(s.clientId || ''), investmentProviderIdentity(s)].join('|'))) && !keys.has(investmentSnapshotKeyForSnapshot(s)) && !isPensionReportItem(s)).map(investmentSnapshotItem);
+  return mergeClassicInvestmentItems([...base, ...orphans]).filter(x => !isPensionReportItem(x));
+}
 function clientDisplayInvestmentItems(clientId) {
-  const id = String(clientId),
-    classic = classicInvestmentItems().filter(x => String(x.clientId || x.client?.id) === id),
+  const classic = classicInvestmentItemsForClient(clientId),
     fki = clientInvestmentItems(clientId).filter(x => investmentAreaOfItem(x) === 'fki');
   return [...classic, ...fki];
 }
@@ -13604,8 +13681,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.16-1';
-const VERSION_NOTE = 'Nová levá navigace, centrální seznam klientů, pracovní karta klienta, timeline a detail obchodního případu.';
+const VERSION = '2026.10.16-2';
+const VERSION_NOTE = 'Výrazně rychlejší klientský adresář, filtry a karta klienta i u velké databáze.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
@@ -13643,6 +13720,9 @@ let state = loadState(),
   selectedCaseId = null,
   caseDetailReturnView = 'pipeline',
   clientDirectoryMode = true,
+  clientDirectoryStatsCache = null,
+  clientInvestmentSummaryCache = new Map(),
+  clientPensionSummaryCache = new Map(),
   selectedInvestmentClientId = null,
   selectedInvestmentFundKey = null,
   selectedFkClientId = null,
