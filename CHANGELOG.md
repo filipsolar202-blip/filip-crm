@@ -1,3 +1,9 @@
+## 2026.10.19-4
+- Na detailu obchodního případu a ve všech nabídkách stavů jsou nové volby Klient nemá zájem a Zrušeno.
+- Oba stavy ukončují případ bez vytvoření obchodu či změny smlouvy. Případ vypadne z otevřené pipeline, plánovaných BJ a očekávaných provizí; jeho údaje a historie zůstávají zachované.
+- Rozbalovací archiv uzavřených případů je dostupný v obchodních případech, pipeline i na kartě klienta. Neúspěšný případ lze znovu otevřít výběrem aktivní fáze.
+- Timeline klienta nyní zahrnuje i historii uzavřených případů. Ověřeno ukládání, obnovení, znovuotevření a oddělení od obchodů a smluv.
+
 ## 2026.10.19-3
 - Denní přehled má jednotné sloupce klient, úkol a popis, termín a akce. Typ aktivity je uveden u úkolu; rozdílný počet tlačítek již neposouvá datum.
 - Filtr typu aktivity, dneška s prodlenými úkoly, následujících sedmi dní, všech termínů nebo vlastního intervalu. Řazení podle termínu oběma směry; úkoly bez termínu se nezobrazují s vymyšleným dnešním datem.

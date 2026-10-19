@@ -544,3 +544,6 @@ h1,h2,h3,h4,.detail-title,.client-row b,.portfolio-card b,.contact-value{color:#
 #delegationActivityPages{align-items:center;justify-content:center;margin-top:10px}
 
 @media(max-width:480px){.dash-work-row{grid-template-columns:minmax(0,1fr)}.dash-work-date{grid-column:1;grid-row:3}.dash-task-filters label,.dash-task-filters select{width:100%}}
+
+.case-archive {margin-top:16px;padding:14px;border:1px solid var(--line);border-radius:16px;background:rgba(247,249,251,.7)}
+.case-archive > summary {cursor:pointer;font-weight:750}
