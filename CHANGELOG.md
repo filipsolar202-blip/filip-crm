@@ -1,3 +1,11 @@
+## 2026.10.19-1
+- Dashboard umožňuje vybrat libovolný uložený týden a přepínat na předchozí, další a aktuální týden.
+- Upozornění zpřístupní neuzavřené minulé týdny. Historie obsahuje i rozpracované plány; změna kalendářního týdne cíle nemaže ani neuzavírá.
+- Minulý týden lze dodatečně upravit a vyhodnotit i s méně než třemi nastavenými cíli. Archivované výsledky a reflexe zůstávají zmrazené.
+- Z nesplněného cíle lze přenést zbývající počet do volného místa aktuálního týdne. Přenos zachová původní výsledek, chrání obsazené priority a nevytváří duplicity.
+- Analýza nabízí přímý odkaz na tři cíle vybraného týdne.
+- Nový izolovaný test ověřuje přechod neděle/pondělí, obnovení stránky, dodatečné uzavření, historii a přenos bez ztráty dat.
+
 ## 2026.10.16-2
 - Klientský adresář počítá kontakty, produkty a otevřené případy jedním průchodem místo opakovaného přepočtu celého CRM pro každého klienta.
 - Karta klienta načítá investice pouze vybraného klienta a znovu používá už vypočtené souhrny.

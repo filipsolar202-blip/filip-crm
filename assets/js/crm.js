@@ -13116,6 +13116,8 @@ function renderDashboardWorkQueue() {
   if (more > 0) container.insertAdjacentHTML('beforeend', `<div class="dash-work-empty note">Zobrazuji prvních ${shown.length} položek. Dalších ${more} je bezpečně skryto, aby se Dashboard nezasekl.</div>`);
 }
 let weeklyGoalEditingSlot = 1;
+let selectedWeeklyGoalsWeek = null;
+let weeklyGoalEditingWeek = null;
 const WEEKLY_GOAL_METRICS = {
   manual: ['Ručně', ''],
   contacted_clients: ['Kontaktovaní klienti', 'klientů'],
@@ -13176,18 +13178,63 @@ function weeklyGoalStatusClass(status) {
 function weeklyGoalMetricLabel(goal) {
   return goal.kpiLabel || WEEKLY_GOAL_METRICS[goal.metricType]?.[1] || 'jednotek';
 }
+function activeWeeklyGoalsWeek() {
+  return selectedWeeklyGoalsWeek || weekKey();
+}
+function validWeeklyGoalWeek(key) {
+  return /^\d{4}-W\d{2}$/.test(String(key)) && weekKey(weekRange(key).start) === key;
+}
+function shiftWeeklyGoalWeek(key, amount) {
+  const date = dateObj(weekRange(key).start);
+  date.setDate(date.getDate() + amount * 7);
+  return weekKey(localIsoDate(date));
+}
+function weeklyGoalWeekKeys() {
+  return [...new Set([weekKey(), activeWeeklyGoalsWeek(), ...(state.weeklyGoals || []).map(g => g.weekKey), ...(state.weeklyReviews || []).map(r => r.weekKey)])].filter(validWeeklyGoalWeek).sort((a, b) => b.localeCompare(a));
+}
+function weeklyGoalPeriod(key) {
+  const range = weekRange(key), format = date => dateObj(date).toLocaleDateString('cs-CZ');
+  return `${format(range.start)} – ${format(range.end)}`;
+}
+function weeklyGoalWeekStatus(key) {
+  return weeklyReviewFor(key) ? 'Uzavřený' : weeklyGoalsFor(key).length ? 'Neuzavřený' : 'Bez cílů';
+}
+function selectWeeklyGoalsWeek(key) {
+  if (!validWeeklyGoalWeek(key)) return;
+  selectedWeeklyGoalsWeek = key;
+  renderWeeklyGoals();
+}
+function changeWeeklyGoalsWeek(amount) {
+  selectWeeklyGoalsWeek(shiftWeeklyGoalWeek(activeWeeklyGoalsWeek(), amount));
+}
+function openWeeklyGoalsFromAnalysis() {
+  selectWeeklyGoalsWeek(selectedAnalysisWeek());
+  showView('dashboard');
+  byId('weeklyGoalsGrid')?.closest('.weekly-focus-card')?.scrollIntoView({block:'start'});
+}
+function weeklyGoalWasCarried(goal, key = weekKey()) {
+  return weeklyGoalsFor(key).some(g => g.carriedFromWeek === goal.weekKey && +g.carriedFromSlot === +goal.slot);
+}
 function renderWeeklyGoals() {
   const grid = byId('weeklyGoalsGrid');
   if (!grid) return;
-  const key = weekKey(), range = weekRange(key), review = weeklyReviewFor(key);
-  setText('weeklyGoalsRange', `${key} · ${range.start} až ${range.end}${review ? ' · týden uzavřen' : ''}`);
+  const key = activeWeeklyGoalsWeek(), review = weeklyReviewFor(key), keys = weeklyGoalWeekKeys();
+  setText('weeklyGoalsRange', `${weeklyGoalPeriod(key)} · ${weeklyGoalWeekStatus(key)}${key === weekKey() ? ' · aktuální týden' : ''}`);
+  const select = byId('weeklyGoalsWeekSelect');
+  if (select) select.innerHTML = keys.map(k => `<option value="${k}" ${k === key ? 'selected' : ''}>${esc(weeklyGoalPeriod(k))} · ${weeklyGoalWeekStatus(k)}${k === weekKey() ? ' · aktuální' : ''}</option>`).join('');
+  const pending = keys.filter(k => k < weekKey() && weeklyGoalsFor(k).length && !weeklyReviewFor(k));
+  const pendingBox = byId('weeklyGoalsPending');
+  if (pendingBox) pendingBox.innerHTML = pending.length ? `<div class="weekly-pending"><div><b>Neuzavřené minulé týdny: ${pending.length}</b><p>Cíle zůstávají uložené. Výsledky můžeš doplnit a týden vyhodnotit kdykoliv.</p></div><button class="btn" onclick="selectWeeklyGoalsWeek('${pending[0]}')">Otevřít ${esc(weeklyGoalPeriod(pending[0]))}</button></div>` : '';
   const closeBtn = byId('closeWeeklyGoalsBtn');
-  if (closeBtn) { closeBtn.disabled = !!review; closeBtn.textContent = review ? 'Týden uzavřen' : 'Uzavřít týden'; }
+  if (closeBtn) { closeBtn.disabled = !review && !weeklyGoalsFor(key).length; closeBtn.textContent = review ? 'Zobrazit vyhodnocení' : 'Vyhodnotit týden'; }
+  const setBtn = byId('setWeeklyGoalsBtn');
+  if (setBtn) { setBtn.hidden = !!review; setBtn.textContent = weeklyGoalsFor(key).length ? 'Upravit cíle' : 'Nastavit cíle'; }
   grid.innerHTML = [1, 2, 3].map(slot => {
-    const goal = weeklyGoalForSlot(slot, key);
-    if (!goal) return `<article class="weekly-goal empty"><span class="weekly-goal-number">${slot}</span><h3>Zatím nenastaveno</h3><p class="note">Vyber jednu prioritu, která tento týden posune byznys.</p><button class="btn" onclick="openWeeklyGoalModal(${slot})">+ Nastavit cíl</button></article>`;
+    const goal = review?.goals?.find(g => +g.slot === slot) || weeklyGoalForSlot(slot, key);
+    if (!goal) return `<article class="weekly-goal empty"><span class="weekly-goal-number">${slot}</span><h3>${review ? 'Cíl nebyl nastaven' : 'Zatím nenastaveno'}</h3>${review ? '' : `<p class="note">Vyber jednu prioritu pro tento týden.</p><button class="btn" onclick="openWeeklyGoalModal(${slot})">+ Nastavit cíl</button>`}</article>`;
     const p = weeklyGoalProgress(goal, key), status = weeklyGoalDisplayStatus(goal, p, !!review), late = !review && goal.dueDate && goal.dueDate < today() && p.pct < 100;
-    return `<article class="weekly-goal ${late ? 'late' : ''}"><div class="weekly-goal-head"><span class="weekly-goal-number">${slot}</span><span class="badge ${weeklyGoalStatusClass(status)}">${esc(status)}</span></div><div><span class="eyebrow">${esc(goal.category || 'Jiné')}</span><h3>${esc(goal.title)}</h3></div>${goal.why ? `<p class="note weekly-goal-why">${esc(goal.why)}</p>` : ''}<div class="weekly-goal-score"><b>${num(p.actual)} / ${num(p.target)} ${esc(weeklyGoalMetricLabel(goal))}</b><strong>${num(p.pct)} %</strong></div><div class="weekly-progress"><span style="width:${p.bar}%"></span></div><div class="weekly-goal-foot"><span>${goal.dueDate ? 'Termín ' + esc(goal.dueDate) : 'Bez termínu'}</span>${late ? '<b class="red">Po termínu</b>' : `<span>${esc(WEEKLY_GOAL_METRICS[goal.metricType]?.[0] || 'Ručně')}</span>`}</div>${review ? '' : `<button class="btn slim" onclick="openWeeklyGoalModal(${slot})">Aktualizovat</button>`}</article>`;
+    const carry = key < weekKey() && p.actual < p.target ? weeklyGoalWasCarried(goal) ? '<p class="note">Přeneseno do aktuálního týdne.</p>' : `<button class="btn slim" onclick="carryWeeklyGoalForward(${slot})">Přenést zbývajících ${num(p.target - p.actual)} do aktuálního týdne</button>` : '';
+    return `<article class="weekly-goal ${late ? 'late' : ''}"><div class="weekly-goal-head"><span class="weekly-goal-number">${slot}</span><span class="badge ${weeklyGoalStatusClass(status)}">${esc(status)}</span></div><div><span class="eyebrow">${esc(goal.category || 'Jiné')}</span><h3>${esc(goal.title)}</h3></div>${goal.why ? `<p class="note weekly-goal-why">${esc(goal.why)}</p>` : ''}${goal.carriedFromWeek ? `<p class="note">Navazuje na ${esc(weeklyGoalPeriod(goal.carriedFromWeek))}.</p>` : ''}<div class="weekly-goal-score"><b>${num(p.actual)} / ${num(p.target)} ${esc(weeklyGoalMetricLabel(goal))}</b><strong>${num(p.pct)} %</strong></div><div class="weekly-progress"><span style="width:${p.bar}%"></span></div><div class="weekly-goal-foot"><span>${goal.dueDate ? 'Termín ' + esc(goal.dueDate) : 'Bez termínu'}</span>${late ? '<b class="red">Po termínu</b>' : `<span>${esc(WEEKLY_GOAL_METRICS[goal.metricType]?.[0] || 'Ručně')}</span>`}</div>${review ? '' : `<button class="btn slim" onclick="openWeeklyGoalModal(${slot})">Aktualizovat</button>`}${carry}</article>`;
   }).join('');
   renderWeeklyGoalsHistory();
 }
@@ -13195,19 +13242,23 @@ function renderWeeklyGoalsHistory() {
   const box = byId('weeklyGoalsHistory');
   if (!box) return;
   const rows = [...(state.weeklyReviews || [])].sort((a, b) => String(b.weekKey).localeCompare(String(a.weekKey))).slice(0, 12);
-  if (!rows.length) { box.innerHTML = '<p class="note">Historie vznikne po prvním uzavřeném týdnu.</p>'; return; }
+  const keys = weeklyGoalWeekKeys().filter(k => weeklyGoalsFor(k).length || weeklyReviewFor(k));
+  if (!keys.length) { box.innerHTML = '<p class="note">Cíle se ukládají průběžně. Minulé týdny tu zůstanou i bez uzavření.</p>'; return; }
   const avg = Math.round(rows.reduce((s, x) => s + (+x.totalPct || 0), 0) / rows.length), completed = rows.reduce((s, x) => s + (+x.completed || 0), 0);
-  box.innerHTML = `<details><summary><b>Trend posledních ${num(rows.length)} týdnů</b><span class="note">Průměr ${num(avg)} % · splněno ${num(completed)} z ${num(rows.length * 3)} cílů</span></summary><div class="weekly-history-bars">${rows.map(x => `<button type="button" title="${esc(x.summary || '')}" onclick="openWeeklyReviewModal('${esc(x.weekKey)}')"><span style="height:${Math.min(100, +x.totalPct || 0)}%"></span><b>${esc(String(x.weekKey).replace(/^\d{4}-/, ''))}</b><small>${num(x.totalPct || 0)} %</small></button>`).join('')}</div></details>`;
+  const totalGoals = rows.reduce((s, x) => s + (x.goals?.length || 0), 0);
+  box.innerHTML = `<details><summary><b>Historie cílů a rozpracované týdny · ${keys.length}</b><span class="note">Rozbalit přehled</span></summary><div class="weekly-history-list">${keys.map(k => { const review = weeklyReviewFor(k), stats = review || weeklyReviewAutoSummary(weeklyGoalsFor(k), k); return `<button class="weekly-history-row" type="button" onclick="selectWeeklyGoalsWeek('${k}')"><span><b>${esc(weeklyGoalPeriod(k))}</b><small>${k}</small></span><strong>${num(stats.completed)} / ${(review?.goals || weeklyGoalsFor(k)).length} cílů · ${num(stats.totalPct)} %</strong><span class="badge ${review ? 'green' : 'orange'}">${review ? 'Uzavřený' : 'Čeká na vyhodnocení'}</span></button>`; }).join('')}</div>${rows.length ? `<p class="note">Trend posledních ${rows.length} uzavřených týdnů: průměr ${num(avg)} % · splněno ${completed} z ${totalGoals} cílů</p><div class="weekly-history-bars">${rows.map(x => `<button type="button" title="${esc(x.summary || '')}" onclick="openWeeklyReviewModal('${esc(x.weekKey)}')"><span style="height:${Math.min(100, +x.totalPct || 0)}%"></span><b>${esc(String(x.weekKey).replace(/^\d{4}-/, ''))}</b><small>${num(x.totalPct || 0)} %</small></button>`).join('')}</div>` : ''}</details>`;
 }
 function openWeeklyGoalModal(slot = null) {
-  const key = weekKey();
+  const key = activeWeeklyGoalsWeek();
   if (weeklyReviewFor(key)) return alert('Tento týden už je uzavřený. Jeho výsledky jsou v historii.');
+  weeklyGoalEditingWeek = key;
   weeklyGoalEditingSlot = +(slot || [1, 2, 3].find(x => !weeklyGoalForSlot(x, key)) || 1);
   fillWeeklyGoalEditor();
   openModal('weeklyGoalModal');
 }
 function fillWeeklyGoalEditor() {
-  const key = weekKey(), range = weekRange(key), goal = weeklyGoalForSlot(weeklyGoalEditingSlot, key);
+  const key = weeklyGoalEditingWeek || activeWeeklyGoalsWeek(), range = weekRange(key), goal = weeklyGoalForSlot(weeklyGoalEditingSlot, key);
+  setText('weeklyGoalEditorRange', weeklyGoalPeriod(key));
   byId('weeklyGoalTabs').innerHTML = [1,2,3].map(x => `<button class="btn ${x === weeklyGoalEditingSlot ? 'primary' : ''}" onclick="weeklyGoalEditingSlot=${x};fillWeeklyGoalEditor()">Cíl ${x}${weeklyGoalForSlot(x, key) ? ' ✓' : ''}</button>`).join('');
   setVal('wgTitle', goal?.title || ''); setVal('wgWhy', goal?.why || ''); setVal('wgCategory', goal?.category || 'Obchod');
   setVal('wgMetricType', goal?.metricType || 'manual'); setVal('wgKpiLabel', goal?.kpiLabel || ''); setVal('wgTarget', goal?.target || '');
@@ -13220,7 +13271,8 @@ function toggleWeeklyGoalMetric() {
   if (automatic && !val('wgKpiLabel')) setVal('wgKpiLabel', WEEKLY_GOAL_METRICS[val('wgMetricType')]?.[1] || '');
 }
 function saveWeeklyGoal() {
-  const title = val('wgTitle').trim(), why = val('wgWhy').trim(), target = +val('wgTarget') || 0, key = weekKey();
+  const title = val('wgTitle').trim(), why = val('wgWhy').trim(), target = +val('wgTarget') || 0, key = weeklyGoalEditingWeek || activeWeeklyGoalsWeek();
+  if (weeklyReviewFor(key)) return alert('Tento týden už je uzavřený.');
   if (!title) return alert('Doplň název cíle.');
   if (!why) return alert('Doplň, jak tento cíl konkrétně posune byznys.');
   if (target <= 0) return alert('Cílová hodnota musí být větší než nula.');
@@ -13233,13 +13285,15 @@ function weeklyReviewAutoSummary(goals, key) {
   const stats = goals.map(g => ({g, ...weeklyGoalProgress(g, key)})), completed = stats.filter(x => x.pct >= 100).length,
     totalPct = stats.length ? Math.round(stats.reduce((s, x) => s + Math.min(100, x.pct), 0) / stats.length) : 0,
     best = [...stats].sort((a,b) => b.pct - a.pct)[0], weakest = [...stats].sort((a,b) => a.pct - b.pct)[0];
-  return {completed, totalPct, summary:`Splněno ${completed} ze 3 hlavních cílů. Celkové splnění ${totalPct} %.${best ? ` Největší posun: ${best.g.title} (${best.pct} %).` : ''}${weakest && weakest.pct < 100 ? ` Prostor ke zlepšení: ${weakest.g.title} (${weakest.pct} %).` : ''}`};
+  return {completed, totalPct, summary:`Splněno ${completed} z ${goals.length} nastavených cílů. Celkové splnění ${totalPct} %.${best ? ` Největší posun: ${best.g.title} (${best.pct} %).` : ''}${weakest && weakest.pct < 100 ? ` Prostor ke zlepšení: ${weakest.g.title} (${weakest.pct} %).` : ''}`};
 }
-function openWeeklyReviewModal(key = weekKey()) {
+function openWeeklyReviewModal(key = activeWeeklyGoalsWeek()) {
   const goals = weeklyGoalsFor(key), review = weeklyReviewFor(key), range = weekRange(key);
-  if (!review && goals.length !== 3) return alert('Nejdřív nastav všechny 3 hlavní cíle týdne.');
+  if (!review && !goals.length) return alert('V tomto týdnu zatím není žádný cíl k vyhodnocení.');
   const snapshots = review?.goals || goals.map(g => ({...g, actual:weeklyGoalActual(g, key), pct:weeklyGoalProgress(g, key).pct}));
   setText('weeklyReviewTitle', `${review ? 'Vyhodnocení' : 'Uzavřít'} ${key}`);
+  setText('weeklyReviewRange', weeklyGoalPeriod(key) + (goals.length < 3 && !review ? ` · Nastaveno ${goals.length} ze 3 cílů. Vyhodnocení zahrne nastavené cíle.` : ''));
+  setText('weeklyReviewAutoSummary', review?.summary || weeklyReviewAutoSummary(goals, key).summary);
   byId('weeklyReviewSummary').innerHTML = snapshots.map((g, i) => { const actual = g.actual ?? weeklyGoalActual(g, key), target = +g.target || 1, pct = g.pct ?? Math.round(actual / target * 100), status = pct >= 100 ? 'Splněno' : actual > 0 ? 'Částečně splněno' : 'Nesplněno'; return `<div><span class="weekly-goal-number">${i+1}</span><b>${esc(g.title)}</b><span>${num(actual)} / ${num(target)} · ${num(pct)} % · <strong class="${weeklyGoalStatusClass(status)}">${status}</strong></span></div>`; }).join('');
   const fields = {wrSuccess:'success',wrFailure:'failure',wrDifferent:'different',wrOpportunities:'opportunities',wrWaste:'waste',wrCarry:'carry',wrEfficiency:'efficiency'};
   Object.entries(fields).forEach(([id, prop]) => { setVal(id, review?.reflection?.[prop] || ''); byId(id).disabled = !!review; });
@@ -13249,13 +13303,26 @@ function openWeeklyReviewModal(key = weekKey()) {
   openModal('weeklyReviewModal');
 }
 function closeWeeklyGoals() {
-  const key = byId('weeklyReviewSummary')?.dataset.weekKey || weekKey(), goals = weeklyGoalsFor(key);
-  if (goals.length !== 3) return alert('Nejdřív nastav všechny 3 hlavní cíle týdne.');
+  const key = byId('weeklyReviewSummary')?.dataset.weekKey || activeWeeklyGoalsWeek(), goals = weeklyGoalsFor(key);
+  if (weeklyReviewFor(key)) return;
+  if (!goals.length) return alert('V tomto týdnu zatím není žádný cíl k vyhodnocení.');
   const snapshots = goals.map(g => { const p = weeklyGoalProgress(g, key); g.closedActual = p.actual; g.status = p.pct >= 100 ? 'Splněno' : 'Nesplněno'; return {...g, actual:p.actual, pct:p.pct}; }), auto = weeklyReviewAutoSummary(goals, key);
   const reflection = {success:val('wrSuccess').trim(),failure:val('wrFailure').trim(),different:val('wrDifferent').trim(),opportunities:val('wrOpportunities').trim(),waste:val('wrWaste').trim(),carry:val('wrCarry').trim(),efficiency:val('wrEfficiency').trim()};
   state.weeklyReviews = (state.weeklyReviews || []).filter(x => x.weekKey !== key);
   state.weeklyReviews.push({id:uid(), weekKey:key, closedAt:new Date().toISOString(), range:weekRange(key), goals:snapshots, reflection, ...auto});
   persist(); closeModal('weeklyReviewModal'); renderWeeklyGoals(); saveToast('Týden uzavřen a uložen do historie');
+}
+function carryWeeklyGoalForward(slot) {
+  const sourceKey = activeWeeklyGoalsWeek(), targetKey = weekKey();
+  const goal = weeklyReviewFor(sourceKey)?.goals?.find(g => +g.slot === +slot) || weeklyGoalForSlot(slot, sourceKey);
+  if (!goal || sourceKey >= targetKey || weeklyGoalWasCarried(goal, targetKey)) return;
+  if (weeklyReviewFor(targetKey)) return alert('Aktuální týden je již uzavřený. Cíl nelze přidat.');
+  const freeSlot = [1, 2, 3].find(s => !weeklyGoalForSlot(s, targetKey));
+  if (!freeSlot) return alert('Aktuální týden už má 3 cíle. Nic se nepřepsalo. Otevři aktuální týden a rozhodni, kterou prioritu chceš upravit.');
+  const progress = weeklyGoalProgress(goal, sourceKey), remaining = progress.target - progress.actual;
+  if (remaining <= 0) return;
+  state.weeklyGoals.push({id:uid(), weekKey:targetKey, slot:freeSlot, title:goal.title, why:goal.why, category:goal.category, metricType:goal.metricType, kpiLabel:goal.kpiLabel, target:remaining, manualActual:0, dueDate:weekRange(targetKey).end, status:'Nezahájeno', carriedFromWeek:sourceKey, carriedFromSlot:goal.slot, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString()});
+  persist(); renderWeeklyGoals(); saveToast(`Zbývajících ${num(remaining)} přeneseno do aktuálního týdne. Původní cíl zůstal uložený.`);
 }
 function renderDashboard() {
   renderDashboardMetrics();
@@ -13681,8 +13748,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.16-2';
-const VERSION_NOTE = 'Výrazně rychlejší klientský adresář, filtry a karta klienta i u velké databáze.';
+const VERSION = '2026.10.19-1';
+const VERSION_NOTE = 'Návrat k minulým týdnům, dodatečné vyhodnocení cílů a přenos zbývající práce. Neuzavřené cíle zůstávají dostupné.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
