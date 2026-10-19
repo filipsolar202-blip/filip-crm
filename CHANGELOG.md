@@ -1,3 +1,11 @@
+## 2026.10.19-2
+- Klienti mají ručně nastavitelný rozsah spolupráce: jednotlivý produkt, více oblastí a komplexní správa financí. Staré karty zůstávají bez odhadovaného zařazení.
+- Adresář ukazuje rozsah a produktové oblasti; oba nové filtry lze kombinovat se správcem, kontaktem a hledáním.
+- Rychlý i podrobný zápis aktivity nabízí osobní označení „asistentka“, „automatizace“, „nechat u sebe“ nebo „zatím neposouzeno“.
+- Analýza má rozbalovací přehled času uskutečněných aktivit za zvolený měsíc a samostatný model opakovaných činností. Odhad úspory odečítá čas zadání a kontroly; nesčítá se s evidovanými aktivitami.
+- Nové údaje jsou součástí společné zálohy, ochrany proti ztrátě dat a importu. Při slučování záloh se zachovají i interní aktivity bez klienta.
+- Ověřeno ukládání, filtrování, měsíční výpočty bez dvojího započtení, import bez duplicit a rychlost adresáře s 1 200 klienty.
+
 ## 2026.10.19-1
 - Dashboard umožňuje vybrat libovolný uložený týden a přepínat na předchozí, další a aktuální týden.
 - Upozornění zpřístupní neuzavřené minulé týdny. Historie obsahuje i rozpracované plány; změna kalendářního týdne cíle nemaže ani neuzavírá.

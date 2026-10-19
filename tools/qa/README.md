@@ -8,6 +8,7 @@ node tools/qa/google-sync.cjs
 python3 tools/qa/storage.py
 node tools/qa/regression.cjs
 node tools/qa/weekly-goals.cjs
+node tools/qa/delegation.cjs
 ```
 
 Prohlížečový test vyžaduje Playwright a Chrome/Chromium. runtime.cjs hledá instalovaný balík Playwright nebo sdílený běhový balík Codex. Na Macu používá Chrome z Applications; jiný prohlížeč lze zadat proměnnou CRM_QA_BROWSER. Test potřebuje přístup ke spuštění prohlížeče.

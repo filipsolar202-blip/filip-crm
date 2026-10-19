@@ -78,6 +78,7 @@ function def() {
     analysisPlans: {},
     weeklyGoals: [],
     weeklyReviews: [],
+    delegationProcesses: [],
     contractOpportunityStatuses: {},
     verifiedDuplicates: {},
     investmentRecords: [],
@@ -104,7 +105,7 @@ function normalizeState(s) {
   delete s.mailHeaders;
   delete s.aiInbox;
   try { localStorage.removeItem('filip_crm_ai_active_job'); } catch (e) {}
-  ['clients', 'contracts', 'deals', 'activities', 'referrals', 'referrerPayouts', 'managementPartners', 'managementPayouts', 'notes', 'opportunities', 'investmentRecords', 'investmentSnapshots', 'commissionImports', 'analysisEntries', 'campaigns', 'externalInvestments', 'investmentForecasts', 'weeklyGoals', 'weeklyReviews'].forEach(k => s[k] = Array.isArray(s[k]) ? s[k] : []);
+  ['clients', 'contracts', 'deals', 'activities', 'referrals', 'referrerPayouts', 'managementPartners', 'managementPayouts', 'notes', 'opportunities', 'investmentRecords', 'investmentSnapshots', 'commissionImports', 'analysisEntries', 'campaigns', 'externalInvestments', 'investmentForecasts', 'weeklyGoals', 'weeklyReviews', 'delegationProcesses'].forEach(k => s[k] = Array.isArray(s[k]) ? s[k] : []);
   if (!s.managementPartners.length) s.managementPartners = base.managementPartners;
   if (!s.managementPartners.some(x => x.id === 'filip')) s.managementPartners.unshift(base.managementPartners[0]);
   s.clients.forEach(c => { if (!c.managementPartnerId) c.managementPartnerId = 'filip'; });
@@ -117,7 +118,7 @@ function normalizeState(s) {
   Object.values(s.plans).forEach(p => normalizePlan(p, s.settings.bjCoef));
   dedupeInvestmentRecordsInState(s);
   dedupeInvestmentSnapshotsInState(s);
-  let maxId = Math.max(0, ...['clients', 'contracts', 'deals', 'activities', 'referrals', 'referrerPayouts', 'managementPayouts', 'notes', 'opportunities', 'commissionImports', 'investmentSnapshots', 'analysisEntries', 'campaigns', 'externalInvestments', 'investmentForecasts', 'weeklyGoals', 'weeklyReviews'].flatMap(k => s[k].map(x => +x.id || 0)));
+  let maxId = Math.max(0, ...['clients', 'contracts', 'deals', 'activities', 'referrals', 'referrerPayouts', 'managementPayouts', 'notes', 'opportunities', 'commissionImports', 'investmentSnapshots', 'analysisEntries', 'campaigns', 'externalInvestments', 'investmentForecasts', 'weeklyGoals', 'weeklyReviews', 'delegationProcesses'].flatMap(k => s[k].map(x => +x.id || 0)));
   if (!s.nextId || s.nextId <= maxId) s.nextId = maxId + 1;
   return s;
 }
@@ -289,7 +290,7 @@ function diskFileUrl(ref) {
   return DISK_STORAGE_URL + '/file?ref=' + encodeURIComponent(ref || '');
 }
 function diskStateWeight(source) {
-  const keys=['clients','contracts','deals','opportunities','notes','activities','investmentRecords','investmentSnapshots','analysisEntries'];
+  const keys=['clients','contracts','deals','opportunities','notes','activities','investmentRecords','investmentSnapshots','analysisEntries','delegationProcesses'];
   return keys.reduce((sum,key)=>sum+(Array.isArray(source?.[key])?source[key].length:0),0);
 }
 function queueDiskSave(reason = 'autosave') {
@@ -2222,7 +2223,7 @@ function openClientMergeModal(ids) {
   body.innerHTML = `<div class="merge-warning"><b>Důvod duplicity: ${esc(reason)}.</b><br><span class="note">${reason === 'Rodné číslo / IČO' ? 'Tuhle skupinu je vhodné sloučit. Rodné číslo/IČO bereme jako nejsilnější identifikátor klienta.' : 'Tady raději zkontroluj, jestli jde opravdu o stejného člověka. Stejný telefon nebo e-mail může být i u rodiny.'}</span></div><div class="merge-grid"><div class="merge-client-box"><h3>1. Vyber hlavního klienta</h3><div class="field"><label>Do této karty se vše sloučí</label><select id="mergeMaster">${clients.map(c => `<option value="${c.id}" ${c.id === master.id ? 'selected' : ''}>${esc(mergeClientOptionLabel(c))}</option>`).join('')}</select></div><div class="divider"></div>${clients.map(c => {
     const n = mergeLinkCounts(c.id);
     return `<div class="event"><small>${esc(c.birthId || 'bez RČ')}</small><div><b>${esc(clientName(c))}</b><br><span class="note">${esc([c.phone, c.email, c.altEmails, c.address].filter(Boolean).join(' · ') || 'bez kontaktů')}</span><div class="chips"><span class="chip">${num(n.contracts)} smluv</span><span class="chip">${num(n.deals)} obchodů</span><span class="chip">${num(n.opps)} obchodních případů</span><span class="chip">${num(n.fki)} FKI záznamů</span><span class="chip">${num(n.snapshots)} aktualizací investic</span>${leadSourceBadge(c)}</div></div></div>`;
-  }).join('')}</div><div class="merge-client-box"><h3>2. Vyber správné údaje</h3>${mergeFieldSelect('name', 'Jméno / firma', clients)}${mergeFieldSelect('birthId', 'RČ / IČO', clients)}${mergeFieldSelect('phone', 'Telefon', clients)}${mergeFieldSelect('email', 'E-mail', clients)}${mergeFieldSelect('altEmails', 'Další e-maily', clients)}${mergeFieldSelect('contactPref', 'Preferovaný kontakt', clients)}${mergeFieldSelect('address', 'Adresa', clients)}${mergeFieldSelect('leadType', 'Zdroj klienta', clients)}${mergeFieldSelect('leadSource', 'Typař / doporučil', clients)}${mergeFieldSelect('leadDate', 'Datum doporučení', clients)}${mergeFieldSelect('leadCommissionPct', 'Provize typaři %', clients)}${mergeFieldSelect('referrerRole', 'Role typaře/doporučitele', clients)}${mergeFieldSelect('referrerCommissionPct', 'Domluvená provize typaři %', clients)}${mergeFieldSelect('note', 'Poznámka', clients)}</div></div><div class="divider"></div><h3>Možné stejné smlouvy při sloučení</h3><div class="table-wrap"><table class="compact-table"><thead><tr><th>Smlouva</th><th>Klienti</th><th>Co se stane</th></tr></thead><tbody>${conflicts.map(g => `<tr class="row-soon"><td><b>${esc(g[0].number || 'bez čísla')}</b><br><span class="note">${esc([g[0].type, g[0].company, g[0].product].filter(Boolean).join(' · '))}</span></td><td>${g.map(s => esc(clientName(findClient(s.clientId)))).join('<br>')}</td><td>Obě smlouvy zůstanou zachované pod hlavní kartou. CRM nic automaticky nesmaže.</td></tr>`).join('') || '<tr><td colspan="3" class="note">Nevidím stejné číslo smlouvy ani stejnou smlouvu mezi těmito klienty.</td></tr>'}</tbody></table></div><div class="actions" style="justify-content:flex-end;margin-top:12px"><button class="btn" onclick="closeModal('mergeClientModal')">Zrušit</button><button class="btn primary" onclick="mergeClientsFromModal()">Sloučit klienty</button></div>`;
+  }).join('')}</div><div class="merge-client-box"><h3>2. Vyber správné údaje</h3>${mergeFieldSelect('name', 'Jméno / firma', clients)}${mergeFieldSelect('birthId', 'RČ / IČO', clients)}${mergeFieldSelect('phone', 'Telefon', clients)}${mergeFieldSelect('email', 'E-mail', clients)}${mergeFieldSelect('altEmails', 'Další e-maily', clients)}${mergeFieldSelect('contactPref', 'Preferovaný kontakt', clients)}${mergeFieldSelect('address', 'Adresa', clients)}${mergeFieldSelect('leadType', 'Zdroj klienta', clients)}${mergeFieldSelect('leadSource', 'Typař / doporučil', clients)}${mergeFieldSelect('leadDate', 'Datum doporučení', clients)}${mergeFieldSelect('leadCommissionPct', 'Provize typaři %', clients)}${mergeFieldSelect('referrerRole', 'Role typaře/doporučitele', clients)}${mergeFieldSelect('referrerCommissionPct', 'Domluvená provize typaři %', clients)}${mergeFieldSelect('cooperationScope', 'Rozsah spolupráce', clients)}${mergeFieldSelect('note', 'Poznámka', clients)}</div></div><div class="divider"></div><h3>Možné stejné smlouvy při sloučení</h3><div class="table-wrap"><table class="compact-table"><thead><tr><th>Smlouva</th><th>Klienti</th><th>Co se stane</th></tr></thead><tbody>${conflicts.map(g => `<tr class="row-soon"><td><b>${esc(g[0].number || 'bez čísla')}</b><br><span class="note">${esc([g[0].type, g[0].company, g[0].product].filter(Boolean).join(' · '))}</span></td><td>${g.map(s => esc(clientName(findClient(s.clientId)))).join('<br>')}</td><td>Obě smlouvy zůstanou zachované pod hlavní kartou. CRM nic automaticky nesmaže.</td></tr>`).join('') || '<tr><td colspan="3" class="note">Nevidím stejné číslo smlouvy ani stejnou smlouvu mezi těmito klienty.</td></tr>'}</tbody></table></div><div class="actions" style="justify-content:flex-end;margin-top:12px"><button class="btn" onclick="closeModal('mergeClientModal')">Zrušit</button><button class="btn primary" onclick="mergeClientsFromModal()">Sloučit klienty</button></div>`;
   openModal('mergeClientModal');
 }
 function selectedMergeClientFor(field) {
@@ -2274,7 +2275,7 @@ function mergeClientsFromModal() {
   const originalNames = [...new Set(clients.flatMap(clientAliasNames))],
     originalBirthIds = [...new Set(clients.map(c => normalizeStrongId(c.birthId)).filter(Boolean))],
     originalClientIds = new Set(clients.map(c => String(c.id)));
-  ['name', 'birthId', 'phone', 'email', 'altEmails', 'contactPref', 'address', 'leadType', 'leadSource', 'leadDate', 'leadCommissionPct', 'referrerRole', 'referrerCommissionPct', 'note'].forEach(k => {
+  ['name', 'birthId', 'phone', 'email', 'altEmails', 'contactPref', 'address', 'leadType', 'leadSource', 'leadDate', 'leadCommissionPct', 'referrerRole', 'referrerCommissionPct', 'cooperationScope', 'note'].forEach(k => {
     const src = selectedMergeClientFor(k);
     if (src && src[k]) master[k] = src[k];
   });
@@ -3088,7 +3089,7 @@ function buildClientDirectoryDataset() {
   const now = today(), byClient = new Map(), clientsById = new Map(), clientsByBirthId = new Map(), clientsByName = new Map();
   state.clients.forEach(c => {
     const id = String(c.id), created = clientCreatedDate(c);
-    byClient.set(id, {c, s:{products:0, open:0, last:'', contactDays:null, created, createdDays:clientDaysSince(created)}, productKeys:new Set()});
+    byClient.set(id, {c, s:{products:0, open:0, last:'', contactDays:null, created, createdDays:clientDaysSince(created)}, productKeys:new Set(), areas:new Set()});
     clientsById.set(id, c);
     const birthId = normalizeStrongId(c.birthId);
     if (birthId) clientsByBirthId.set(birthId, c);
@@ -3114,22 +3115,26 @@ function buildClientDirectoryDataset() {
   });
   (state.contracts || []).forEach(x => {
     const row = rowFor(x.clientId);
-    if (row) row.productKeys.add(['s', x.type, x.company, x.product, x.number || x.id].join('|'));
+    if (row) { row.productKeys.add(['s', x.type, x.company, x.product, x.number || x.id].join('|')); row.areas.add(areaForContract(x)); }
   });
   (state.investmentSnapshots || []).filter(x => !x.portfolioReplacedBy).forEach(x => {
     const row = rowFor(x.clientId);
     if (!row) return;
+    row.areas.add(isPensionReportItem(x) ? 'penze' : investmentAreaOfItem(x));
     const area = isPensionReportItem(x) ? 'p' : 'i';
     row.productKeys.add([area, x.isin || '', x.company || '', x.product || x.kind || '', x.number || ''].join('|'));
   });
   (state.investmentRecords || []).filter(r => !r.portfolioReplacedBy && isFkiReportRecord(r)).forEach(r => {
     const rc = normalizeStrongId(invBirthId(r)), rawId = String(invClientId(r) || '').replace(/^CL[_-]?/i, ''), name = invInvestor(r),
       client = (rc && clientsByBirthId.get(rc)) || clientsById.get(rawId) || clientsByName.get(norm(name)) || clientsByName.get(personNameKey(name)), row = client && rowFor(client.id);
-    if (row) row.productKeys.add(['i', 'fki', invPositionKey(r)].join('|'));
+    if (row) { row.productKeys.add(['i', 'fki', invPositionKey(r)].join('|')); row.areas.add('fki'); }
   });
-  visibleDeals().filter(d => !d.portfolioReplacedBy && !d.portfolioPending && ['investice','fki'].includes(areaForDeal(d))).forEach(d => {
+  visibleDeals().filter(d => !d.portfolioReplacedBy && !d.portfolioPending).forEach(d => {
     const row = rowFor(d.clientId);
-    if (row) row.productKeys.add(['i', areaForDeal(d), d.isin || '', d.company || '', d.product || d.category || ''].join('|'));
+    if (row) {
+      row.areas.add(areaForDeal(d));
+      if (['investice','fki'].includes(areaForDeal(d))) row.productKeys.add(['i', areaForDeal(d), d.isin || '', d.company || '', d.product || d.category || ''].join('|'));
+    }
   });
   const rows = [...byClient.values()].map(row => {
     row.s.products = row.productKeys.size;
@@ -3153,22 +3158,23 @@ function renderClients() {
   if (directory) directory.classList.toggle('hidden', !clientDirectoryMode);
   if (detail) detail.classList.toggle('active', !clientDirectoryMode);
   const q = norm(val('clientSearch')), selectedManager = val('clientManagementFilter'), contactFilter = val('clientContactFilter'),
-    productFilter = val('clientProductFilter'), sort = val('clientSort') || 'name';
+    productFilter = val('clientProductFilter'), scopeFilter = val('clientScopeFilter'), areaFilter = val('clientAreaFilter'), sort = val('clientSort') || 'name';
   fillManagementSelect('clientManagementFilter', selectedManager, true);
   const all = buildClientDirectoryDataset();
   let list = all.filter(x => !selectedManager || clientManagementId(x.c) === selectedManager)
     .filter(x => !q || norm([x.c.name, x.c.phone, x.c.email, x.c.altEmails, x.c.birthId, x.c.address].join(' ')).includes(q))
     .filter(x => !contactFilter || contactFilter === 'never' && !x.s.last || contactFilter === 'stale' && (x.s.contactDays === null || x.s.contactDays > 180) || contactFilter === 'recent' && x.s.contactDays !== null && x.s.contactDays <= 30)
     .filter(x => !productFilter || productFilter === 'one' && x.s.products === 1 || productFilter === 'open' && x.s.open > 0);
+  list = list.filter(x => !scopeFilter || (scopeFilter === 'unset' ? !x.c.cooperationScope : x.c.cooperationScope === scopeFilter)).filter(x => !areaFilter || x.areas.has(areaFilter));
   list.sort((a, b) => sort === 'created' ? String(b.s.created).localeCompare(String(a.s.created)) : sort === 'products' ? b.s.products - a.s.products || clientName(a.c).localeCompare(clientName(b.c), 'cs') : sort === 'contact' ? (b.s.contactDays ?? 999999) - (a.s.contactDays ?? 999999) : clientName(a.c).localeCompare(clientName(b.c), 'cs'));
   setText('clientCountLabel', `(${num(list.length)}/${num(state.clients.length)})`);
   renderClientDirectoryMetrics(all, list);
   const body = byId('clientList');
-  if (body) body.innerHTML = list.map(({c, s}) => {
+  if (body) body.innerHTML = list.map(({c, s, areas}) => {
     const p = managementPartner(clientManagementId(c)), contact = [c.email, c.phone].filter(Boolean).join(' · ') || 'bez kontaktu',
       last = s.last ? `${dateObj(s.last).toLocaleDateString('cs-CZ')} (${num(s.contactDays)} d)` : 'nikdy', created = s.created ? dateObj(s.created).toLocaleDateString('cs-CZ') : 'neuvedeno';
-    return `<tr class="client-directory-row client-row" onclick="selectClient(${c.id})"><td><div class="client-directory-person"><div class="avatar">${esc(initials(c.name))}</div><div><b>${esc(clientName(c))}</b><small>${esc(contact)}</small></div></div></td><td><div class="manager-avatar ${p.own ? '' : 'partner'}" title="${esc((p.company || '') + ' · ' + p.name)}">${esc(initials(p.name))}</div></td><td><b>${num(s.products)}</b><span class="client-contact-age">produktů</span></td><td>${s.open ? `<span class="badge blue">${num(s.open)} v řešení</span>` : '<span class="note">0</span>'}</td><td><b>${esc(last)}</b><span class="client-contact-age ${s.contactDays === null || s.contactDays > 180 ? 'stale' : ''}">${s.contactDays === null ? 'kontakt chybí' : s.contactDays > 180 ? 'zkontrolovat kontakt' : 'kontakt evidován'}</span></td><td>${esc(created)}${s.createdDays !== null ? `<span class="client-contact-age">před ${num(s.createdDays)} dny</span>` : ''}</td><td><button class="btn slim" onclick="event.stopPropagation();selectClient(${c.id})">Otevřít</button></td></tr>`;
-  }).join('') || '<tr><td colspan="7" class="note">Tomuto výběru neodpovídá žádný klient.</td></tr>';
+    return `<tr class="client-directory-row client-row" onclick="selectClient(${c.id})"><td><div class="client-directory-person"><div class="avatar">${esc(initials(c.name))}</div><div><b>${esc(clientName(c))}</b><small>${esc(contact)}</small></div></div></td><td><div class="manager-avatar ${p.own ? '' : 'partner'}" title="${esc((p.company || '') + ' · ' + p.name)}">${esc(initials(p.name))}</div></td><td>${esc(c.cooperationScope || 'Neuvedeno')}</td><td><b>${num(s.products)}</b><span class="client-contact-age">produktů · ${esc([...areas].map(areaLabel).join(', '))}</span></td><td>${s.open ? `<span class="badge blue">${num(s.open)} v řešení</span>` : '<span class="note">0</span>'}</td><td><b>${esc(last)}</b><span class="client-contact-age ${s.contactDays === null || s.contactDays > 180 ? 'stale' : ''}">${s.contactDays === null ? 'kontakt chybí' : s.contactDays > 180 ? 'zkontrolovat kontakt' : 'kontakt evidován'}</span></td><td>${esc(created)}${s.createdDays !== null ? `<span class="client-contact-age">před ${num(s.createdDays)} dny</span>` : ''}</td><td><button class="btn slim" onclick="event.stopPropagation();selectClient(${c.id})">Otevřít</button></td></tr>`;
+  }).join('') || '<tr><td colspan="8" class="note">Tomuto výběru neodpovídá žádný klient.</td></tr>';
   if (!clientDirectoryMode) renderClientDetail();
 }
 function openClientDirectory() {
@@ -3602,7 +3608,7 @@ function renderClientDetail() {
   const age = clientAgeFromBirthId(c.birthId), invSummary = clientInvestmentSummary(c.id), pensionSummary = clientPensionSummary(c.id),
     last = clientLastContact(c), lastDays = clientDaysSince(last), next = clientNextAction(c.id), activeOpps = opps.filter(isOpenOpportunity),
     totalAum = invSummary.total + pensionSummary.total;
-  el.innerHTML = `<div class="client-back-row"><button class="client-back-button" onclick="openClientDirectory()">← Zpět na seznam klientů</button><div class="client-primary-actions">${clientSectionAction(c)}<button class="btn" onclick="openNoteModal(${c.id})">+ Poznámka</button><button class="btn" onclick="openClientModal(${c.id})">Upravit klienta</button></div></div><div class="client-hero"><div class="avatar">${esc(initials(c.name))}</div><div class="detail-title"><div class="eyebrow">Karta klienta · ${managementBadge(c)}</div><h2>${esc(clientName(c))}${age !== null ? `<span class="client-age">· ${num(age)} let</span>` : ''}</h2><div class="chips"><span class="badge ${lastDays === null || lastDays > 180 ? 'orange' : 'green'}">${last ? `Poslední kontakt ${dateObj(last).toLocaleDateString('cs-CZ')} · před ${num(lastDays)} dny` : 'Kontakt zatím neevidován'}</span>${c.birthId ? `<span class="chip">RČ/IČO: ${esc(c.birthId)}</span>` : ''}${clientSourceSummary(c)}</div></div>${contactGrid(c)}</div><div class="client-summary-strip"><div class="client-summary-tile"><small>Aktivní případy</small><b>${num(activeOpps.length)}</b><span>${activeOpps[0] ? esc(activeOpps[0].product || activeOpps[0].category) : 'nic není v řešení'}</span></div><div class="client-summary-tile"><small>Portfolio a penze</small><b>${money(totalAum)}</b><span>${num(invSummary.items.length + pensionSummary.items.length)} evidovaných pozic</span></div><div class="client-summary-tile"><small>Smlouvy</small><b>${num(contracts.length)}</b><span>${num(deals.length)} uzavřených obchodů</span></div><div class="client-summary-tile"><small>Další krok</small><b>${next ? dateObj(next.date).toLocaleDateString('cs-CZ') : 'Není'}</b><span>${next ? esc([next.title,next.text].filter(Boolean).join(' · ')) : 'naplánujte další kontakt'}</span></div></div><div class="subnav"></div>`;
+  el.innerHTML = `<div class="client-back-row"><button class="client-back-button" onclick="openClientDirectory()">← Zpět na seznam klientů</button><div class="client-primary-actions">${clientSectionAction(c)}<button class="btn" onclick="openNoteModal(${c.id})">+ Poznámka</button><button class="btn" onclick="openClientModal(${c.id})">Upravit klienta</button></div></div><div class="client-hero"><div class="avatar">${esc(initials(c.name))}</div><div class="detail-title"><div class="eyebrow">Karta klienta · ${managementBadge(c)}</div><h2>${esc(clientName(c))}${age !== null ? `<span class="client-age">· ${num(age)} let</span>` : ''}</h2><div class="chips"><span class="badge ${lastDays === null || lastDays > 180 ? 'orange' : 'green'}">${last ? `Poslední kontakt ${dateObj(last).toLocaleDateString('cs-CZ')} · před ${num(lastDays)} dny` : 'Kontakt zatím neevidován'}</span>${c.birthId ? `<span class="chip">RČ/IČO: ${esc(c.birthId)}</span>` : ''}${clientSourceSummary(c)}<span class="chip">Rozsah: ${esc(c.cooperationScope || 'Neuvedeno')}</span></div></div>${contactGrid(c)}</div><div class="client-summary-strip"><div class="client-summary-tile"><small>Aktivní případy</small><b>${num(activeOpps.length)}</b><span>${activeOpps[0] ? esc(activeOpps[0].product || activeOpps[0].category) : 'nic není v řešení'}</span></div><div class="client-summary-tile"><small>Portfolio a penze</small><b>${money(totalAum)}</b><span>${num(invSummary.items.length + pensionSummary.items.length)} evidovaných pozic</span></div><div class="client-summary-tile"><small>Smlouvy</small><b>${num(contracts.length)}</b><span>${num(deals.length)} uzavřených obchodů</span></div><div class="client-summary-tile"><small>Další krok</small><b>${next ? dateObj(next.date).toLocaleDateString('cs-CZ') : 'Není'}</b><span>${next ? esc([next.title,next.text].filter(Boolean).join(' · ')) : 'naplánujte další kontakt'}</span></div></div><div class="subnav"></div>`;
   const labels = {
     overview: 'Přehled',
     portfolio: 'Portfolio',
@@ -5518,6 +5524,7 @@ function openClientModal(id = null) {
   setVal('cReferrerRole', c.referrerRole || '');
   setVal('cReferrerCommissionPct', c.referrerCommissionPct || '');
   fillManagementSelect('cManagementPartner', c.managementPartnerId || ownManagementId());
+  setVal('cCooperationScope', c.cooperationScope || '');
   setVal('cNote', c.note || '');
   toggleLeadFields();
   toggleReferrerFields();
@@ -5566,6 +5573,7 @@ function saveClient() {
     referrerRole: val('cReferrerRole'),
     referrerCommissionPct: val('cReferrerRole') === 'tipar' ? parseMoney(val('cReferrerCommissionPct')) : 0,
     managementPartnerId: val('cManagementPartner') || ownManagementId(),
+    cooperationScope: val('cCooperationScope'),
     note: val('cNote').trim()
   });
   const linked = linkInvestmentRecordsToClient(c);
@@ -7364,7 +7372,7 @@ function mergeIncomingStateCore(incoming) {
   incoming.clients.forEach(ic => {
     let c = findMatchingClient(ic);
     if (c) {
-      ['phone', 'email', 'altEmails', 'birthId', 'address', 'note', 'contactPref'].forEach(k => {
+      ['phone', 'email', 'altEmails', 'birthId', 'address', 'note', 'contactPref', 'cooperationScope'].forEach(k => {
         if (!c[k] && ic[k]) c[k] = ic[k];
       });
       count.skipped++;
@@ -7482,10 +7490,11 @@ function mergeIncomingStateCore(incoming) {
     ...(incoming.trailSettings || {})
   };
   incoming.activities.forEach(ia => {
-    const clientId = mappedClient(ia.clientId);
-    if (!clientId) return;
-    const exists = state.activities.some(a => String(a.clientId) === String(clientId) && a.date === ia.date && a.type === ia.type && norm(a.text) === norm(ia.text));
+    const clientId = ia.clientId ? mappedClient(ia.clientId) : null;
+    if (ia.clientId && !clientId) return;
+    const exists = state.activities.find(a => String(a.clientId || '') === String(clientId || '') && a.date === ia.date && a.type === ia.type && norm(a.text) === norm(ia.text));
     if (exists) {
+      if (!exists.delegationRoute && ia.delegationRoute) exists.delegationRoute = ia.delegationRoute;
       count.skipped++;
       return;
     }
@@ -11376,13 +11385,17 @@ function mergeIncomingState(incoming) {
     });
     added++;
   });
+  incomingState.delegationProcesses.forEach(p => {
+    if (state.delegationProcesses.some(x => p.syncId ? x.syncId === p.syncId : x.title === p.title && x.route === p.route && x.minutes === p.minutes && x.count === p.count && x.retained === p.retained)) return;
+    state.delegationProcesses.push({...p, id:uid()});
+  });
   count.referrerPayouts = added;
   count.skipped = (count.skipped || 0) + skipped;
   return count;
 }
 function stateCountsText(s = state) {
   s = normalizeState(s);
-  return `${num((s.clients || []).length)} klientů · ${num((s.contracts || []).length)} smluv · ${num((s.deals || []).length)} obchodů · ${num((s.opportunities || []).length)} obchodních případů · ${num((s.notes || []).length)} poznámek · ${num((s.analysisEntries || []).length)} analytických aktivit · ${num((s.weeklyGoals || []).length)} týdenních cílů · ${num((s.weeklyReviews || []).length)} uzavřených týdnů · ${num((s.investmentRecords || []).length)} investičních záznamů · ${num((s.investmentSnapshots || []).length)} aktualizací investic · ${num((s.externalInvestments || []).length)} investic mimo správu · ${num((s.investmentForecasts || []).length)} prognóz · ${num((s.activities || []).length)} aktivit · ${num((s.commissionImports || []).length)} provizních importů · ${num((s.referrerPayouts || []).length)} výplat tipařům`;
+  return `${num((s.clients || []).length)} klientů · ${num((s.contracts || []).length)} smluv · ${num((s.deals || []).length)} obchodů · ${num((s.opportunities || []).length)} obchodních případů · ${num((s.notes || []).length)} poznámek · ${num((s.analysisEntries || []).length)} analytických aktivit · ${num((s.weeklyGoals || []).length)} týdenních cílů · ${num((s.weeklyReviews || []).length)} uzavřených týdnů · ${num((s.delegationProcesses || []).length)} činností k delegování · ${num((s.investmentRecords || []).length)} investičních záznamů · ${num((s.investmentSnapshots || []).length)} aktualizací investic · ${num((s.externalInvestments || []).length)} investic mimo správu · ${num((s.investmentForecasts || []).length)} prognóz · ${num((s.activities || []).length)} aktivit · ${num((s.commissionImports || []).length)} provizních importů · ${num((s.referrerPayouts || []).length)} výplat tipařům`;
 }
 function criticalBackupCounts(s = state) {
   s = normalizeState(s);
@@ -11400,6 +11413,7 @@ function criticalBackupCounts(s = state) {
     analysisEntries: s.analysisEntries.length,
     weeklyGoals: (s.weeklyGoals || []).length,
     weeklyReviews: (s.weeklyReviews || []).length,
+    delegationProcesses: (s.delegationProcesses || []).length,
     commissionImports: (s.commissionImports || []).length,
     referrerPayouts: (s.referrerPayouts || []).length,
     referrals: (s.referrals || []).length
@@ -12925,6 +12939,7 @@ function openQuickActivity(clientId = null, preset = 'phone') {
   const remembered = localStorage.getItem('filip_crm_quick_activity_client'), chosen = clientId || selectedClientId || remembered || '';
   fillOptionalClientSelect('qaClient', chosen);
   setVal('qaClient', chosen && state.clients.some(c => String(c.id) === String(chosen)) ? chosen : '');
+  setVal('qaDelegationRoute', '');
   setVal('qaDate', today()); setVal('qaText', ''); setVal('qaFollowType', ''); setVal('qaFollowDate', ''); setVal('qaFollowTime', '09:00'); setVal('qaFollowText', '');
   const details = byId('quickActivityModal')?.querySelector('.quick-activity-follow');
   if (details) details.open = false;
@@ -12945,7 +12960,7 @@ function saveQuickClientActivity() {
   if (!p.optionalClient && !clientId) return alert('Vyber klienta.');
   const outcome = val('qaOutcome') || p.outcome, completed = outcome !== 'agreed', activity = {
     id:uid(), clientId, type:p.type, date:val('qaDate') || today(), time:'', duration:parseMoney(val('qaDuration')) || 0,
-    location:'', text:val('qaText').trim(), outcome, analysisType:p.analysisType, source:'quick_activity',
+    location:'', delegationRoute:val('qaDelegationRoute'), text:val('qaText').trim(), outcome, analysisType:p.analysisType, source:'quick_activity',
     followType:val('qaFollowType') || '', followDate:val('qaFollowDate') || '', followTime:val('qaFollowTime') || '', followText:val('qaFollowText').trim(),
     completed, completedAt:completed ? today() : '', createdAt:new Date().toISOString(), updatedAt:new Date().toISOString()
   };
@@ -12963,7 +12978,8 @@ function openActivityModal(clientId = null, id = null) {
   activities_aSet('aType', a?.type || 'Telefon');
   activities_aSet('aDate', a?.date || activities_aToday());
   activities_aSet('aTime', a?.time || '09:00');
-  activities_aSet('aDuration', a?.duration || 60);
+  activities_aSet('aDuration', a?.duration ?? 60);
+  setVal('aDelegationRoute', a?.delegationRoute || '');
   activities_aSet('aLocation', a?.location || '');
   activities_aSet('aOutcome', activities_aOutcome(a));
   activities_aSet('aAnalysisType', activities_aDefaultAnalysisType(a || {
@@ -12990,7 +13006,7 @@ function saveActivity(markDone = false) {
     };
     state.activities.push(a);
   }
-  const outcome = activities_aVal('aOutcome') || 'agreed';
+  const outcome = markDone ? 'realized' : activities_aVal('aOutcome') || 'agreed';
   const completed = !!markDone || outcome === 'realized' || outcome === 'no_show' || outcome === 'moved';
   Object.assign(a, {
     clientId,
@@ -12998,6 +13014,7 @@ function saveActivity(markDone = false) {
     date: activities_aVal('aDate') || activities_aToday(),
     time: activities_aVal('aTime'),
     duration: activities_aNum(activities_aVal('aDuration')) || 0,
+    delegationRoute: val('aDelegationRoute'),
     location: activities_aVal('aLocation').trim(),
     text: activities_aVal('aText').trim(),
     outcome,
@@ -13666,6 +13683,81 @@ function renderAnalysisWeekHistory() {
   });
   table.innerHTML = `<thead><tr><th>Týden</th><th>Domluveno</th><th>Realizováno</th><th>Úspěšnost</th><th>Volání</th><th>Schůzky</th><th>Doporučení</th><th>Podpisy</th><th></th></tr></thead><tbody>${out.map(x => `<tr><td><b>${quickAnalysis_html(x.k)}</b><br><span class="note">${quickAnalysis_html(x.r.start)} až ${quickAnalysis_html(x.r.end)}</span></td><td class="num">${quickAnalysis_fmt(x.all.agreed)}</td><td class="num green">${quickAnalysis_fmt(x.all.realized)}</td><td class="num">${x.pct === null ? 'bez domluvených' : quickAnalysis_fmt(x.pct) + ' %'}</td><td class="num">${quickAnalysis_fmt(x.a.calls)}<br><span class="note">${quickAnalysis_fmt(x.a.minutes)} min</span></td><td class="num">${quickAnalysis_fmt(x.a.meetingsExisting)}</td><td class="num">${quickAnalysis_fmt(x.a.referrals)}</td><td class="num">${quickAnalysis_fmt(x.a.signatures)}</td><td><button class="btn slim" onclick="setAnalysisWeek('${quickAnalysis_html(x.k)}')">Otevřít</button></td></tr>`).join('') || '<tr><td colspan="9" class="note">Zatím není uložený žádný týden.</td></tr>'}</tbody>`;
 }
+const DELEGATION_ROUTES = {'':'Zatím neposouzeno', self:'Nechat u sebe', assistant:'Kandidát pro asistentku', automation:'Kandidát na automatizaci'};
+let editingDelegationProcessId = null;
+let delegationActivityPage = 0;
+let delegationActivityMonth = '';
+function delegationRoute(value) {
+  return Object.hasOwn(DELEGATION_ROUTES, value) ? value : '';
+}
+function delegationOptions(value) {
+  return Object.entries(DELEGATION_ROUTES).map(([key, label]) => `<option value="${key}" ${key === delegationRoute(value) ? 'selected' : ''}>${label}</option>`).join('');
+}
+function delegationMinutes(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+function delegationHours(minutes) {
+  return (minutes / 60).toLocaleString('cs-CZ', {maximumFractionDigits:1}) + ' h';
+}
+function delegationActuals(month) {
+  // Only original activity records: analysis projections and follow-up plans are not added again.
+  const rows = (state.activities || []).filter(a => String(a.date || '').slice(0,7) === month && activities_aOutcome(a) === 'realized' && (a.type !== 'Poznámka' || delegationMinutes(a.duration) || a.delegationRoute));
+  const totals = {'':0, self:0, assistant:0, automation:0};
+  rows.forEach(a => totals[delegationRoute(a.delegationRoute)] += delegationMinutes(a.duration));
+  return {rows, totals, missing:rows.filter(a => !delegationMinutes(a.duration)).length};
+}
+function delegationProcessSavings(p) {
+  if (!['assistant','automation'].includes(p.route)) return 0;
+  return Math.max(0, delegationMinutes(p.minutes) - delegationMinutes(p.retained)) * delegationMinutes(p.count);
+}
+function renderDelegationAnalysis() {
+  if (!byId('delegationActualMetrics')) return;
+  const month = selectedAnalysisMonth(), data = delegationActuals(month);
+  if (delegationActivityMonth !== month) {delegationActivityMonth = month; delegationActivityPage = 0;}
+  setText('delegationPeriod', `Měsíc ${month} · ${data.rows.length} uskutečněných aktivit · bez zaznamenaného času: ${data.missing}. Zdrojem jsou aktivity v CRM.`);
+  const metric = (label, minutes, note) => `<div class="metric"><span class="note">${label}</span><b>${delegationHours(minutes)}</b><small>${note}</small></div>`;
+  byId('delegationActualMetrics').innerHTML = metric('Asistentka · kandidáti', data.totals.assistant, 'evidovaný čas v měsíci') + metric('Automatizace · kandidáti', data.totals.automation, 'evidovaný čas v měsíci') + metric('Nechat u sebe', data.totals.self, 'vlastní práce') + metric('Zatím neposouzeno', data.totals[''], 'prostor k roztřídění');
+  const sorted = [...data.rows].sort((a,b) => String(b.date).localeCompare(String(a.date))), pages = Math.max(1, Math.ceil(sorted.length / 25));
+  delegationActivityPage = Math.min(Math.max(0, delegationActivityPage), pages - 1);
+  const clients = new Map(state.clients.map(c => [String(c.id), clientName(c)]));
+  byId('delegationActivitiesTable').innerHTML = `<thead><tr><th>Datum / klient</th><th>Činnost</th><th>Skutečně minut</th><th>Možné předání</th></tr></thead><tbody>${sorted.slice(delegationActivityPage*25, (delegationActivityPage+1)*25).map(a => `<tr><td>${esc(a.date)}<br>${esc(clients.get(String(a.clientId)) || 'Interní práce')}</td><td><b>${esc(a.type || 'Činnost')}</b><br>${esc(a.text || '')}</td><td><input aria-label="Skutečně minut" type="number" min="0" step="1" value="${delegationMinutes(a.duration) || ''}" data-id="${esc(a.id)}" onchange="updateDelegationActivity(this.dataset.id,'duration',this.value)"></td><td><select aria-label="Možné předání" data-id="${esc(a.id)}" onchange="updateDelegationActivity(this.dataset.id,'delegationRoute',this.value)">${delegationOptions(a.delegationRoute)}</select></td></tr>`).join('') || '<tr><td colspan="4" class="note">V tomto měsíci zatím nejsou uskutečněné aktivity k posouzení. Použij + Aktivita a zapiš délku práce.</td></tr>'}</tbody>`;
+  byId('delegationActivityPages').innerHTML = pages > 1 ? `<button class="btn" ${delegationActivityPage === 0 ? 'disabled' : ''} onclick="delegationActivityPage--;renderDelegationAnalysis()">← Předchozí</button><span>Strana ${delegationActivityPage+1} / ${pages}</span><button class="btn" ${delegationActivityPage === pages-1 ? 'disabled' : ''} onclick="delegationActivityPage++;renderDelegationAnalysis()">Další →</button>` : '';
+  const processes = state.delegationProcesses || [], savings = route => processes.filter(p => p.route === route).reduce((sum,p) => sum + delegationProcessSavings(p),0);
+  byId('delegationPlanMetrics').innerHTML = metric('Asistentka · odhad úspory / měsíc', savings('assistant'), 'po odečtení zadávání a kontroly') + metric('Automatizace · odhad úspory / měsíc', savings('automation'), 'po odečtení průběžné obsluhy') + `<div class="metric"><span class="note">Činností k posouzení</span><b>${processes.length}</b><small>vlastní model běžného měsíce</small></div>`;
+  byId('delegationProcessesTable').innerHTML = `<thead><tr><th>Činnost / příprava</th><th>Možné řešení</th><th>Čas dnes</th><th>Zůstane mi</th><th>Odhad úspory / měsíc</th><th></th></tr></thead><tbody>${processes.map(p => `<tr><td><b>${esc(p.title)}</b><br>${esc(p.note || '')}</td><td>${DELEGATION_ROUTES[delegationRoute(p.route)]}</td><td>${num(p.count)}× ${num(p.minutes)} min / měsíc</td><td>${num(p.retained)} min / provedení</td><td><b>${delegationHours(delegationProcessSavings(p))}</b></td><td><button class="btn slim" data-id="${esc(p.id)}" onclick="openDelegationProcess(this.dataset.id)">Upravit</button></td></tr>`).join('') || '<tr><td colspan="6" class="note">Přidej například přípravu podkladů, urgence nebo aktualizaci údajů. Zadej vlastní četnost a čas, ať odhad odpovídá tvé práci.</td></tr>'}</tbody>`;
+}
+function updateDelegationActivity(id, field, value) {
+  const activity = state.activities.find(a => String(a.id) === String(id));
+  if (!activity || !['duration','delegationRoute'].includes(field)) return;
+  if (field === 'duration' && (!Number.isFinite(Number(value)) || Number(value) < 0)) {renderDelegationAnalysis();return alert('Počet minut musí být nezáporné číslo.');}
+  activity[field] = field === 'duration' ? Number(value) : delegationRoute(value);
+  activity.updatedAt = new Date().toISOString();
+  persist(); renderAnalysis(); saveToast('Posouzení aktivity uloženo');
+}
+function openDelegationProcess(id = null) {
+  const p = (state.delegationProcesses || []).find(p => String(p.id) === String(id));
+  editingDelegationProcessId = p?.id || null;
+  setVal('dpTitle',p?.title || '');setVal('dpRoute',delegationRoute(p?.route));setVal('dpMinutes',p?.minutes ?? '');setVal('dpCount',p?.count ?? '');setVal('dpRetained',p?.retained ?? '');setVal('dpNote',p?.note || '');
+  byId('dpDelete').hidden = !p;
+  openModal('delegationProcessModal');
+}
+function saveDelegationProcess() {
+  const title=val('dpTitle').trim(), route=delegationRoute(val('dpRoute')), minutes=Number(val('dpMinutes')), count=Number(val('dpCount')), retained=Number(val('dpRetained'));
+  if (!title) return alert('Doplň název činnosti.');
+  if (!Number.isFinite(minutes) || minutes <= 0 || !Number.isFinite(count) || count <= 0) return alert('Čas a počet provedení musí být větší než nula.');
+  if (['assistant','automation'].includes(route) && val('dpRetained') === '') return alert('Doplň čas zadání a kontroly. Pokud žádný nezůstane, zadej 0.');
+  if (!Number.isFinite(retained) || retained < 0 || retained > minutes) return alert('Čas kontroly musí být od 0 do původní délky činnosti.');
+  let p = state.delegationProcesses.find(p => String(p.id) === String(editingDelegationProcessId));
+  if (!p) {p={id:uid(),syncId:crypto.randomUUID(),createdAt:new Date().toISOString()};state.delegationProcesses.push(p);}
+  Object.assign(p,{title,route,minutes,count,retained:route === 'self' ? minutes : retained,note:val('dpNote').trim(),updatedAt:new Date().toISOString()});
+  persist();closeModal('delegationProcessModal');renderDelegationAnalysis();saveToast('Činnost k posouzení uložena');
+}
+function deleteDelegationProcess() {
+  if (!editingDelegationProcessId || !confirm('Smazat tuto činnost z osobního přehledu? Aktivity v CRM zůstanou zachované.')) return;
+  state.delegationProcesses = state.delegationProcesses.filter(p => String(p.id) !== String(editingDelegationProcessId));
+  persist();closeModal('delegationProcessModal');renderDelegationAnalysis();saveToast('Činnost odstraněna z přehledu');
+}
 function renderAnalysis() {
   const weekEl = document.getElementById('analysisWeek'),
     monthEl = document.getElementById('analysisMonth');
@@ -13736,6 +13828,7 @@ function renderAnalysis() {
   if (typeof renderAnalysisActivityChart === 'function') renderAnalysisActivityChart();
   if (typeof renderAnalysisBusinessChart === 'function') renderAnalysisBusinessChart();
   if (typeof renderAnalysisWeekHistory === 'function') renderAnalysisWeekHistory();
+  renderDelegationAnalysis();
 }
 
 var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
@@ -13748,8 +13841,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.19-1';
-const VERSION_NOTE = 'Návrat k minulým týdnům, dodatečné vyhodnocení cílů a přenos zbývající práce. Neuzavřené cíle zůstávají dostupné.';
+const VERSION = '2026.10.19-2';
+const VERSION_NOTE = 'Rozsah spolupráce a produktové filtry u klientů. Osobní přehled delegování a automatizace s měsíčními odhady úspory času.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
@@ -13862,9 +13955,10 @@ const BACKUP_COUNT_LABELS = {
   referrerPayouts: 'výplat tipařům',
   referrals: 'doporučení',
   weeklyGoals: 'týdenních cílů',
-  weeklyReviews: 'uzavřených týdnů'
+  weeklyReviews: 'uzavřených týdnů',
+  delegationProcesses: 'činností k delegování'
 };
-const BACKUP_PROTECTED_KEYS = ['clients', 'contracts', 'deals', 'opportunities', 'notes', 'activities', 'analysisEntries', 'campaigns', 'investments', 'investmentSnapshots', 'externalInvestments', 'investmentForecasts', 'commissionImports', 'referrerPayouts', 'referrals', 'weeklyGoals', 'weeklyReviews'];
+const BACKUP_PROTECTED_KEYS = ['clients', 'contracts', 'deals', 'opportunities', 'notes', 'activities', 'analysisEntries', 'campaigns', 'investments', 'investmentSnapshots', 'externalInvestments', 'investmentForecasts', 'commissionImports', 'referrerPayouts', 'referrals', 'weeklyGoals', 'weeklyReviews', 'delegationProcesses'];
 let scenario_editableScope = '';
 let fkiEditor_editingFkRecordKey = '',
   fkiEditor_editingFkClientId = null;

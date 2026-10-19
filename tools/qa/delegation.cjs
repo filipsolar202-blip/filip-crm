@@ -1,0 +1,92 @@
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const {chromium,launchOptions}=require('./runtime.cjs');
+const root=path.resolve(__dirname,'../..'),fixture=require('./fixture.cjs');
+(async()=>{
+ const browser=await chromium.launch(launchOptions);
+ try{
+  const context=await browser.newContext({viewport:{width:1440,height:1100}});
+  await context.route('**/*',route=>{const u=new URL(route.request().url());if(u.hostname==='crm.test'){const p=path.join(root,decodeURIComponent(u.pathname));if(fs.existsSync(p))return route.fulfill({body:fs.readFileSync(p),contentType:p.endsWith('.js')?'text/javascript':p.endsWith('.css')?'text/css':p.endsWith('.png')?'image/png':'text/html'});}return route.abort();});
+  await context.addInitScript(f=>{if(location.hostname==='crm.test'&&!localStorage.getItem('filip_crm_main_v1'))localStorage.setItem('filip_crm_main_v1',JSON.stringify(f));},fixture);
+  const page=await context.newPage(),errors=[],dialogs=[];
+  page.on('pageerror',e=>errors.push(e.message));page.on('dialog',async d=>{dialogs.push(d.message());if(d.type()==='confirm')await d.accept();else await d.dismiss();});
+  await page.goto('https://crm.test/FILIP-CRM.html');
+  await page.evaluate(()=>{openClientModal(1);});
+  await page.locator('#cCooperationScope').selectOption('Více oblastí');
+  await page.locator('#clientModal').getByText('Uložit klienta',{exact:true}).click();
+  assert.equal(await page.evaluate(()=>findClient(1).cooperationScope),'Více oblastí');
+  await page.reload();
+  assert.equal(await page.evaluate(()=>findClient(1).cooperationScope),'Více oblastí');
+  await page.evaluate(()=>openClientDirectory());
+  await page.locator('#clientScopeFilter').selectOption('Více oblastí');
+  assert.equal(await page.locator('#clientList tr.client-row').count(),1);
+  await page.evaluate(()=>selectClient(1));
+  assert.match(await page.locator('#clientDetail').innerText(),/Rozsah: Více oblastí/);
+  await page.evaluate(()=>{openClientDirectory();setVal('clientScopeFilter','');state.contracts.push({id:99000,clientId:2,type:'život',product:'QA pojištění'});persist();renderClients();});
+  await page.locator('#clientAreaFilter').selectOption('pojisteni');
+  assert.match(await page.locator('#clientList').innerText(),/Pojištění/);
+  assert.equal(await page.evaluate(()=>[...document.querySelectorAll('#clientList tr')].every(row=>row.textContent.includes('Pojištění'))),true);
+  await page.evaluate(()=>{setVal('clientAreaFilter','');setVal('clientScopeFilter','unset');renderClients();});
+  assert(!await page.locator('#clientList').innerText().then(t=>t.includes('Více oblastí')));
+  // Explicit data remain explicit: multiple products do not imply comprehensive management.
+  assert.equal(await page.evaluate(()=>findClient(2).cooperationScope||''),'');
+  await page.evaluate(()=>{
+   state.activities=[];state.analysisEntries=[];state.delegationProcesses=[];
+   openQuickActivity(1,'phone');setVal('qaDate','2026-10-10');setVal('qaDuration','30');setVal('qaDelegationRoute','assistant');setVal('qaText','QA urgence');setVal('qaFollowType','Telefon');setVal('qaFollowDate','2026-10-20');saveQuickClientActivity();
+   const a=state.activities.find(a=>a.text==='QA urgence');
+   state.analysisEntries.push({id:99001,date:a.date,type:'Volání',minutes:30,sourceActivityId:a.id});
+   state.activities.push({id:99002,type:'Úkol',text:'QA automatizace',date:'2026-10-12',duration:60,outcome:'realized',delegationRoute:'automation'}, {id:99003,type:'Úkol',date:'2026-10-12',duration:100,outcome:'moved',delegationRoute:'assistant'}, {id:99004,type:'Úkol',date:'2026-09-12',duration:200,outcome:'realized',delegationRoute:'assistant'}, {id:99005,type:'Úkol',date:'2026-10-12',duration:20,outcome:'realized'}, {id:99006,type:'Úkol',date:'2026-10-12',duration:0,outcome:'realized'});
+   persist();showView('referrers');setVal('analysisMonth','2026-10');renderAnalysis();byId('delegationPanel').open=true;
+  });
+  assert.deepEqual(await page.evaluate(()=>{const a=delegationActuals('2026-10');return {totals:a.totals,missing:a.missing,count:a.rows.length};}),{totals:{'':20,self:0,assistant:30,automation:60},missing:1,count:4});
+  await page.evaluate(()=>{openActivityModal(1,state.activities.find(a=>a.text==='QA urgence').id);});
+  assert.equal(await page.locator('#aDelegationRoute').inputValue(),'assistant');
+  await page.locator('#aDelegationRoute').selectOption('self');
+  await page.locator('#activityModal').getByText('Uložit aktivitu',{exact:true}).click();
+  assert.deepEqual(await page.evaluate(()=>delegationActuals('2026-10').totals),{'':20,self:30,assistant:0,automation:60});
+  await page.evaluate(()=>{byId('delegationPanel').open=true;byId('delegationPanel').querySelector('details').open=true;});
+  await page.locator('#delegationActivitiesTable select[data-id="99005"]').selectOption('assistant');
+  await page.locator('#delegationActivitiesTable input[data-id="99005"]').fill('45');
+  await page.locator('#delegationActivitiesTable input[data-id="99005"]').blur();
+  assert.equal(await page.evaluate(()=>delegationActuals('2026-10').totals.assistant),45);
+  await page.locator('#delegationPanel').getByText('+ Činnost k posouzení',{exact:true}).click();
+  await page.locator('#dpTitle').fill('Příprava podkladů');await page.locator('#dpRoute').selectOption('assistant');await page.locator('#dpMinutes').fill('30');await page.locator('#dpCount').fill('20');
+  await page.locator('#delegationProcessModal').getByText('Uložit činnost',{exact:true}).click();
+  assert.match(dialogs.at(-1),/čas zadání a kontroly/);
+  assert.equal(await page.evaluate(()=>state.delegationProcesses.length),0);
+  await page.locator('#dpRetained').fill('5');await page.locator('#delegationProcessModal').getByText('Uložit činnost',{exact:true}).click();
+  assert.equal(await page.evaluate(()=>delegationProcessSavings(state.delegationProcesses[0])),500);
+  assert.equal(await page.evaluate(()=>delegationActuals('2026-10').totals.assistant),45,'Estimates must not enter actual totals');
+  const saved=await page.evaluate(()=>JSON.stringify(state));
+  await page.reload();
+  assert.equal(await page.evaluate(()=>delegationProcessSavings(state.delegationProcesses[0])),500);
+  const restore=await page.evaluate(()=>{const payload=googleSyncPayload();const s=normalizeState(JSON.parse(JSON.stringify(payload.state)));return {scope:s.clients[0].cooperationScope,processes:s.delegationProcesses.length,route:s.activities.find(a=>a.id===99005).delegationRoute,protected:criticalBackupCounts(s).delegationProcesses};});
+  assert.deepEqual(restore,{scope:'Více oblastí',processes:1,route:'assistant',protected:1});
+  await page.evaluate(()=>{const incoming=JSON.parse(JSON.stringify(state));mergeIncomingState(incoming);mergeIncomingState(incoming);});
+  assert.equal(await page.evaluate(()=>state.delegationProcesses.length),1,'Repeated import must not duplicate processes');
+  await page.evaluate(()=>{state=normalizeState(def());mergeIncomingState(JSON.parse(localStorage.getItem(STORE)));});
+  assert.equal(await page.evaluate(()=>state.delegationProcesses.length),1);
+  assert.equal(await page.evaluate(()=>state.clients.find(c=>c.cooperationScope==='Více oblastí')?.cooperationScope),'Více oblastí');
+  assert.equal(await page.evaluate(()=>state.activities.find(a=>a.text==='QA automatizace')?.delegationRoute),'automation','Internal activity classification survives merging a backup');
+  // Backup protection includes the inventory, and old backups default to an empty inventory.
+  assert.equal(await page.evaluate(()=>normalizeState({clients:[]}).delegationProcesses.length),0);
+  // Rendering/filtering remains linear for a large directory; print timings as diagnostic data.
+  const performanceResult=await page.evaluate(()=>{
+   state=normalizeState(def());state.clients=Array.from({length:1200},(_,i)=>({id:i+1,name:'QA klient '+i,cooperationScope:i%2?'Více oblastí':'Jednotlivý produkt'}));state.contracts=state.clients.map(c=>({id:2000+c.id,clientId:c.id,type:c.id%2?'život':'investice'}));clientDirectoryStatsCache=null;clientDirectoryMode=true;showView('clients');
+   const start=performance.now();renderClients();const renderMs=performance.now()-start;setVal('clientScopeFilter','Více oblastí');setVal('clientAreaFilter','investice');const t=performance.now();renderClients();return {renderMs,filterMs:performance.now()-t,rows:byId('clientList').querySelectorAll('.client-row').length};
+  });
+  assert.equal(performanceResult.rows,600);assert(performanceResult.renderMs<2000);assert(performanceResult.filterMs<1000);
+  console.log('Client directory performance:',performanceResult);
+  await page.evaluate(data=>{state=normalizeState(JSON.parse(data));persist();setVal('clientScopeFilter','');setVal('clientAreaFilter','');openClientDirectory();},saved);
+  await page.screenshot({path:'/private/tmp/crm-scope-desktop.png',fullPage:true});
+  await page.evaluate(()=>{showView('referrers');setVal('analysisMonth','2026-10');renderAnalysis();byId('delegationPanel').open=true;});
+  await page.locator('#delegationPanel').screenshot({path:'/private/tmp/crm-delegation-desktop.png'});
+  await page.setViewportSize({width:834,height:1112});await page.locator('#delegationPanel').screenshot({path:'/private/tmp/crm-delegation-ipad.png'});
+  await page.evaluate(()=>openDelegationProcess(state.delegationProcesses[0].id));await page.locator('#dpDelete').click();
+  assert.equal(await page.evaluate(()=>state.delegationProcesses.length),0);
+  await page.evaluate(()=>{openActivityModal(1);setVal('aType','Úkol');setVal('aText','Dokončená administrativa');setVal('aDate','2026-10-19');setVal('aOutcome','agreed');setVal('aDuration','15');setVal('aDelegationRoute','assistant');saveActivity(true);});
+  assert.equal(await page.evaluate(()=>state.activities.find(a=>a.text==='Dokončená administrativa').outcome),'realized');
+  assert.equal(await page.evaluate(()=>delegationActuals('2026-10').totals.assistant),60);
+  assert.deepEqual(errors,[]);
+  console.log('PASS: client scope save/reload/filter, product areas, optional activity classification, time sums without duplicated projections or plans, monthly estimates net of oversight, validation, backup roundtrip/merge, CRUD and 1,200-client performance.');
+ }finally{await browser.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;});

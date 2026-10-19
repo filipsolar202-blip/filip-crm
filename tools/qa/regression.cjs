@@ -289,7 +289,8 @@ try{
  assert.equal(await page.locator('#analysisMonthTable').count(),0);
  assert.equal(await page.locator('#analysisMonthActivityCards .analysis-activity-card').count(),7);
  assert.equal(await page.locator('#analysisWeekMetrics .analysis-activity-card').count(),7);
- assert.equal(await page.locator('#referrers .analysis-compact-section').count(),4);
+ assert.equal(await page.locator('#referrers .analysis-compact-section').count(),5);
+ assert.equal(await page.locator('#delegationPanel').count(),1);
  assert(await page.evaluate(()=>document.querySelector('.analysis-month-overview').compareDocumentPosition(document.querySelector('.analysis-week-detail'))&Node.DOCUMENT_POSITION_FOLLOWING));
  await page.setViewportSize({width:1600,height:1000});await page.screenshot({path:'/private/tmp/crm-analysis-month.png',fullPage:true});
  results.push('Analysis opens with the full month, weekly cards follow as detail and one compact activity entry replaces duplicate forms');

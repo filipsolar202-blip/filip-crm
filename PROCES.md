@@ -97,3 +97,12 @@ CRM nema byt slepenec obrazovek. Klient je hlavni karta a jednotlive moduly jsou
 - Nejdrit prenest logiku, az potom vylepsovat vzhled.
 - Po kazde zmene kontrolovat JavaScript.
 - Google zaloha bude jedna pro cele FILIP CRM.
+
+## Rozsah spolupráce a osobní přehled delegování (2026.10.19-2)
+- Klienti → Upravit klienta → Rozsah spolupráce: ruční označení skutečně domluvené péče. Počet produktů ani otevřený případ tuto hodnotu automaticky nemění.
+- Adresář umožňuje kombinovat rozsah spolupráce s evidovanými oblastmi (smlouvy, investiční pozice a obchody). Filtr oblasti neznamená automatické doporučení dalšího produktu.
+- U aktivity lze volitelně označit možný způsob předání práce a zapsat délku. V Analýze → Delegování a automatizace lze posoudit i dřívější uskutečněné aktivity a opravit jejich délku.
+- Měsíční součet čerpá pouze původní aktivity; nepočítá jejich projekce do analýzy, plány, přesuny ani neuskutečněné události. Nezadaný čas se zobrazí jako chybějící, neodhadujeme jej.
+- Opakované činnosti jsou samostatný model běžného měsíce. Úspora = (čas dnes − průběžné zadání a kontrola) × počet provedení. Jednorázová příprava a peněžní náklady se zde nepočítají. Každá činnost má právě jednu cestu, aby nebyla zároveň v úspoře asistentky i automatizace.
+- Model se nesčítá s časy aktivit. Neodesílá úkoly dalším lidem a nezřizuje uživatelské účty; slouží k osobnímu rozhodnutí po několika týdnech evidence.
+- Rozsah, označení aktivit i katalog činností jsou součástí společné Google/lokální zálohy. Katalog má stabilní identifikátory pro opakovaný import bez duplicit.

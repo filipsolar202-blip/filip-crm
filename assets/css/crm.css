@@ -446,8 +446,9 @@ h1,h2,h3,h4,.detail-title,.client-row b,.portfolio-card b,.contact-value{color:#
 .client-directory-metric span{font-size:11px;font-weight:900;color:#4f6178}
 .client-directory-metric small{margin-top:3px;color:var(--muted);font-size:9px}
 .client-directory-metric.attention strong{color:var(--orange)}
-.client-directory-filters{display:grid;grid-template-columns:minmax(240px,1.5fr) repeat(4,minmax(145px,.7fr));gap:8px;padding:9px;border:1px solid rgba(255,255,255,.88);border-radius:18px;background:rgba(247,249,251,.66)}
+.client-directory-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;padding:9px;border:1px solid rgba(255,255,255,.88);border-radius:18px;background:rgba(247,249,251,.66)}
 .client-directory-filters .search,.client-directory-filters select{width:100%;min-width:0}
+.client-directory-filters select{padding:8px 10px;border:1px solid var(--line);border-radius:12px;background:#f8fbfe;color:var(--text);font:inherit}
 .client-directory-table-wrap{overflow:auto;border:1px solid rgba(255,255,255,.92);border-radius:22px;background:rgba(247,249,251,.75);box-shadow:var(--shadow)}
 .client-directory-table{width:100%;min-width:1030px;border-collapse:separate;border-spacing:0}
 .client-directory-table th{padding:10px 12px;background:rgba(230,238,248,.58);color:#65758b;font-size:9px;text-transform:uppercase;letter-spacing:.06em}
@@ -519,3 +520,13 @@ h1,h2,h3,h4,.detail-title,.client-row b,.portfolio-card b,.contact-value{color:#
 @media(max-width:1100px){.nav-group-label,.nav-icon{display:none}.client-workspace{min-height:0}.client-directory-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:720px){.client-directory-head{padding:12px}.client-directory-metrics,.client-directory-filters,.client-summary-strip{grid-template-columns:1fr}.client-directory-filters .search{grid-column:auto}.client-hero{grid-template-columns:44px minmax(0,1fr);padding:10px}.client-primary-actions{grid-column:1/-1;justify-content:flex-start}.client-summary-strip{grid-template-columns:repeat(2,minmax(0,1fr))}.case-detail-title,.case-detail-facts{grid-template-columns:1fr}.case-detail-title .actions{justify-content:flex-start}}
 .portfolio-card h3{display:flex;align-items:center;justify-content:space-between;gap:8px}
+
+/* Osobní posouzení práce v existující Analýze. */
+#delegationPanel .metric-strip{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+#delegationPanel .metric b{font-size:25px}
+#delegationPanel table input,#delegationPanel table select{border:1px solid var(--line);border-radius:10px;padding:8px;background:#f8fbfe;color:var(--text);font:inherit}
+#delegationActivitiesTable input{width:85px}
+#delegationActivitiesTable td:nth-child(2){max-width:360px;overflow-wrap:anywhere}
+#delegationPanel details>summary{cursor:pointer;padding:10px 0;font-weight:800}
+#delegationPanel .toolbar{flex-wrap:wrap}
+#delegationActivityPages{align-items:center;justify-content:center;margin-top:10px}
