@@ -91,10 +91,50 @@ function def() {
 }
 function loadState() {
   try {
-    return normalizeState(JSON.parse(localStorage.getItem(STORE) || 'null') || def());
+    const raw = JSON.parse(localStorage.getItem(STORE) || 'null') || def();
+    const needsHistorySave = (Array.isArray(raw.activities) ? raw.activities : []).some(a => activityIsInformational(a) && (!a.completed || a.recordKind !== 'history'));
+    const loaded = normalizeState(raw);
+    if (needsHistorySave) {
+      try { localStorage.setItem(STORE, JSON.stringify(loaded)); } catch (e) { /* Keep loaded data even when storage is full. */ }
+    }
+    return loaded;
   } catch (e) {
     return def();
   }
+}
+// Automatic history entries are not reminders. Legacy matching is deliberately limited
+// to known generated event types; explicit user activities and follow-ups are preserved.
+function activityIsInformational(a) {
+  if (!a) return false;
+  if (a.recordKind === 'history') return true;
+  if (a.recordKind || a.source || a.sourceActivityId || a.followDate || a.time || +a.duration > 0) return false;
+  const type = String(a.type || '').trim(), text = String(a.text || '').trim();
+  const patterns = {
+    'Poznámka': /^(?:(?:Upraven|Založen) klient(?:$| ·)|Klient (?:upraven|založen)(?:$| ·)|Sloučeni duplicitní klienti:|Poznámka:)/i,
+    'Smlouva': /^(?:Upravena |Přidána |Smazána smlouva |Smlouva (?:upravena|přidána)(?:$|[ :·]))/i,
+    'Obchod': /^(?:Přidán |Upraven |Smazán obchod |Obchod (?:upraven|přidán)(?:$|[ :·])|(?:Obchodní případ|Příležitost|Smlouva) (?:propsán|propsána|dokončen|dokončena)|Investice\/FKI sjednáno rovnou:)/i,
+    'Obchodní případ': /^(?:Stav:|Obchod přesunut zpět do (?:obchodních případů|příležitostí):)/i,
+    'Příležitost': /^(?:Stav:|Obchod přesunut zpět do (?:obchodních případů|příležitostí):)/i,
+    'Investice': /^Aktualizována investiční pozice:/i,
+    'FKI': /^(?:Smazán FKI fond klienta:|Upraven FKI záznam:|Zadán odkup:)/i,
+    'Investiční prognóza': /^Uloženo srovnání:/i,
+    'Investiční návrh': /^Uložen návrh:/i,
+    'Podpis': /^Smlouva vyřízena:/i,
+    'Email': /^(?:Odeslán e-mail klientovi$|Smlouva: .+ · (?:[^\s@]+@[^\s@]+|bez uložené adresy)$)/i
+  };
+  return !!patterns[type]?.test(text);
+}
+function normalizeActivityHistory(activities) {
+  activities.forEach(a => {
+    if (!activityIsInformational(a)) return;
+    if (!a.completed && !a.historyCleanup) {
+      a.historyCleanup = {version:1, completed:a.completed ?? null, outcome:a.outcome || '', completedAt:a.completedAt || ''};
+    }
+    a.recordKind = 'history';
+    a.completed = true;
+    a.outcome = 'realized';
+    a.completedAt = a.completedAt || a.date || a.createdAt || '';
+  });
 }
 function normalizeState(s) {
   const base = def();
@@ -106,6 +146,7 @@ function normalizeState(s) {
   delete s.aiInbox;
   try { localStorage.removeItem('filip_crm_ai_active_job'); } catch (e) {}
   ['clients', 'contracts', 'deals', 'activities', 'referrals', 'referrerPayouts', 'managementPartners', 'managementPayouts', 'notes', 'opportunities', 'investmentRecords', 'investmentSnapshots', 'commissionImports', 'analysisEntries', 'campaigns', 'externalInvestments', 'investmentForecasts', 'weeklyGoals', 'weeklyReviews', 'delegationProcesses'].forEach(k => s[k] = Array.isArray(s[k]) ? s[k] : []);
+  normalizeActivityHistory(s.activities);
   if (!s.managementPartners.length) s.managementPartners = base.managementPartners;
   if (!s.managementPartners.some(x => x.id === 'filip')) s.managementPartners.unshift(base.managementPartners[0]);
   s.clients.forEach(c => { if (!c.managementPartnerId) c.managementPartnerId = 'filip'; });
@@ -717,7 +758,8 @@ function dateDiffDays(date) {
   a.setHours(0, 0, 0, 0);
   b.setHours(0, 0, 0, 0);
   if (isNaN(a)) return 99999;
-  return Math.ceil((a - b) / 86400000);
+  // Midnight-to-midnight intervals can be 23 or 25 hours across daylight saving.
+  return Math.round((a - b) / 86400000);
 }
 function cDaysAnnual(ds) {
   if (!ds) return 99999;
@@ -11146,7 +11188,7 @@ function activities_aCreateFollowUp(source) {
 }
 function activities_aContactAction(x) {
   const type = activities_aNorm(x.type || '');
-  if (type.includes('email')) return `<button class="btn slim" onclick="composeEmailForClient(${JSON.stringify(String(x.clientId || ''))})">Email</button>`;
+  if (type.includes('email')) return `<button class="btn slim" onclick="composeEmailForClient(${esc(JSON.stringify(String(x.clientId || '')))})">Email</button>`;
   if (type.includes('sms') || type.includes('telefon') || type.includes('hovor') || type.includes('vol')) return '<span class="badge blue">Volat</span>';
   return '';
 }
@@ -11156,6 +11198,7 @@ function activities_aRecordEmail(clientId, subject) {
     id: activities_aUid(),
     clientId,
     type: 'Email',
+    recordKind: 'history',
     date: activities_aToday(),
     time: '',
     duration: 0,
@@ -13010,6 +13053,7 @@ function saveActivity(markDone = false) {
   const completed = !!markDone || outcome === 'realized' || outcome === 'no_show' || outcome === 'moved';
   Object.assign(a, {
     clientId,
+    recordKind: 'activity',
     type: activities_aVal('aType') || 'Telefon',
     date: activities_aVal('aDate') || activities_aToday(),
     time: activities_aVal('aTime'),
@@ -13045,6 +13089,7 @@ function addActivity(clientId, type, text, silent = false) {
     id: activities_aUid(),
     clientId,
     type,
+    recordKind: silent ? 'history' : 'activity',
     date: activities_aToday(),
     text,
     completed: !!silent,
@@ -13084,53 +13129,92 @@ function completeDashboardTask(kind, id) {
   if (typeof renderAll === 'function') renderAll();
   if (typeof saveToast === 'function') saveToast('Aktivita hotová a zapsaná do analýzy');
 }
+function dashboardToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function dashboardDateText(date) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return 'Bez termínu';
+  const [year, month, day] = date.split('-').map(Number);
+  return `${day}. ${month}. ${year}`;
+}
+function dashboardRelativeDate(days) {
+  if (!Number.isFinite(days) || days >= 99999) return 'Termín není nastaven';
+  if (days < 0) return `Po termínu: ${Math.abs(days)} dní`;
+  if (days === 0) return 'Dnes';
+  if (days === 1) return 'Zítra';
+  return `Za ${days} dní`;
+}
+function dashboardContractTerm(s, days) {
+  // Use the very same interval as the contract reminder, not the original policy date.
+  if (!Number.isFinite(days) || days >= 99999) return {date:'', label:'Termín smlouvy'};
+  const date = new Date(dashboardToday() + 'T12:00:00');
+  date.setDate(date.getDate() + days);
+  const iso = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+  const absolute = /adamek|linhart/.test(norm(s.source || ''));
+  const label = absolute ? 'Termín smlouvy' : s.type === 'hypotéka' ? 'Konec fixace' : s.type === 'úvěr' ? 'Revize po 3 letech' : s.type === 'život' ? 'Revize po 5 letech' : 'Nejbližší výročí';
+  return {date:iso,label};
+}
 function dashboardWorkRows() {
-  const source = typeof val === 'function' ? val('dashLeadSourceFilter') : '',
-    todayText = activities_aToday();
-  const acts = (state.activities || []).filter(a => !a.completed && String(a.date || todayText) <= todayText).map(a => ({
-    kind: 'activity',
-    id: a.id,
-    clientId: a.clientId,
-    c: activities_aClient(a.clientId),
-    type: a.type || 'Aktivita',
-    title: a.text || a.type || 'Aktivita',
-    date: a.date || todayText,
-    time: a.time || '',
-    sortDate: a.date || todayText,
-    days: Math.ceil((new Date((a.date || todayText) + 'T00:00:00') - new Date(todayText + 'T00:00:00')) / 86400000),
-    status: `<span class="badge ${activities_aOutcomeBadge(a)}">${activities_aEsc(activities_aOutcomeLabel(a))}</span>`,
-    text: a.location || '',
-    rowClass: String(a.date || todayText) < todayText ? 'row-hot' : ''
-  })).filter(x => !source || typeof leadSourceType !== 'function' || leadSourceType(x.c) === source).sort((a, b) => String(b.sortDate + ' ' + (b.time || '')).localeCompare(String(a.sortDate + ' ' + (a.time || '')), 'cs'));
-  const contracts = (state.contracts || []).filter(s => typeof hasStatus !== 'function' || !hasStatus(s, 'vyrizeno') && !hasStatus(s, 'nechce')).map(s => {
-    const d = typeof contractDays === 'function' ? contractDays(s) : 999;
-    return {
-      kind: 'contract',
-      id: s.id,
-      clientId: s.clientId,
-      c: activities_aClient(s.clientId),
-      s,
-      d,
-      type: 'Smlouva',
-      title: [s.type, s.product].filter(Boolean).join(' · ') || 'Smlouva',
-      date: s.anniv || '',
-      sortDate: s.anniv || todayText,
-      days: d,
-      status: typeof getStatuses === 'function' ? getStatuses(s).map(statusBadge).join(' ') : '',
-      text: s.company || '',
-      rowClass: typeof rowClassContract === 'function' ? rowClassContract(s) : ''
-    };
-  }).filter(x => (!source || typeof leadSourceType !== 'function' || leadSourceType(x.c) === source) && (x.days <= 100 || typeof isActiveContract === 'function' && isActiveContract(x.s))).sort(typeof compareContractRows === 'function' ? compareContractRows : (a, b) => String(a.date).localeCompare(String(b.date)));
-  return [...acts, ...contracts];
+  const source = val('dashLeadSourceFilter'), todayText = dashboardToday();
+  const clientsById = new Map((state.clients || []).map(c=>[String(c.id),c]));
+  const typeFilter = val('dashTaskType'), period = val('dashTaskPeriod') || 'today';
+  const from = val('dashTaskFrom'), to = val('dashTaskTo'), order = val('dashTaskSort') || 'asc';
+  const acts = (state.activities || []).filter(a => !a.completed && !a.completedAt && activities_aOutcome(a) === 'agreed' && !activityIsInformational(a)).map(a => ({
+    kind:'activity', id:a.id, clientId:a.clientId, c:clientsById.get(String(a.clientId)),
+    type:a.type || 'Aktivita', title:a.text || a.type || 'Aktivita',
+    date:a.date || '', dateLabel:'Termín úkolu', time:a.time || '',
+    days:a.date ? Math.round((new Date(a.date+'T12:00:00')-new Date(todayText+'T12:00:00'))/86400000) : null,
+    text:a.location || ''
+  })).filter(x => (!source || leadSourceType(x.c) === source) && (!typeFilter || x.type === typeFilter))
+    .filter(x => period === 'all' || period === 'range' && x.date && (!from || x.date >= from) && (!to || x.date <= to) || period === 'today' && (!x.date || x.days <= 0) || period === 'week' && (!x.date || x.days <= 7))
+    .sort((a,b) => {
+      if (!a.date || !b.date) return a.date ? -1 : b.date ? 1 : 0;
+      const cmp = (a.date+' '+a.time).localeCompare(b.date+' '+b.time);
+      return order === 'desc' ? -cmp : cmp;
+    });
+  const contracts = (state.contracts || []).filter(s => !hasStatus(s,'vyrizeno') && !hasStatus(s,'nechce')).map(s => {
+    const d = contractDays(s), term = dashboardContractTerm(s,d);
+    return {kind:'contract', id:s.id, clientId:s.clientId, c:clientsById.get(String(s.clientId)), s, d,
+      type:'Smlouva', title:[s.type,s.product].filter(Boolean).join(' · ') || 'Smlouva',
+      date:term.date, dateLabel:term.label, days:d,
+      status:getStatuses(s).map(statusBadge).join(' '), text:s.company || ''};
+  }).filter(x => (!source || leadSourceType(x.c) === source) && (x.days <= 100 || isActiveContract(x.s))).sort(compareContractRows);
+  return [...acts,...contracts];
+}
+function dashboardWorkRowHtml(x) {
+  const hot = Number.isFinite(x.days) && x.days < 0;
+  return `<article class="dash-work-row ${hot ? 'row-hot' : ''}">
+    <div class="dash-work-client"><b>${esc(x.c ? activities_aClientName(x.c) : 'Interní úkol')}</b><span class="note">${esc(x.c?.phone || '')}</span><span class="note">${esc(x.c?.email || '')}</span></div>
+    <div class="dash-work-topic"><span class="badge blue">${esc(x.type)}</span><b>${esc(x.title)}</b>${x.text ? `<span class="note">${esc(x.text)}</span>` : ''}${x.status ? `<div class="dash-work-status">${x.status}</div>` : ''}</div>
+    <div class="dash-work-date"><span class="note">${esc(x.dateLabel)}</span><b>${dashboardDateText(x.date)}</b><span class="note">${x.time ? esc(x.time) : x.date ? 'Čas neurčen' : ''}</span><span class="badge ${hot ? 'orange' : 'blue'}">${esc(dashboardRelativeDate(x.days))}</span></div>
+    <div class="dash-work-actions"><button class="btn slim green" data-dash-action="done" data-kind="${esc(x.kind)}" data-id="${esc(x.id)}">Hotovo</button><button class="btn slim" data-dash-action="edit" data-kind="${esc(x.kind)}" data-id="${esc(x.id)}">Upravit</button>${x.clientId ? `<button class="btn slim" data-dash-action="client" data-client="${esc(x.clientId)}">Klient</button>` : ''}${activities_aContactAction(x)}</div>
+  </article>`;
+}
+let dashboardTaskLimit = 100;
+let dashboardContractLimit = 60;
+function filterDashboardTasks() {
+  dashboardTaskLimit = 100;
+  const range = byId('dashTaskRange');
+  if (range) range.hidden = val('dashTaskPeriod') !== 'range';
+  renderDashboardWorkQueue();
 }
 function renderDashboardWorkQueue() {
-  const container = document.getElementById('dashTasks');
+  const container = byId('dashTasks');
   if (!container) return;
-  const rows = dashboardWorkRows(),
-    shown = rows.slice(0, 180),
-    more = rows.length - shown.length;
-  container.innerHTML = shown.map(x => `<article class="dash-work-row ${activities_aEsc(x.rowClass || '')}"><div class="dash-work-client"><span class="badge ${x.kind === 'activity' ? 'blue' : 'orange'}">${activities_aEsc(x.type)}</span><b>${activities_aEsc(activities_aClientName(x.c))}</b><span class="note">${activities_aEsc(x.c?.phone || 'bez telefonu')}${x.c?.email ? ' · ' + activities_aEsc(x.c.email) : ''}</span></div><div class="dash-work-topic"><b>${activities_aEsc(x.title)}</b>${x.text ? `<span class="note">${activities_aEsc(x.text)}</span>` : ''}</div><div class="dash-work-date"><b>${activities_aEsc(x.date || '')}</b>${x.time ? `<span class="note">${activities_aEsc(x.time)}</span>` : ''}${x.kind === 'contract' && typeof daysBadge === 'function' ? daysBadge(x.days) : ''}</div><div class="dash-work-status">${x.status}</div><div class="dash-work-actions"><button class="btn slim green" data-dash-action="done" data-kind="${activities_aEsc(x.kind)}" data-id="${activities_aEsc(x.id)}">Hotovo</button><button class="btn slim" data-dash-action="edit" data-kind="${activities_aEsc(x.kind)}" data-id="${activities_aEsc(x.id)}">Upravit</button><button class="btn slim" data-dash-action="client" data-client="${activities_aEsc(x.clientId)}">Klient</button>${activities_aContactAction(x)}</div></article>`).join('') || '<div class="dash-work-empty note">Na dnešek nevidím žádné otevřené úkoly ani aktivity.</div>';
-  if (more > 0) container.insertAdjacentHTML('beforeend', `<div class="dash-work-empty note">Zobrazuji prvních ${shown.length} položek. Dalších ${more} je bezpečně skryto, aby se Dashboard nezasekl.</div>`);
+  const typeSelect = byId('dashTaskType'), selected = typeSelect.value;
+  const types = [...new Set(['Úkol','Telefon','Email','SMS','WhatsApp','Schůzka','Poznámka',...(state.activities || []).filter(a=>!a.completed && !activityIsInformational(a)).map(a=>a.type || 'Aktivita')])];
+  typeSelect.innerHTML = '<option value="">Všechny aktivity</option>' + types.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');
+  typeSelect.value = selected;
+  const rows = dashboardWorkRows(), acts = rows.filter(x=>x.kind==='activity'), contracts = rows.filter(x=>x.kind==='contract');
+  const header = '<div class="dash-work-header"><span>Klient</span><span>Úkol a popis</span><span>Kdy vyřídit</span><span>Akce</span></div>';
+  container.innerHTML = `<p class="note">${acts.length} otevřených úkolů ve výběru. Datum je termín vyřízení, nikoli datum vytvoření záznamu.</p>` + (acts.length ? header + acts.slice(0,dashboardTaskLimit).map(dashboardWorkRowHtml).join('') : '<div class="dash-work-empty note">V tomto výběru nejsou žádné otevřené úkoly.</div>');
+  if (acts.length > dashboardTaskLimit) container.insertAdjacentHTML('beforeend','<button class="btn" onclick="dashboardTaskLimit+=100;renderDashboardWorkQueue()">Zobrazit dalších 100 úkolů</button>');
+  const cleanupCount = (state.activities || []).filter(a=>a.historyCleanup).length;
+  if (cleanupCount) container.insertAdjacentHTML('beforeend',`<p class="note">${cleanupCount} starších informačních zápisů bylo označeno jako dokončené. Zůstávají v historii klientů; nejde o nové uskutečněné hovory ani schůzky.</p>`);
+  const contractContainer = byId('dashContractTasks'), wasOpen = contractContainer.open;
+  contractContainer.innerHTML = `<summary>Smlouvy k řešení <span class="badge blue">${contracts.length}</span></summary><p class="note">Samostatné připomínky výročí, fixací a revizí do 100 dní a rozpracované smlouvy. Filtry úkolů výše se na smlouvy nevztahují.</p><div class="dash-work-list">${contracts.length ? header + contracts.slice(0,dashboardContractLimit).map(dashboardWorkRowHtml).join('') : '<div class="dash-work-empty note">Žádné smlouvy k řešení.</div>'}${contracts.length > dashboardContractLimit ? '<button class="btn" onclick="dashboardContractLimit+=60;renderDashboardWorkQueue()">Zobrazit další smlouvy</button>' : ''}</div>`;
+  contractContainer.open = wasOpen;
 }
 let weeklyGoalEditingSlot = 1;
 let selectedWeeklyGoalsWeek = null;
@@ -13841,7 +13925,7 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.19-2';
+const VERSION = '2026.10.19-3';
 const VERSION_NOTE = 'Rozsah spolupráce a produktové filtry u klientů. Osobní přehled delegování a automatizace s měsíčními odhady úspory času.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';

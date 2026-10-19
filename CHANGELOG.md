@@ -1,3 +1,10 @@
+## 2026.10.19-3
+- Denní přehled má jednotné sloupce klient, úkol a popis, termín a akce. Typ aktivity je uveden u úkolu; rozdílný počet tlačítek již neposouvá datum.
+- Filtr typu aktivity, dneška s prodlenými úkoly, následujících sedmi dní, všech termínů nebo vlastního intervalu. Řazení podle termínu oběma směry; úkoly bez termínu se nezobrazují s vymyšleným dnešním datem.
+- Rozpoznané starší automatické záznamy o úpravách klientů, smluv a obchodů se při načtení označí jako dokončené a zůstanou v historii. Původní stav se uchová u záznamu. Ručně zadané úkoly a navazující aktivity jsou chráněny; nová automatická historie je výslovně odlišená od úkolů.
+- Připomínky smluv jsou v samostatném rozbalovacím přehledu s významem data: výročí, konec fixace nebo revize. Datum odpovídá počítanému termínu, nikoli původnímu datu smlouvy. Opraven jednodenní posun počtu dní přes změnu letního času.
+- Další úkoly se načítají tlačítkem po stovce. Ověřena migrace, obnovení stránky a zálohy, kombinace filtrů, dokončování, zarovnání a mobilní rozložení; prošla také celková regresní kontrola CRM.
+
 ## 2026.10.19-2
 - Klienti mají ručně nastavitelný rozsah spolupráce: jednotlivý produkt, více oblastí a komplexní správa financí. Staré karty zůstávají bez odhadovaného zařazení.
 - Adresář ukazuje rozsah a produktové oblasti; oba nové filtry lze kombinovat se správcem, kontaktem a hledáním.
