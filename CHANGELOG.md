@@ -1,3 +1,10 @@
+## 2026.10.21-1
+- Karta klienta má novou záložku Majetek a plán: sjednocené investice a FKI, penze, externí investice, závazky a další ručně doplněný majetek.
+- Export společného souboru pro samostatný dědický a krizový plán a majetkový přehled k tisku. Přenáší kontakty, rodinné vazby, majetek, smlouvy a původ údajů; bez rodných čísel a bez automatického odesílání.
+- Náhled importu dotazníku i zpětného exportu z plánu: výběr položek, kontrola klienta, rozlišení nových a změněných záznamů. Opakovaný import nevytváří duplicity, vyplněné kontakty se nepřepisují.
+- Neznámé zůstatky penzí a úvěrů zůstávají k doplnění. Pojistné krytí není majetek; různé měny se nesčítají. Podklady pro plán nemění spravované AUM, obchody ani provize.
+- Údaje se ukládají do stávající zálohy CRM včetně ochrany proti jejich ztrátě při synchronizaci. Ověřen přenos skutečnými importéry obou aplikací, ukládání, opakovaný import a původní funkce CRM.
+
 ## 2026.10.19-4
 - Na detailu obchodního případu a ve všech nabídkách stavů jsou nové volby Klient nemá zájem a Zrušeno.
 - Oba stavy ukončují případ bez vytvoření obchodu či změny smlouvy. Případ vypadne z otevřené pipeline, plánovaných BJ a očekávaných provizí; jeho údaje a historie zůstávají zachované.

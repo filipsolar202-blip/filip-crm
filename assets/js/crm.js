@@ -2321,6 +2321,7 @@ function mergeClientsFromModal() {
     const src = selectedMergeClientFor(k);
     if (src && src[k]) master[k] = src[k];
   });
+  clients.filter(c => c.id !== masterId).forEach(c => mergeWealthProfiles(master, c));
   master.aliases = [...new Set([...String(master.aliases || '').split(',').map(x => x.trim()), ...originalNames].filter(x => x && norm(x) !== norm(master.name)))].join(', ');
   const loserIds = clients.map(c => c.id).filter(id => id !== masterId),
     loserSet = new Set(loserIds.map(String));
@@ -3642,6 +3643,7 @@ function clientNextAction(clientId) {
   return rows.sort((a,b) => a.date.localeCompare(b.date))[0] || null;
 }
 function clientSectionAction(c) {
+  if (clientSection === 'wealth') return `<button class="btn primary" onclick="wealthExportPreview(${c.id})">Export majetku</button>`;
   if (clientSection === 'portfolio') return `<button class="btn primary" onclick="openInvestmentScenarioModal(${c.id},'Investice')">+ Investice</button>`;
   if (clientSection === 'opportunities') return `<button class="btn primary" onclick="openOpportunityModal(${c.id})">+ Obchodní případ</button>`;
   if (clientSection === 'contracts') return `<button class="btn primary" onclick="openContractModal(${c.id})">+ Smlouva</button>`;
@@ -3671,13 +3673,14 @@ function renderClientDetail() {
   const labels = {
     overview: 'Přehled',
     portfolio: 'Portfolio',
+    wealth: 'Majetek a plán',
     opportunities: 'Obchodní případy',
     contracts: 'Smlouvy',
     history: 'Timeline'
   };
   const more = {family:'Rodina',recommendations:'Doporučení',notes:'Poznámky',deals:'Obchody'}, moreActive = Object.keys(more).includes(clientSection);
   el.querySelector('.subnav').innerHTML = Object.entries(labels).map(([k, l]) => `<button class="subtab ${clientSection === k ? 'active' : ''}" onclick="clientSection='${k}';renderClientDetail()">${l}</button>`).join('') + `<details class="client-more-menu"><summary class="subtab ${moreActive ? 'active' : ''}">Více ▾</summary><div class="client-more-panel">${Object.entries(more).map(([k,l])=>`<button onclick="clientSection='${k}';this.closest('details').open=false;renderClientDetail()">${l}</button>`).join('')}<button onclick="openClientReportModal(${c.id})">Report pro klienta</button></div></details>`;
-  el.insertAdjacentHTML('beforeend', clientSection === 'overview' ? clientOverview(c, contracts, deals, acts, year) : clientSection === 'family' ? clientFamilyHtml(c) : clientSection === 'portfolio' ? clientPortfolio(c, contracts, deals) : clientSection === 'opportunities' ? opportunitiesMini(opps) + closedCasesHtml(state.opportunities.filter(o=>String(o.clientId)===String(c.id)&&!isOpenOpportunity(o))) : clientSection === 'contracts' ? contractsMini(contracts) : clientSection === 'deals' ? dealsMini(deals, year) : clientSection === 'recommendations' ? recommendationsMini(c) : clientSection === 'notes' ? notesMini(notes) : historyMini(c, acts, contracts, deals));
+  el.insertAdjacentHTML('beforeend', clientSection === 'overview' ? clientOverview(c, contracts, deals, acts, year) : clientSection === 'wealth' ? clientWealthHtml(c) : clientSection === 'family' ? clientFamilyHtml(c) : clientSection === 'portfolio' ? clientPortfolio(c, contracts, deals) : clientSection === 'opportunities' ? opportunitiesMini(opps) + closedCasesHtml(state.opportunities.filter(o=>String(o.clientId)===String(c.id)&&!isOpenOpportunity(o))) : clientSection === 'contracts' ? contractsMini(contracts) : clientSection === 'deals' ? dealsMini(deals, year) : clientSection === 'recommendations' ? recommendationsMini(c) : clientSection === 'notes' ? notesMini(notes) : historyMini(c, acts, contracts, deals));
   if (clientSection === 'overview') el.insertAdjacentHTML('beforeend', clientFamilyHtml(c) + clientReferralOverview(c));
 }
 function clientInvestmentSummary(clientId) {
@@ -7434,10 +7437,12 @@ function mergeIncomingStateCore(incoming) {
       ['phone', 'email', 'altEmails', 'birthId', 'address', 'note', 'contactPref', 'cooperationScope'].forEach(k => {
         if (!c[k] && ic[k]) c[k] = ic[k];
       });
+      mergeWealthProfiles(c, ic);
       count.skipped++;
     } else {
       c = {
         ...ic,
+        wealthExchangeId: ic.wealthExchangeId || `crm:${incoming.createdAt || 'local'}:${ic.id}`,
         id: uid(),
         createdAt: ic.createdAt || today(),
         importedAt: today()
@@ -11474,6 +11479,7 @@ function criticalBackupCounts(s = state) {
     weeklyGoals: (s.weeklyGoals || []).length,
     weeklyReviews: (s.weeklyReviews || []).length,
     delegationProcesses: (s.delegationProcesses || []).length,
+    wealthRecords: s.clients.reduce((n,c) => n + (c.wealthProfile?.assets?.length || 0) + (c.wealthProfile?.contracts?.length || 0) + (c.wealthProfile?.context ? 1 : 0), 0),
     commissionImports: (s.commissionImports || []).length,
     referrerPayouts: (s.referrerPayouts || []).length,
     referrals: (s.referrals || []).length
@@ -13942,8 +13948,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.19-4';
-const VERSION_NOTE = 'Přehledné denní úkoly s filtry a termíny. Informační zápisy patří do historie. Obchodní případy mají stavy Klient nemá zájem a Zrušeno a přístupný archiv.';
+const VERSION = '2026.10.21-1';
+const VERSION_NOTE = 'Majetek a plán na kartě klienta: export pro dědický a krizový plán, přehled k tisku a kontrolovaný import společného dotazníku bez duplicit a bez automatické změny AUM či provizí.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
@@ -14057,9 +14063,10 @@ const BACKUP_COUNT_LABELS = {
   referrals: 'doporučení',
   weeklyGoals: 'týdenních cílů',
   weeklyReviews: 'uzavřených týdnů',
-  delegationProcesses: 'činností k delegování'
+  delegationProcesses: 'činností k delegování',
+  wealthRecords: 'majetkových podkladů'
 };
-const BACKUP_PROTECTED_KEYS = ['clients', 'contracts', 'deals', 'opportunities', 'notes', 'activities', 'analysisEntries', 'campaigns', 'investments', 'investmentSnapshots', 'externalInvestments', 'investmentForecasts', 'commissionImports', 'referrerPayouts', 'referrals', 'weeklyGoals', 'weeklyReviews', 'delegationProcesses'];
+const BACKUP_PROTECTED_KEYS = ['clients', 'contracts', 'deals', 'opportunities', 'notes', 'activities', 'analysisEntries', 'campaigns', 'investments', 'investmentSnapshots', 'externalInvestments', 'investmentForecasts', 'commissionImports', 'referrerPayouts', 'referrals', 'weeklyGoals', 'weeklyReviews', 'delegationProcesses', 'wealthRecords'];
 let scenario_editableScope = '';
 let fkiEditor_editingFkRecordKey = '',
   fkiEditor_editingFkClientId = null;

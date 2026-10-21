@@ -1,0 +1,52 @@
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const {chromium,launchOptions}=require('./runtime.cjs');const root=path.resolve(__dirname,'../..'),fixture=structuredClone(require('./fixture.cjs')),E=require('../../assets/js/wealth-exchange.js');
+fixture.deals.push({...fixture.deals[1],id:22,amount:50000});
+fixture.externalInvestments=[{id:51,clientId:1,company:'Jiná banka',product:'EUR úspory',current:1000,currency:'EUR'}];
+(async()=>{const browser=await chromium.launch(launchOptions);try{
+ const context=await browser.newContext({viewport:{width:1440,height:1100},acceptDownloads:true});
+ await context.route('**/*',route=>{const u=new URL(route.request().url());if(u.hostname==='crm.test'){const p=path.join(root,decodeURIComponent(u.pathname));if(fs.existsSync(p))return route.fulfill({body:fs.readFileSync(p),contentType:p.endsWith('.js')?'text/javascript':p.endsWith('.css')?'text/css':p.endsWith('.png')?'image/png':'text/html'});}return route.abort();});
+ await context.addInitScript(f=>{if(location.hostname==='crm.test'&&!localStorage.getItem('filip_crm_main_v1'))localStorage.setItem('filip_crm_main_v1',JSON.stringify(f));},fixture);
+ const page=await context.newPage(),errors=[],dialogs=[];page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>{dialogs.push(d.message());d.dismiss()});await page.goto('https://crm.test/FILIP-CRM.html');
+ await page.evaluate(()=>openClientWorkspace(1,'wealth'));
+ assert.match(await page.locator('#clientDetail').innerText(),/Majetek a plán/);
+ await page.locator('.wealth-panel').getByRole('button',{name:'Export majetku',exact:true}).click();
+ const output=await page.evaluate(()=>wealthBuildDocument(findClient(1)));E.parse(output);fs.writeFileSync('/private/tmp/crm-wealth-export-qa.json',JSON.stringify(output));
+ assert(output.assets.some(a=>a.name==='Test klasický fond'));assert.equal(output.assets.find(a=>a.name==='Test FKI fond').value,'250000');
+ assert(output.assets.find(a=>a.name==='Test hypotéka').valueUnknown);assert(output.assets.find(a=>a.name==='DPS').valueUnknown);
+ assert.equal(output.assets.find(a=>a.name==='EUR úspory').currency,'EUR');assert.equal(output.exchange.contracts.length,3);
+ assert(output.assets.every(a=>a.owner==='unknown'));assert(!output.assets.some(a=>a.name==='Test život'));
+ assert.equal(output.crisis.policies.length,1);assert.equal(output.crisis.policies[0].coverage,'');
+ const downloadPromise=page.waitForEvent('download');await page.getByRole('button',{name:'Stáhnout soubor pro plán'}).click();const download=await downloadPromise;E.parse(fs.readFileSync(await download.path(),'utf8'));
+ await page.evaluate(()=>closeModal('wealthExportModal'));
+ const baseline=await page.evaluate(()=>JSON.stringify({deals:state.deals,contracts:state.contracts,investmentRecords:state.investmentRecords,externalInvestments:state.externalInvestments}));
+ // Return through the actual other application's import/export implementation.
+ const planModule=path.resolve(root,'../rodinny-plan/src/wealth-exchange.js');
+ const returned=fs.existsSync(planModule)?await (async()=>{const {readExchangeFile,exportExchange}=await import(planModule);return exportExchange(readExchangeFile(JSON.stringify(output)).candidate)})():structuredClone(output);
+ returned.assets.push(E.asset({id:'home-1',name:'Byt <b>není HTML</b>',category:'Nemovitosti',value:'4500000',valueUnknown:false,owner:'me'}));returned.self.email='neprepsat@example.test';returned.self.address='Testovací adresa';
+ await page.evaluate(d=>wealthPrepareImport(JSON.stringify(d),1),returned);
+ assert.equal(await page.locator('[data-wealth-asset]:checked').count(),1);
+ assert.equal(await page.evaluate(()=>!!findClient(1).wealthProfile),false);
+ await page.locator('#wealthContacts').check();await page.getByRole('button',{name:'Převzít vybrané údaje'}).click();
+ assert.equal(await page.evaluate(()=>findClient(1).email),'alfa@example.test');assert.equal(await page.evaluate(()=>findClient(1).address),'Testovací adresa');
+ assert.equal(await page.evaluate(()=>wealthRows(findClient(1)).length),output.assets.length+1);
+ assert.equal(await page.evaluate(()=>JSON.stringify({deals:state.deals,contracts:state.contracts,investmentRecords:state.investmentRecords,externalInvestments:state.externalInvestments})),baseline);
+ await page.reload();await page.evaluate(()=>openClientWorkspace(1,'wealth'));assert.match(await page.locator('.wealth-panel').innerText(),/Byt <b>není HTML<\/b>/);
+ await page.evaluate(d=>wealthPrepareImport(JSON.stringify(d),1),returned);assert.equal(await page.locator('[data-wealth-asset]:checked').count(),0);await page.getByRole('button',{name:'Převzít vybrané údaje'}).click();
+ assert.equal(await page.evaluate(()=>findClient(1).wealthProfile.assets.length),1);assert.equal(await page.evaluate(()=>findClient(1).wealthProfile.imports.length),1);
+ const updated=structuredClone(returned);updated.assets.at(-1).value='4600000';await page.evaluate(d=>wealthPrepareImport(JSON.stringify(d),1),updated);assert.equal(await page.locator('[data-wealth-asset]:checked').count(),0);await page.locator('[data-wealth-asset]').last().check();await page.getByRole('button',{name:'Převzít vybrané údaje'}).click();
+ assert.equal(await page.evaluate(()=>findClient(1).wealthProfile.assets[0].previous.value),'4500000');
+ assert.match(await page.evaluate(d=>{try{wealthPrepareImport(JSON.stringify(d),2);return ''}catch(e){return e.message}},returned),/jiným klientem/);
+ const unlinked=E.blank('Jiné jméno');unlinked.assets.push(E.asset({id:'u1',name:'Nová položka'}));await page.evaluate(d=>wealthPrepareImport(JSON.stringify(d),2),unlinked);await page.getByRole('button',{name:'Převzít vybrané údaje'}).click();assert.equal(await page.evaluate(()=>!!findClient(2).wealthProfile),false);assert.match(dialogs.pop(),/Potvrď/);await page.evaluate(()=>closeModal('wealthImportModal'));
+ // Manual property form and persistence.
+ await page.evaluate(()=>openClientWorkspace(1,'wealth'));await page.getByRole('button',{name:'+ Majetek / závazek'}).click();await page.locator('#waName').fill('Ruční závazek');await page.locator('#waKind').selectOption('debt');await page.getByRole('button',{name:'Uložit',exact:true}).last().click();
+ assert.equal(await page.evaluate(()=>wealthRows(findClient(1)).find(r=>r.asset.name==='Ruční závazek').asset.valueUnknown),true);
+ const backup=await page.evaluate(()=>{const raw=JSON.stringify(state),s=normalizeState(JSON.parse(raw));return {count:criticalBackupCounts(s).wealthRecords,profile:s.clients[0].wealthProfile}});assert(backup.count>=3);assert.equal(backup.profile.assets.length,2);
+ const merge=await page.evaluate(()=>{const copy=structuredClone(findClient(1)),target={id:900,name:copy.name};mergeWealthProfiles(target,copy);mergeWealthProfiles(target,copy);return target.wealthProfile});assert.equal(merge.assets.length,2);
+ await page.locator('.wealth-panel').screenshot({path:'/private/tmp/crm-wealth-desktop.png'});
+ await page.setViewportSize({width:390,height:844});await page.locator('.wealth-panel').screenshot({path:'/private/tmp/crm-wealth-mobile.png'});
+ // Malicious source keys remain inert inside action attributes.
+ const hostile=E.blank('Testovací klient Alfa');hostile.assets.push(E.asset({id:'quoted-key',name:'Bezpečný název'}));hostile.exchange={...output.exchange,assetRefs:{'quoted-key':{sourceKey:"x');window.wealthInjected=true;//",kind:'wealth',company:'',isin:'',asOf:''}},contracts:[]};
+ await page.evaluate(d=>wealthPrepareImport(JSON.stringify(d),1),hostile);await page.getByRole('button',{name:'Převzít vybrané údaje'}).click();await page.setViewportSize({width:1440,height:1100});await page.locator('.wealth-panel tr').filter({hasText:'Bezpečný název'}).getByRole('button').click();assert.equal(await page.evaluate(()=>window.wealthInjected),undefined);assert.equal(await page.locator('#waName').inputValue(),'Bezpečný název');
+ assert.deepEqual(errors,[]);assert.deepEqual(dialogs,[]);
+ console.log('PASS: CRM UI export/download; live portfolios, unknown pensions/debts; actual cross-app return; explicit selection; repeat without duplicates; no native AUM/commission mutations; contact/identity safeguards; escaped content; manual assets; persistence/backup merge.');
+}finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

@@ -1,0 +1,115 @@
+{
+  "type": "family-plan-questionnaire",
+  "version": 1,
+  "status": "draft",
+  "date": "2026-10-21",
+  "self": {
+    "name": "Testovací klient",
+    "birth": "1980-01-02",
+    "birthUnknown": false,
+    "status": "unknown",
+    "marriageDate": "",
+    "marriageUnknown": true,
+    "email": "test@example.invalid",
+    "phone": "",
+    "address": ""
+  },
+  "people": [],
+  "answers": {
+    "children": "unknown",
+    "otherFamily": "unknown",
+    "will": "unknown",
+    "maritalProperty": "unknown",
+    "gifts": "unknown",
+    "exceptions": "unknown",
+    "international": "unknown",
+    "assets": "unknown",
+    "debts": "unknown"
+  },
+  "assets": [
+    {
+      "id": "asset-test-1",
+      "name": "Testovací fond",
+      "kind": "asset",
+      "category": "Investiční fondy",
+      "value": "200000",
+      "valueUnknown": false,
+      "currency": "CZK",
+      "owner": "unknown",
+      "person": "",
+      "share": "",
+      "acquisition": "unknown",
+      "liquid": false,
+      "note": "Testovací údaje."
+    }
+  ],
+  "budget": {
+    "expenses": {
+      "value": "",
+      "unknown": true
+    },
+    "income": {
+      "value": "",
+      "unknown": true
+    },
+    "months": {
+      "value": "",
+      "unknown": true
+    },
+    "oneOff": {
+      "value": "",
+      "unknown": true
+    },
+    "reserve": {
+      "value": "",
+      "unknown": true
+    },
+    "insurance": {
+      "value": "",
+      "unknown": true
+    }
+  },
+  "manual": {
+    "contact": "",
+    "children": "",
+    "documents": "",
+    "payments": "",
+    "insurance": "",
+    "access": "",
+    "firstDays": "",
+    "notary": "",
+    "notes": ""
+  },
+  "confirm": {
+    "family": false,
+    "property": false,
+    "truth": false,
+    "delivery": false
+  },
+  "notes": "Předvyplněno z CRM; doplnit a zkontrolovat.",
+  "crisis": {
+    "contacts": [],
+    "policies": [],
+    "services": [],
+    "access": [],
+    "benefits": [],
+    "tasks": []
+  },
+  "exchange": {
+    "version": 1,
+    "source": "filip-crm",
+    "exportId": "synthetic-export-1",
+    "exportedAt": "2026-10-21T08:00:00Z",
+    "clientRef": "synthetic-client-1",
+    "assetRefs": {
+      "asset-test-1": {
+        "sourceKey": "synthetic-investment-1",
+        "kind": "investment",
+        "company": "Testovací společnost",
+        "isin": "",
+        "asOf": "2026-09-30"
+      }
+    },
+    "contracts": []
+  }
+}
