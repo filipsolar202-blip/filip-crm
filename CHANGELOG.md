@@ -1,3 +1,10 @@
+## 2026.10.22-1
+- FKI záznam automaticky počítá hodnotu z počtu CP a aktuální ceny. Když počet CP není zadaný, odvodí jej z čisté investice a upisovací ceny; pole aktuální hodnoty v Kč lze nechat prázdné.
+- Formulář ukazuje okamžitý výpočet a rozlišuje zadaný a dopočtený počet CP. Stejný výpočet se používá při uložení, na kartách klienta, v součtech a reportech.
+- Opravená přednost ocenění: výslovná úprava CP již není přebita ponechanou částkou z importu Codya. Rozpoznané starší ruční úpravy se přepočtou také; původní importované údaje zůstávají zachované. Nově načtený výpis opět získá přednost, dokud není ocenění aktualizováno.
+- Přidána výslovná volba ruční aktuální hodnoty v Kč. Zadaná částka se uloží, po otevření zůstává zachovaná a změna ceny CP ji nepřepíše. Návrat k automatickému výpočtu je možný vypnutím volby.
+- Zachovány vazby odkupů při změně upisovací ceny nebo identifikace nákupu. Ověřeny vícečetné nákupy Julius Meinl, Penta Equity a Penta RE na syntetických údajích, počítání výnosu od nákupu, ukládání a nové importy.
+
 ## 2026.10.21-1
 - Karta klienta má novou záložku Majetek a plán: sjednocené investice a FKI, penze, externí investice, závazky a další ručně doplněný majetek.
 - Export společného souboru pro samostatný dědický a krizový plán a majetkový přehled k tisku. Přenáší kontakty, rodinné vazby, majetek, smlouvy a původ údajů; bez rodných čísel a bez automatického odesílání.

@@ -1202,15 +1202,33 @@ function invEffectiveQty(r) {
 function invWithdrawalValue(r) {
   return invIsWithdrawal(r) ? Math.abs(invCurrent(r) || invDeposit(r)) : 0;
 }
+function invPrefersNavCalculation(r) {
+  if (r?.fkiValuationMode) return r.fkiValuationMode === 'nav';
+  // Older saves retained the producer's amount even after the user edited the CP inputs.
+  // A fresh producer import uses an ISO timestamp; the legacy record editor used a date only.
+  const edited = String(r?._updatedAt || '');
+  return r?._source === 'local-fki' && /^\d{4}-\d{2}-\d{2}$/.test(edited) &&
+    !!r?.codyaImportDate && edited >= String(r.codyaImportDate);
+}
+function invManualValue(r) {
+  const raw = r?.fkiManualCurrent;
+  return !invIsWithdrawal(r) && r?.fkiValuationMode === 'manual' && raw !== '' && raw != null && Number.isFinite(+raw) && +raw >= 0 ? +raw : null;
+}
+function invPositionValue(r) {
+  const manual = invManualValue(r);
+  return manual !== null ? manual : invCurrentValue(r) || invCurrent(r) || invDeposit(r) || 0;
+}
 function invCurrentValue(r) {
   if (invIsWithdrawal(r)) return invIsFutureWithdrawal(r) ? 0 : -invWithdrawalValue(r);
+  const manual = invManualValue(r);
+  if (manual !== null) return manual;
+  const qty = invEffectiveQty(r), nav = invCurrentNav(r), canCalculate = qty > 0 && nav > 0;
+  if (canCalculate && invPrefersNavCalculation(r)) return qty * nav;
   const imported = r?.codyaImportedCurrent,
     importedDate = String(r?.codyaImportDate || ''),
     fundDate = String(state.fundValues?.[invPositionKey(r)]?.date || '');
   if (imported !== '' && imported != null && Number.isFinite(+imported) && (!fundDate || importedDate >= fundDate)) return +imported;
-  const qty = invEffectiveQty(r),
-    nav = invCurrentNav(r);
-  if (qty && nav) return qty * nav;
+  if (canCalculate) return qty * nav;
   return invCurrent(r);
 }
 function invClientIdentity(r) {
@@ -1488,7 +1506,7 @@ function investmentPortfolioForClient(clientId) {
       return;
     }
     map[k].invested += invDeposit(r);
-    map[k].current += invCurrentValue(r) || invCurrent(r) || invDeposit(r);
+    map[k].current += invPositionValue(r);
     map[k].amount = Math.max(0, map[k].current);
     if (invDate(r)) map[k].date = invDate(r);
   });
@@ -6728,7 +6746,7 @@ function importCodyaRows(rows,area,reportDate=today()) {
         if(!positive&&!matches.length)return;
         if(!matches.length){const rc=normalizeStrongId(client.birthId);const rec={Investor:clientName(client),'RČ':rc,ClientID:rc?'RC_'+rc:String(client.id),'Investiční společnost':'Codya',Fond:codyaFundDisplay(header),'Typ produktu':'FKI','Typ transakce':'Platba','Čistá investice':0,'Aktuální hodnota investice':current,'Datum připsání platby':reportDate,'Datum emise':reportDate,_source:'codya-import'};state.investmentRecords.push(rec);matches=[rec];result.created++;}
         const weights=matches.map(r=>Math.max(0,invCurrent(r)||invDeposit(r))),total=weights.reduce((s,x)=>s+x,0);
-        matches.forEach((r,i)=>{r.codyaImportedCurrent=total?current*weights[i]/total:current/matches.length;r.codyaImportDate=reportDate;r.codyaImportFund=header;r._updatedAt=new Date().toISOString();});
+        matches.forEach((r,i)=>{r.codyaImportedCurrent=total?current*weights[i]/total:current/matches.length;r.codyaImportDate=reportDate;r.codyaImportFund=header;r.fkiValuationMode='statement';r._updatedAt=new Date().toISOString();});
         result.updated++;if(!positive)result.zeroed++;
       }
     });
@@ -8780,7 +8798,7 @@ function fkiEditor_fkRecordsForItem(clientId, key) {
   return investmentRecordsForClient(clientId).filter(r => invPositionKey(r) === key && isFkiReportRecord(r)).sort((a, b) => String(invEmissionDate(a) || invPaymentDate(a)).localeCompare(String(invEmissionDate(b) || invPaymentDate(b))));
 }
 function fkiEditor_fkRecordCurrent(r) {
-  return invCurrentValue(r) || invCurrent(r) || invDeposit(r) || 0;
+  return invPositionValue(r);
 }
 function fkiEditor_fkSetFundValueForKey(key, nav, date, base = {}) {
   if (!key || !nav) return 0;
@@ -8801,7 +8819,10 @@ function fkiEditor_fkSetFundValueForKey(key, nav, date, base = {}) {
     if (invPositionKey(r) !== key) return;
     r['Poslední schválená hodnota CP'] = nav;
     r['Poslední schválená hodnota do'] = date || today();
-    if (invEffectiveQty(r)) r['Aktuální hodnota investice'] = invCurrentValue(r);
+    if (!invIsWithdrawal(r) && invEffectiveQty(r) > 0) {
+      if (r.fkiValuationMode !== 'manual' && (!r.codyaImportDate || String(date || today()) >= String(r.codyaImportDate))) r.fkiValuationMode = 'nav';
+      r['Aktuální hodnota investice'] = invCurrentValue(r);
+    }
     changed++;
   });
   return changed;
@@ -9787,7 +9808,7 @@ function liquidity_redemptionAllocations(rows) {
     used = new Map();
   buys.forEach(r => {
     const k = invRecordKey(r),
-      cur = invCurrentValue(r) || invDeposit(r) || 0;
+      cur = invPositionValue(r);
     base.set(k, Math.max(0, cur));
     used.set(k, 0);
   });
@@ -9899,7 +9920,7 @@ function liquidity_originalFkiCard(item, clientId) {
     main = records.find(r => !invIsWithdrawal(r)) || records[0] || item.source || {},
     inv = records.reduce((s, r) => s + (invIsWithdrawal(r) ? 0 : invDeposit(r)), 0) || +item.invested || 0,
     realized = records.reduce((s, r) => s + (invIsWithdrawal(r) ? invWithdrawalValue(r) : 0), 0) || investmentRealizedAmount(item),
-    cur = Math.max(0, records.reduce((s, r) => s + (invIsWithdrawal(r) ? -invWithdrawalValue(r) : invCurrentValue(r) || invDeposit(r) || 0), 0)) || +item.rawAmount || 0,
+    cur = Math.max(0, records.reduce((s, r) => s + (invIsWithdrawal(r) ? -invWithdrawalValue(r) : invPositionValue(r)), 0)) || +item.rawAmount || 0,
     gain = investmentPerformanceGain(cur, inv, realized),
     pct = investmentPerformancePct(cur, inv, realized),
     issue = invEmissionDate(main),
@@ -10286,7 +10307,7 @@ function fundPerformance_redemptionSummary(rows) {
     for (const b of buys) {
       if (amount <= 0) break;
       const k = invRecordKey(b),
-        left = Math.max(0, (invCurrentValue(b) || invDeposit(b) || 0) - (used.get(k) || 0));
+        left = Math.max(0, (invPositionValue(b)) - (used.get(k) || 0));
       const part = Math.min(left, amount);
       used.set(k, (used.get(k) || 0) + part);
       amount -= part;
@@ -10301,7 +10322,7 @@ function fundPerformance_fkiPositionRowsPa(clientId, item) {
     const isOut = invIsWithdrawal(r),
       redeemed = isOut ? 0 : redeemedFor(r),
       inv = isOut ? 0 : invDeposit(r),
-      cur = isOut ? typeof invWithdrawalValue === 'function' ? invWithdrawalValue(r) : Math.abs(invCurrentValue(r)) : Math.max(0, (invCurrentValue(r) || invDeposit(r) || 0) - redeemed),
+      cur = isOut ? typeof invWithdrawalValue === 'function' ? invWithdrawalValue(r) : Math.abs(invCurrentValue(r)) : Math.max(0, (invPositionValue(r)) - redeemed),
       gain = isOut ? cur : cur + redeemed - inv,
       issue = invEmissionDate(r),
       taxStart = liquidity_fkiTaxStart(r),
@@ -10317,7 +10338,7 @@ function fundPerformance_fkiCardPa(item, clientId) {
     main = rows.find(r => !invIsWithdrawal(r)) || rows[0] || item.source || {},
     inv = rows.reduce((s, r) => s + (invIsWithdrawal(r) ? 0 : invDeposit(r)), 0) || +item.invested || 0,
     realized = rows.reduce((s, r) => s + (invIsWithdrawal(r) ? typeof invWithdrawalValue === 'function' ? invWithdrawalValue(r) : Math.abs(invCurrentValue(r)) : 0), 0) || investmentRealizedAmount(item),
-    cur = Math.max(0, rows.reduce((s, r) => s + (invIsWithdrawal(r) ? -(typeof invWithdrawalValue === 'function' ? invWithdrawalValue(r) : Math.abs(invCurrentValue(r))) : invCurrentValue(r) || invDeposit(r) || 0), 0)) || +item.rawAmount || 0,
+    cur = Math.max(0, rows.reduce((s, r) => s + (invIsWithdrawal(r) ? -(typeof invWithdrawalValue === 'function' ? invWithdrawalValue(r) : Math.abs(invCurrentValue(r))) : invPositionValue(r)), 0)) || +item.rawAmount || 0,
     gain = investmentPerformanceGain(cur, inv, realized),
     pct = investmentPerformancePct(cur, inv, realized),
     issue = invEmissionDate(main),
@@ -10864,6 +10885,8 @@ function clientOutput_xRowInvested(r) {
   return direct || Math.abs(clientOutput_xN(clientOutput_xPick(r, ['Čistá investice', 'Cista investice', 'investment', 'invested', 'amount'])));
 }
 function clientOutput_xRowCurrentDirect(r) {
+  const manual = invManualValue(r);
+  if (manual !== null) return manual;
   const direct = typeof invCurrentValue === 'function' ? clientOutput_xN(invCurrentValue(r)) : typeof invCurrent === 'function' ? clientOutput_xN(invCurrent(r)) : 0;
   return direct || clientOutput_xN(clientOutput_xPick(r, ['Aktuální hodnota investice', 'Aktualni hodnota investice', 'current', 'value', 'amount']));
 }
@@ -10884,7 +10907,7 @@ function clientOutput_xFundRows(f) {
     const invested = clientOutput_xRowInvested(r),
       direct = clientOutput_xRowCurrentDirect(r),
       share = totalInvested > 0 ? invested / totalInvested : 0,
-      current = direct > 0 ? direct : clientOutput_xN(f.amount) * share,
+      current = invManualValue(r) !== null ? direct : direct > 0 ? direct : clientOutput_xN(f.amount) * share,
       realized = typeof investmentRealizedAmount === 'function' ? clientOutput_xN(investmentRealizedAmount(r)) : clientOutput_xN(r?.realized || r?.redemptionAmount || 0),
       date = clientOutput_xRowPurchaseDate(r),
       taxStart = clientOutput_xRowTaxStart(r, f.area),
@@ -11855,6 +11878,27 @@ function saveInvestmentScenario() {
   showView('clients');
   saveToast(`Návrh uložen ke klientovi · nové ${num(added)} · upravené ${num(updated)}`);
 }
+function updateFkRecordValuation() {
+  const field = byId('fkRecCurrent'), hint = byId('fkRecValuationHint');
+  if (!field || !hint) return;
+  const deposit = parseMoney(val('fkRecDeposit')), subscription = parseMoney(val('fkRecSubscribe')),
+    enteredQty = parseMoney(val('fkRecQty')), nav = parseMoney(val('fkRecNav')),
+    withdrawal = invIsWithdrawal({'Typ transakce':val('fkRecTx')}),
+    quantity = enteredQty > 0 ? enteredQty : deposit > 0 && subscription > 0 ? deposit / subscription : 0,
+    manual = !!byId('fkRecManualCurrent')?.checked,
+    automatic = !withdrawal && !manual && quantity > 0 && nav > 0;
+  field.readOnly = automatic;
+  if (automatic) {
+    if (field.dataset.manualValue === undefined) field.dataset.manualValue = field.value;
+    field.value = (quantity * nav).toFixed(2);
+    hint.textContent = `Automaticky: ${quantity.toLocaleString('cs-CZ',{maximumFractionDigits:8})} CP × ${nav.toLocaleString('cs-CZ',{maximumFractionDigits:8})} Kč = ${money(quantity * nav)}.` +
+      (enteredQty > 0 ? ' Použit zadaný počet CP.' : ' Počet CP dopočten z čisté investice ÷ upisovací ceny.') +
+      ' Při uložení se použije tento výpočet místo dříve importované částky.';
+  } else {
+    if (field.dataset.manualValue !== undefined) { field.value = field.dataset.manualValue; delete field.dataset.manualValue; }
+    hint.textContent = manual && !withdrawal ? 'Použije se ručně zadaná hodnota v Kč. Změna ceny CP ji nepřepíše; k výpočtu z CP se vrátíš vypnutím této volby.' : withdrawal ? 'U odkupu zadej částku odkupu v Kč.' : 'Pro automatický výpočet doplň poslední cenu CP a počet CP, nebo čistou investici a upisovací cenu. Hodnotu v Kč pak nemusíš zadávat.';
+  }
+}
 function loadFkRecordFundDefaults() {
   const key = val('fkRecFundSelect'),
     f = fkFundItems().find(x => x.key === key),
@@ -11867,6 +11911,7 @@ function loadFkRecordFundDefaults() {
   setVal('fkRecType', fv.typ || f.typ || '');
   if (fv.nav) setVal('fkRecNav', fv.nav);
   if (fv.date) setVal('fkRecNavDate', fv.date);
+  updateFkRecordValuation();
 }
 function fkiPosition_previousOpen(clientId, encodedKey = '', encodedRecordKey = '') {
   const c = findClient(clientId);
@@ -11889,7 +11934,9 @@ function fkiPosition_previousOpen(clientId, encodedKey = '', encodedRecordKey = 
   setVal('fkRecProduct', invProductType(r) || 'FKI');
   setVal('fkRecTx', r['Typ transakce'] || 'Platba');
   setVal('fkRecDeposit', invDeposit(r) || '');
-  setVal('fkRecCurrent', invCurrent(r) || fkiEditor_fkRecordCurrent(r) || '');
+  delete byId('fkRecCurrent').dataset.manualValue;
+  setVal('fkRecCurrent', invManualValue(r) ?? (fkiEditor_fkRecordCurrent(r) || ''));
+  byId('fkRecManualCurrent').checked = invManualValue(r) !== null;
   setVal('fkRecQty', invQty(r) || '');
   setVal('fkRecSubscribe', invSubscribeValue(r) || '');
   setVal('fkRecType', invType(r) || '');
@@ -11916,9 +11963,16 @@ function liquidity_prevSaveFkRecord2() {
     qty = fkiEditor_fkNum(val('fkRecQty')),
     nav = fkiEditor_fkNum(val('fkRecNav')),
     subscribe = fkiEditor_fkNum(val('fkRecSubscribe')),
-    current = fkiEditor_fkNum(val('fkRecCurrent')) || (qty && nav ? qty * nav : deposit);
+    isWithdrawal = invIsWithdrawal({'Typ transakce':val('fkRecTx')}),
+    effectiveQty = qty > 0 ? qty : deposit > 0 && subscribe > 0 && !isWithdrawal ? deposit / subscribe : 0,
+    manualRequested = !isWithdrawal && !!byId('fkRecManualCurrent')?.checked,
+    automatic = !isWithdrawal && !manualRequested && effectiveQty > 0 && nav > 0,
+    currentRaw = val('fkRecCurrent').trim(),
+    manual = !isWithdrawal && !automatic && currentRaw !== '',
+    current = automatic ? effectiveQty * nav : manual ? fkiEditor_fkNum(currentRaw) : fkiEditor_fkNum(currentRaw) || deposit;
   if (!fund) return alert('Vyplň fond.');
   if (!deposit) return alert('Vyplň čistou investici.');
+  if (manualRequested && (!currentRaw || !Number.isFinite(Number(currentRaw)) || Number(currentRaw) < 0)) return alert('Vyplň nezápornou ruční hodnotu v Kč, nebo vypni ruční hodnotu pro automatický výpočet z CP.');
   const rec = {
     'Investor': investor,
     'RČ': val('fkRecBirthId').trim() || client.birthId || '',
@@ -11945,12 +11999,21 @@ function liquidity_prevSaveFkRecord2() {
     _source: 'local-fki',
     _updatedAt: today()
   };
-  if (qty && nav) rec['Aktuální hodnota investice'] = qty * nav;
+  if (automatic) rec.fkiValuationMode = 'nav';
+  else if (manual) {rec.fkiValuationMode = 'manual';rec.fkiManualCurrent = current;}
+  else rec.fkiValuationMode = 'statement';
   const oldIndex = (state.investmentRecords || []).findIndex(r => fkiEditor_fkRecKey(r) === fkiEditor_editingFkRecordKey);
   if (oldIndex >= 0) state.investmentRecords[oldIndex] = {
     ...state.investmentRecords[oldIndex],
     ...rec
   };else state.investmentRecords.push(rec);
+  const newRecordKey = invRecordKey(rec);
+  if (fkiEditor_editingFkRecordKey && newRecordKey !== fkiEditor_editingFkRecordKey) {
+    state.investmentRecords.forEach(r => {
+      if (r.redemptionSourceRecordKey === fkiEditor_editingFkRecordKey) r.redemptionSourceRecordKey = newRecordKey;
+      if (r['Odkup z nákupu'] === fkiEditor_editingFkRecordKey) r['Odkup z nákupu'] = newRecordKey;
+    });
+  }
   const key = invPositionKey(rec);
   if (nav) fkiEditor_fkSetFundValueForKey(key, nav, val('fkRecNavDate') || today(), {
     company,
@@ -12559,6 +12622,7 @@ function openFkRecordModal(clientId, encodedKey = '', encodedRecordKey = '') {
     liquidity_fillRedemptionSourceOptions(clientId, key, '');
     ['fkRecRedemptionRequested', 'fkRecRedemptionRealized', 'fkRecRedemptionPayout'].forEach(id => liquidity_set(id, ''));
   }
+  updateFkRecordValuation();
 }
 function openFkRedemptionModal(clientId, encodedKey = '', encodedRecordKey = '') {
   window.openFkRecordModal(clientId, encodedKey, encodedRecordKey);
@@ -12581,6 +12645,9 @@ function openFkRedemptionModal(clientId, encodedKey = '', encodedRecordKey = '')
   liquidity_fkModalClientId = clientId;
   liquidity_fkModalRecordKey = '';
   liquidity_fkModalIsNewRedemption = true;
+  delete byId('fkRecCurrent').dataset.manualValue;
+  byId('fkRecManualCurrent').checked = false;
+  updateFkRecordValuation();
 }
 function saveFkRecord() {
   const wasWithdrawal = String(liquidity_valx('fkRecTx') || '').toLowerCase().includes('odkup');
@@ -13948,8 +14015,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.21-1';
-const VERSION_NOTE = 'Majetek a plán na kartě klienta: export pro dědický a krizový plán, přehled k tisku a kontrolovaný import společného dotazníku bez duplicit a bez automatické změny AUM či provizí.';
+const VERSION = '2026.10.22-1';
+const VERSION_NOTE = 'FKI automaticky dopočítá počet CP z vkladu a upisovací ceny, aktuální hodnotu i výnos. Výpočet je vidět už ve formuláři a po úpravě jej nepřebíjí starší import.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
