@@ -1,4 +1,5 @@
 function renderAll() {
+  normalizeInternalCommissions(state);
   activateDueContractReplacements();
   fkiSync_syncCrmFkiDealsToRecords();
   renderVersion();
@@ -149,6 +150,7 @@ function normalizeState(s) {
   delete s.aiInbox;
   try { localStorage.removeItem('filip_crm_ai_active_job'); } catch (e) {}
   ['clients', 'contracts', 'deals', 'activities', 'referrals', 'referrerPayouts', 'managementPartners', 'managementPayouts', 'notes', 'opportunities', 'investmentRecords', 'investmentSnapshots', 'commissionImports', 'analysisEntries', 'campaigns', 'externalInvestments', 'investmentForecasts', 'weeklyGoals', 'weeklyReviews', 'dailyPriorities', 'focusDrafts', 'focusSnapshots', 'delegationProcesses'].forEach(k => s[k] = Array.isArray(s[k]) ? s[k] : []);
+  normalizeInternalCommissions(s);
   normalizeActivityHistory(s.activities);
   if (!s.managementPartners.length) s.managementPartners = base.managementPartners;
   if (!s.managementPartners.some(x => x.id === 'filip')) s.managementPartners.unshift(base.managementPartners[0]);
@@ -847,6 +849,7 @@ function areaForContract(s) {
   return 'ostatni';
 }
 function areaForDeal(d) {
+  if(isInternalCommission(d))return 'provize';
   const txt = [d?.category, d?.product, d?.company].join(' '),
     n = norm(txt);
   if (d?.category === 'Penze' || /\bdps\b|\bdip\b|penz/.test(n)) return 'penze';
@@ -1591,6 +1594,7 @@ function rowClassContract(s) {
   return cls === 'hot' ? 'row-hot' : cls === 'active-work' ? 'row-active' : cls === 'soon' ? 'row-soon' : 'row-ok';
 }
 function dealBJ(d) {
+  if(isInternalCommission(d))return 0;
   return +d.bj || 0;
 }
 function visibleDeals() {
@@ -1611,12 +1615,14 @@ function isVolumeCategory(c) {
   return c === 'Investice' || c === 'Hypotéky';
 }
 function dealCash(d, y) {
+  if(isInternalCommission(d))return dealActualCommission(d);
   const area = areaForDeal(d || {}), entryPct = parseMoney(d?.entryCommissionPct);
   if (['investice', 'fki'].includes(area) && entryPct > 0 && dealVolume(d) > 0) return dealVolume(d) * entryPct / 100;
   const base = dealBJ(d) * (+getPlan(y || yearOf(d.date)).bjCoef || +state.settings.bjCoef || 150);
   return d.category === 'Životní pojištění' ? base * .8 : base;
 }
 function dealVolume(d) {
+  if(isInternalCommission(d))return 0;
   return +(d.amount || 0);
 }
 function dealActualCommissionIsSet(d) {
@@ -1635,6 +1641,7 @@ function dealExpectedCommission(d, y) {
   return dealPaid(d) ? 0 : dealCash(d, y || yearOf(d.date));
 }
 function isOtherDashboardDeal(d) {
+  if(isInternalCommission(d))return false;
   const area = areaForDeal(d);
   return !['investice', 'fki'].includes(area) && d.category !== 'Hypotéky';
 }
@@ -1910,27 +1917,40 @@ function setCommissionImportStatus(html) {
   const el = byId('commissionImportStatus');
   if (el) el.innerHTML = html;
 }
-function commissionSystemClient() {
-  let c = state.clients.find(x => x.systemRole === 'commission');
-  if (c) {
-    c.name = 'Následná provize';
-    return c;
-  }
-  c = {
-    id: uid(),
-    name: 'Následná provize',
-    systemRole: 'commission',
-    contactPref: 'email',
-    note: 'Technická karta pro souhrn následných provizí z provizních výpisů.',
-    createdAt: today()
+function isInternalCommission(d) { return d?.category==='Následná provize' || !!d?.recurringCommissionKey; }
+function normalizeInternalCommissions(s) {
+  const technical=(s.clients||[]).filter(c=>c.systemRole==='commission' || (c.name==='Následná provize' && String(c.note||'').includes('Technická karta pro souhrn následných provizí')));
+  const ids=new Set(technical.map(c=>String(c.id)));
+  const commissions=(s.deals||[]).filter(d=>isInternalCommission(d)||ids.has(String(d.clientId)));
+  const dealIds=new Set(commissions.map(d=>String(d.id)));
+  commissions.forEach(d=>{if(d.clientId || d.category!=='Následná provize'){d.commissionLegacyOriginal=d.commissionLegacyOriginal||{...d};d.clientId=null;d.category='Následná provize';} });
+  const move=(key,predicate)=>{
+    const rows=(s[key]||[]).filter(predicate);if(!rows.length)return;
+    s.settings=s.settings||{};const archive=s.settings.commissionLegacyArchive||(s.settings.commissionLegacyArchive={});
+    archive[key]=[...(archive[key]||[]),...rows];s[key]=s[key].filter(x=>!rows.includes(x));
   };
-  state.clients.push(c);
-  return c;
+  move('clients',c=>ids.has(String(c.id)));
+  ['contracts','activities','investmentSnapshots','externalInvestments','opportunities'].forEach(key=>move(key,x=>ids.has(String(x.clientId))));
+  move('investmentRecords',r=>ids.has(String(invClientId(r))) || (r._crmSourceType==='deal' && dealIds.has(String(r._crmSourceId))) || dealIds.has(String(r._crmDealId)));
+}
+function renderRecurringCommissions() {
+  const box=byId('recurringCommissions');if(!box)return;
+  const y=+val('dealYear')||new Date().getFullYear();
+  const rows=state.deals.filter(d=>isInternalCommission(d)&&!d.hidden&&yearOf(d.date)===y&&monthOf(d.date)===selectedMonth).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+  box.innerHTML=`<div class="toolbar"><div><h3>Následné provize</h3><p class="note">Vlastní příjmy nad rámec obchodů. Nezvyšují klientské AUM ani investiční produkci.</p></div><button class="btn" onclick="openRecurringCommissionModal()">+ Následná provize</button></div><div class="table-wrap"><table><thead><tr><th>Datum</th><th>Společnost</th><th>Popis</th><th>Provize</th><th>Výplata</th><th></th></tr></thead><tbody>${rows.map(d=>`<tr><td>${esc(d.date)}</td><td>${esc(d.company)}</td><td>${esc(d.product)}</td><td class="money">${money(dealActualCommission(d))}</td><td>${dealPaid(d)?'Vyplaceno':'Čeká na výplatu'}</td><td><button class="btn" onclick="openRecurringCommissionModal(${d.id})">Upravit</button></td></tr>`).join('')||'<tr><td colspan="6">V tomto měsíci nejsou evidované následné provize.</td></tr>'}</tbody><tfoot><tr><th colspan="3">Vyplaceno</th><th class="money">${money(rows.filter(dealPaid).reduce((sum,d)=>sum+dealActualCommission(d),0))}</th><th colspan="2"></th></tr></tfoot></table></div>`;
+}
+function saveRecurringCommission() {
+  const raw=val('rcAmount').trim();if(!raw || !Number.isFinite(+raw))return alert('Doplň částku provize.');
+  if(!val('rcDate'))return alert('Doplň datum výplaty.');
+  const id=byId('recurringCommissionModal').dataset.id;
+  let d=state.deals.find(x=>String(x.id)===id&&isInternalCommission(x));
+  if(!d){d={id:uid(),createdAt:today()};state.deals.push(d);}
+  Object.assign(d,{clientId:null,category:'Následná provize',company:val('rcCompany').trim(),product:val('rcNote').trim(),date:val('rcDate'),actualCommission:+raw,commissionPaid:val('rcPaid')==='yes',amount:0,bj:0,updatedAt:today()});
+  persist();closeModal('recurringCommissionModal');renderAll();saveToast('Následná provize uložena');
 }
 function postRecurringCommissionsToDeals() {
   const imports = (state.commissionImports || []).filter(i => (i.rows || []).some(isRecurringCommissionRow));
   if (!imports.length) return alert('Zatím není načtený výpis s následnými provizemi.');
-  const c = commissionSystemClient();
   let added = 0,
     skipped = 0;
   imports.forEach(i => {
@@ -1943,7 +1963,7 @@ function postRecurringCommissionsToDeals() {
     }
     state.deals.push({
       id: uid(),
-      clientId: c.id,
+      clientId: null,
       category: 'Následná provize',
       company: 'Broker Trust',
       product: 'Následné provize z výpisu',
@@ -2045,7 +2065,7 @@ function renderPlanSegments() {
       return {
         seg,
         contracts: cs.length,
-        deals: ds.length,
+        deals: ds.filter(d=>!isInternalCommission(d)).length,
         volume,
         bj,
         expected,
@@ -3120,7 +3140,7 @@ function renderDashboardMetrics() {
   setText('kpiMortgageYear', money(deals.filter(d => d.category === 'Hypotéky').reduce((s, d) => s + dealVolume(d), 0)));
   setText('kpiDealsYear', num(deals.filter(isOtherDashboardDeal).length));
   renderCharts(year, deals);
-  renderDuplicateWarnings();
+  if(byId('dashboardStats')?.open)renderDuplicateWarnings();
 }
 function dashboardActivityTypes() {
   return new Set(['Telefon', 'Hovor', 'Volání', 'WhatsApp', 'Email', 'Schůzka', 'Úkol']);
@@ -4146,11 +4166,12 @@ function toggleDealHidden(id, checked) {
   renderAll();
 }
 function renderDeals() {
+  renderRecurringCommissions();
   renderMonthTabs();
   const q = norm(val('dealSearch')),
     y = +val('dealYear') || new Date().getFullYear(),
     showHidden = !!byId('showHiddenDeals')?.checked;
-  let rows = state.deals.map(d => ({
+  let rows = state.deals.filter(d=>!isInternalCommission(d)).map(d => ({
     d,
     c: findClient(d.clientId)
   })).filter(x => showHidden || !x.d.hidden).filter(x => yearOf(x.d.date) === y && monthOf(x.d.date) === selectedMonth).filter(x => !q || norm([clientName(x.c), x.d.category, x.d.product, x.d.company, x.d.owner, dealOwnerLabel(x.d), x.d.hidden ? 'skryte' : ''].join(' ')).includes(q));
@@ -5880,6 +5901,7 @@ function toggleContractDealFields() {
   });
 }
 function syncContractDealDefaults(forceType = false) {
+  byId('sPensionFields').hidden=!['DPS','DIP'].includes(val('sType'));
   updateContractInvestmentPreview();
   const client = findClient(+val('sClient')),
     lead = clientLeadDefault(client);
@@ -5988,6 +6010,7 @@ function openContractModal(clientId = null, id = null) {
   contractAttachmentDraft = (Array.isArray(s.attachments) ? s.attachments : []).map(a => ({
     ...a
   }));
+  setVal('sPensionCurrent',pensionCurrentValue(s)??'');setVal('sPensionPayment',s.pensionMonthlyPayment??'');setVal('sPensionDate',s.pensionValueDate||'');
   loadContractInvestmentFields(s);
   syncContractDealDefaults();
   renderContractAttachments();
@@ -5997,6 +6020,8 @@ function openContractModal(clientId = null, id = null) {
   openModal('contractModal');
 }
 function fkiSync_before_saveContract() {
+  const isPension=['DPS','DIP'].includes(val('sType'));
+  if(isPension && ['sPensionCurrent','sPensionPayment'].some(id=>val(id)!=='' && (!Number.isFinite(+val(id)) || +val(id)<0)))return alert('Penzijní hodnoty musí být nezáporná čísla.');
   let caseVolume, investmentUpdate;
   try{caseVolume=caseVolumeInput(val('sCaseVolume'));investmentUpdate=readContractInvestmentFields();}catch(error){return alert(error.message);}
 
@@ -6042,6 +6067,7 @@ function fkiSync_before_saveContract() {
     })),
     updatedAt: today()
   });
+  if(isPension)Object.assign(s,{pensionCurrent:val('sPensionCurrent')===''?null:+val('sPensionCurrent'),pensionMonthlyPayment:val('sPensionPayment')===''?null:+val('sPensionPayment'),pensionValueDate:val('sPensionDate')});
   if (investmentUpdate) storeContractInvestmentFields(s, investmentUpdate);
   if (confirmedDuplicates.length) markDuplicateVerified('contract', [s, ...confirmedDuplicates]);
   if (!s.log) s.log = [];
@@ -6231,6 +6257,7 @@ function linkedDealForContract(s) {
   return rows.find(x => norm(x.company) === norm(s.company) && norm(x.product) === norm(s.product) && areaForDeal(x) === areaForContract(s)) || null;
 }
 function openDealModal(clientId = null, id = null) {
+  if(id && isInternalCommission(state.deals.find(x=>x.id===id)))return openRecurringCommissionModal(id);
   pendingOpportunityToDealId = null;
   pendingContractToDealId = null;
   fillClientSelect('dClient', clientId || selectedClientId);
@@ -6291,28 +6318,11 @@ function openDealModal(clientId = null, id = null) {
   if(d.pendingContract){const proposal=d.pendingContract;setVal('dContractType',proposal.type);setVal('dContractStatus',proposal.status);setVal('dContractNumber',proposal.number);setVal('dContractAnniv',proposal.anniv);setVal('dContractRate',proposal.rate);setVal('dContractAmount',proposal.amount);setVal('dContractNote',proposal.note);}
   openModal('dealModal');
 }
-function openRecurringCommissionModal() {
-  const c = commissionSystemClient();
-  openDealModal(c.id);
-  setVal('dClient', c.id);
-  const clientEl = byId('dClient');
-  if (clientEl) clientEl.disabled = true;
-  setVal('dCategory', 'Následná provize');
-  setVal('dCompany', '');
-  setVal('dProduct', '');
-  setVal('dAmount', '');
-  setVal('dBj', '');
-  setVal('dOwner', '');
-  setVal('dOwnerType', '');
-  setVal('dOwnerCommissionPct', '');
-  setVal('dOwnerPaid', 'no');
-  setVal('dActualCommission', '');
-  setVal('dCreateContract', 'no');
-  setVal('dCommissionPaid', 'yes');
-  setVal('dContractStatus', '');
-  updateDealExpectedCommission();
-  toggleDealContractFields();
-  byId('dealModalTitle').textContent = 'Následná provize';
+function openRecurringCommissionModal(id=null) {
+  const d=state.deals.find(x=>String(x.id)===String(id)&&isInternalCommission(x));
+  byId('recurringCommissionModal').dataset.id=d?.id||'';
+  setVal('rcCompany',d?.company||'');setVal('rcNote',d?.product||'');setVal('rcDate',d?.date||today());setVal('rcAmount',d?dealActualCommission(d):'');setVal('rcPaid',d?dealPaid(d)?'yes':'no':'yes');
+  openModal('recurringCommissionModal');
 }
 function openDealFromOpportunity(o) {
   pendingContractToDealId=null;
@@ -7008,6 +7018,7 @@ function fkiSync_before_moveDealToOpportunity() {
   saveToast('Přesunuto do obchodních případů');
 }
 function fkiSync_before_saveDeal() {
+  if(val('dCategory')==='Následná provize'){closeModal('dealModal');openRecurringCommissionModal(editingDealId);return;}
   const clientId = +val('dClient');
   if (!clientId) return alert('Vyber klienta.');
   const replacementId=val('dReplacementContract');
@@ -7549,6 +7560,7 @@ function setBackupPreview(html) {
   if (el) el.innerHTML = html;
 }
 function sameDeal(a, b) {
+  if(isInternalCommission(a)||isInternalCommission(b))return isInternalCommission(a)&&isInternalCommission(b)&&(a.recurringCommissionKey&&b.recurringCommissionKey?a.recurringCommissionKey===b.recurringCommissionKey:a.date===b.date&&norm(a.company)===norm(b.company)&&norm(a.product)===norm(b.product)&&dealActualCommission(a)===dealActualCommission(b));
   return String(a.clientId) === String(b.clientId) && a.date === b.date && norm(a.category) === norm(b.category) && norm(a.company) === norm(b.company) && norm(a.product) === norm(b.product) && dealVolume(a) === dealVolume(b) && dealBJ(a) === dealBJ(b);
 }
 function findMatchingClient(c) {
@@ -7561,6 +7573,10 @@ function findMatchingClient(c) {
 }
 function mergeIncomingStateCore(incoming) {
   incoming = normalizeState(incoming);
+  if(incoming.settings.commissionLegacyArchive){
+    const archive=state.settings.commissionLegacyArchive||(state.settings.commissionLegacyArchive={});
+    Object.entries(incoming.settings.commissionLegacyArchive).forEach(([key,rows])=>{const existing=archive[key]||(archive[key]=[]);rows.forEach(x=>{if(!existing.some(y=>JSON.stringify(y)===JSON.stringify(x)))existing.push(JSON.parse(JSON.stringify(x)));});});
+  }
   dedupeInvestmentRecordsInState(state);
   const map = new Map(),
     count = {
@@ -7621,8 +7637,8 @@ function mergeIncomingStateCore(incoming) {
     count.contracts++;
   });
   incoming.deals.forEach(idl => {
-    const clientId = mappedClient(idl.clientId);
-    if (!clientId) return;
+    const clientId = isInternalCommission(idl)?null:mappedClient(idl.clientId);
+    if (!clientId && !isInternalCommission(idl)) return;
     const next = {
       ...idl,
       clientId
@@ -10640,12 +10656,15 @@ function pensions_pStatuses(x) {
 function pensions_pIsActive(x) {
   return !x.portfolioReplacedBy && !x.portfolioPending && !pensions_pStatuses(x).some(s => pensions_pActiveStatusSet.has(pensions_pNorm(s)));
 }
-function pensions_pAmount(x) {
-  return typeof parseMoney === 'function' ? parseMoney(x?.amount ?? x?.volume ?? x?.aum ?? x?.current ?? 0) : +String(x?.amount ?? x?.volume ?? x?.aum ?? x?.current ?? 0).replace(/[^\d.-]/g, '') || 0;
+function pensionCurrentValue(x, kind='contract') {
+  if(x && Object.prototype.hasOwnProperty.call(x,'pensionCurrent'))return x.pensionCurrent===null||x.pensionCurrent===''?null:parseMoney(x.pensionCurrent);
+  const snapshot=kind==='contract' && x?.id ? contractInvestmentSnapshot(x) : null;
+  if(snapshot)return investmentSnapshotLiveCurrent(snapshot);
+  const raw=kind==='deal' ? x?.volume ?? x?.amount ?? x?.aum ?? x?.current : x?.amount ?? x?.volume ?? x?.aum ?? x?.current;
+  return raw===undefined || raw===null || raw==='' ? null : parseMoney(raw);
 }
-function pensions_pDealAmount(d) {
-  return typeof dealVolume === 'function' ? dealVolume(d) : pensions_pAmount(d);
-}
+function pensions_pAmount(x) { return pensionCurrentValue(x) ?? 0; }
+function pensions_pDealAmount(d) { return pensionCurrentValue(d,'deal') ?? 0; }
 function pensions_pClient(id) {
   return typeof findClient === 'function' ? findClient(id) : (state.clients || []).find(c => String(c.id) === String(id)) || null;
 }
@@ -10677,7 +10696,7 @@ function pensions_pItems() {
     source: s
   }));
   const contractKeys = new Set(contracts.map(x => pensions_pIdentityBase(x.source)));
-  const deals = (typeof visibleDeals === 'function' ? visibleDeals() : state.deals || []).filter(d => pensions_pIsPensionDeal(d) && pensions_pIsActive(d)).filter(d => !contractKeys.has(pensions_pIdentityBase(d))).map(d => ({
+  const deals = (typeof visibleDeals === 'function' ? visibleDeals() : state.deals || []).filter(d => pensions_pIsPensionDeal(d) && pensions_pIsActive(d)).filter(d => !contractKeys.has(pensions_pIdentityBase(d)) && !contracts.some(c=>String(c.id)===String(d.contractId||d.fromContractId)||String(c.source.fromDealId)===String(d.id))).map(d => ({
     kind: 'deal',
     id: d.id,
     clientId: d.clientId,
@@ -10856,7 +10875,7 @@ function clientOutput_xTotals(items) {
   const invested = items.reduce((s, x) => s + clientOutput_xN(x.invested), 0),
     current = items.reduce((s, x) => s + clientOutput_xN(x.amount), 0),
     realized = items.reduce((s, x) => s + clientOutput_xN(x.realized), 0),
-    manualGain = items.reduce((s, x) => s + (x.area === 'Investice' && Number.isFinite(+x.gainAmount) ? +x.gainAmount : clientOutput_xPerf(x.amount, x.invested, x.realized).gain), 0),
+    manualGain = items.reduce((s, x) => s + (x.area === 'Investice' && x.gainAmount != null && Number.isFinite(+x.gainAmount) ? +x.gainAmount : clientOutput_xPerf(x.amount, x.invested, x.realized).gain), 0),
     annualItems = items.filter(x => x.area === 'Investice' && x.annualReturnPct != null && Number.isFinite(+x.annualReturnPct)),
     annualWeight = annualItems.reduce((s, x) => s + clientOutput_xN(x.amount), 0);
   return {
@@ -10943,7 +10962,7 @@ function portfolioTimelineHtml(items) {
   const funds=items.map((f,i)=>{
     const rows=clientOutput_xFundRows(f), current=+f.amount||0, sum=rows.reduce((a,r)=>a+r.current,0);
     const positions=rows.map(r=>({date:liquidity_localDate(f.area==='FKI'?r.date||r.taxStart:r.taxStart)?.getTime()||now,invested:r.invested,current:sum?r.current/sum*current:0})).filter(p=>p.date<=now);
-    return {name:f.product||'Investice',company:f.company||'',current,rate:clientOutput_xReportRate(f),positions,color:clientOutput_colors[i%clientOutput_colors.length]};
+    return {reportId:f.reportId,name:f.product||'Investice',company:f.company||'',current,rate:clientOutput_xReportRate(f),positions,color:clientOutput_colors[i%clientOutput_colors.length]};
   });
   const start=Math.min(now,...funds.flatMap(f=>f.positions.map(p=>p.date))),model={start,now,end,funds};
   const dates=new Set([start,now,end]);for(let d=liquidity_addMonths(new Date(start),1);d.getTime()<end;d=liquidity_addMonths(d,1))dates.add(d.getTime());
@@ -10953,7 +10972,7 @@ function portfolioTimelineHtml(items) {
   const points=(rows,key='total')=>rows.map(p=>`${x(p.t).toFixed(2)},${y(p[key]).toFixed(2)}`).join(' ');
   const data=portfolioTimelineValue(model,now), money=clientOutput_xMoney;
   let cumulative=0;const gradient=funds.map(f=>{const next=cumulative+(data.total?Math.max(0,f.current)/data.total*100:0),s=`${f.color} ${cumulative}% ${next}%`;cumulative=next;return s;}).join(',');
-  return `<section class="portfolio-timeline" data-model="${esc(encodeURIComponent(JSON.stringify(model)))}"><div class="eyebrow">Grafy</div><h3>Výkonnost a alokace</h3><div class="timeline-key">Zeleně zjednodušená minulost · modře prognóza · šedě kumulované vklady</div><div class="timeline-readout" aria-live="polite"><b class="timeline-date">${clientOutput_xDate(today())}</b><span class="timeline-status">Aktuální hodnota</span><span>Hodnota <b class="timeline-value">${money(data.total)}</b></span><span>Vloženo <b class="timeline-invested">${money(data.invested)}</b></span><span>Výnos <b class="timeline-gain">${money(data.gain)}</b> · <b class="timeline-pct">${data.invested?(data.gain/data.invested*100).toFixed(1):'0.0'} %</b></span></div><svg viewBox="0 0 860 315" role="img" aria-label="Vývoj hodnoty portfolia s propojenou alokací" onpointermove="portfolioTimelineSelect(this,event)" onclick="portfolioTimelineSelect(this,event)">${[0,.25,.5,.75,1].map(p=>`<line x1="80" x2="820" y1="${y(max*p)}" y2="${y(max*p)}" stroke="#e1e8f1"/><text x="4" y="${y(max*p)+4}" font-size="11" fill="#6d829e">${Math.round(max*p/1000)} tis.</text>`).join('')}${Array.from({length:new Date(end).getFullYear()-new Date(start).getFullYear()+1},(_,i)=>new Date(new Date(start).getFullYear()+i,0,1).getTime()).filter(t=>t>=start&&t<=end).map(t=>`<line x1="${x(t)}" x2="${x(t)}" y1="35" y2="270" stroke="#edf1f6"/><text x="${x(t)}" y="295" text-anchor="middle" font-size="11" fill="#6d829e">${new Date(t).getFullYear()}</text>`).join('')}<polyline data-series="contributions" points="${points(samples,'invested')}" fill="none" stroke="#bac7d8" stroke-width="2" stroke-dasharray="5 5"/><polyline data-series="history" points="${points(samples.filter(p=>p.t<=now))}" fill="none" stroke="#238b78" stroke-width="3"/><polyline data-series="forecast" points="${points(samples.filter(p=>p.t>=now))}" fill="none" stroke="#356aa5" stroke-width="3" stroke-dasharray="6 5"/><line x1="${x(now)}" x2="${x(now)}" y1="20" y2="270" stroke="#7d98b8" stroke-dasharray="5 4"/><text x="${x(now)}" y="15" text-anchor="middle" font-size="11" fill="#356aa5">DNES</text><line class="timeline-cursor" x1="${x(now)}" x2="${x(now)}" y1="35" y2="270" stroke="#93b9ad" stroke-dasharray="3 4"/></svg><div class="timeline-allocation"><div class="timeline-donut" style="background:conic-gradient(${gradient||'#dbe7f3 0 100%'})"><div><small>Celkem</small><b class="timeline-total">${money(data.total)}</b></div></div><div class="timeline-funds">${funds.map(f=>`<div class="timeline-fund"><i style="background:${f.color}"></i><span><b>${esc(f.name)}</b><small>${esc(f.company)}</small></span><b class="timeline-amount">${money(f.current)}</b><span class="timeline-share">${data.total?(f.current/data.total*100).toFixed(1):'0.0'} %</span></div>`).join('')}</div></div><label class="timeline-slider">Datum pro graf i alokaci<input aria-label="Datum vývoje a alokace" type="range" min="${start}" max="${end}" value="${now}" step="86400000" oninput="portfolioTimelineSelect(this,null,this.value)"></label><button class="btn slim timeline-reset" onclick="portfolioTimelineSelect(this,null,${now})">Zpět na dnešek</button><p class="timeline-note">Minulost je lineární ilustrace mezi vklady a posledním oceněním; dokupy tvoří skoky. Prognóza pokračuje dosavadním průměrným ročním výnosem bez nových vkladů a odkupů, při chybějícím výnosu drží hodnotu konstantní. Není zárukou výnosu. Změna data upravuje pouze grafy, nikoli aktuální hodnoty fondů níže.</p></section>`;
+  return `<section class="portfolio-timeline" data-model="${esc(encodeURIComponent(JSON.stringify(model)))}"><div class="eyebrow">Grafy</div><h3>Výkonnost a alokace investic a FKI</h3><div class="timeline-key">Zeleně zjednodušená minulost · modře prognóza · šedě kumulované vklady</div><div class="timeline-readout" aria-live="polite"><b class="timeline-date">${clientOutput_xDate(today())}</b><span class="timeline-status">Aktuální hodnota</span><span>Hodnota <b class="timeline-value">${money(data.total)}</b></span><span>Vloženo <b class="timeline-invested">${money(data.invested)}</b></span><span>Výnos <b class="timeline-gain">${money(data.gain)}</b> · <b class="timeline-pct">${data.invested?(data.gain/data.invested*100).toFixed(1):'0.0'} %</b></span></div><svg viewBox="0 0 860 315" role="img" aria-label="Vývoj hodnoty portfolia s propojenou alokací" onpointermove="portfolioTimelineSelect(this,event)" onclick="portfolioTimelineSelect(this,event)">${[0,.25,.5,.75,1].map(p=>`<line x1="80" x2="820" y1="${y(max*p)}" y2="${y(max*p)}" stroke="#e1e8f1"/><text x="4" y="${y(max*p)+4}" font-size="11" fill="#6d829e">${Math.round(max*p/1000)} tis.</text>`).join('')}${Array.from({length:new Date(end).getFullYear()-new Date(start).getFullYear()+1},(_,i)=>new Date(new Date(start).getFullYear()+i,0,1).getTime()).filter(t=>t>=start&&t<=end).map(t=>`<line x1="${x(t)}" x2="${x(t)}" y1="35" y2="270" stroke="#edf1f6"/><text x="${x(t)}" y="295" text-anchor="middle" font-size="11" fill="#6d829e">${new Date(t).getFullYear()}</text>`).join('')}<polyline data-series="contributions" points="${points(samples,'invested')}" fill="none" stroke="#bac7d8" stroke-width="2" stroke-dasharray="5 5"/><polyline data-series="history" points="${points(samples.filter(p=>p.t<=now))}" fill="none" stroke="#238b78" stroke-width="3"/><polyline data-series="forecast" points="${points(samples.filter(p=>p.t>=now))}" fill="none" stroke="#356aa5" stroke-width="3" stroke-dasharray="6 5"/><line x1="${x(now)}" x2="${x(now)}" y1="20" y2="270" stroke="#7d98b8" stroke-dasharray="5 4"/><text x="${x(now)}" y="15" text-anchor="middle" font-size="11" fill="#356aa5">DNES</text><line class="timeline-cursor" x1="${x(now)}" x2="${x(now)}" y1="35" y2="270" stroke="#93b9ad" stroke-dasharray="3 4"/></svg><div class="timeline-allocation"><div class="timeline-donut" style="background:conic-gradient(${gradient||'#dbe7f3 0 100%'})"><div><small>Celkem</small><b class="timeline-total">${money(data.total)}</b></div></div><div class="timeline-funds">${funds.map(f=>`<div class="timeline-fund"><i style="background:${f.color}"></i><span><b>${esc(f.name)}</b><small>${esc(f.company)}</small></span><b class="timeline-amount">${money(f.current)}</b><span class="timeline-share">${data.total?(f.current/data.total*100).toFixed(1):'0.0'} %</span></div>`).join('')}</div></div><label class="timeline-slider">Datum pro graf i alokaci<input aria-label="Datum vývoje a alokace" type="range" min="${start}" max="${end}" value="${now}" step="86400000" oninput="portfolioTimelineSelect(this,null,this.value)"></label><button class="btn slim timeline-reset" onclick="portfolioTimelineSelect(this,null,${now})">Zpět na dnešek</button><p class="timeline-note">Minulost je lineární ilustrace mezi vklady a posledním oceněním; dokupy tvoří skoky. Prognóza pokračuje dosavadním průměrným ročním výnosem bez nových vkladů a odkupů, při chybějícím výnosu drží hodnotu konstantní. Není zárukou výnosu. Změna data upravuje pouze grafy, nikoli aktuální hodnoty fondů níže.</p></section>`;
 }
 function portfolioTimelineCss() {
   return `.portfolio-timeline{border:1px solid #bed0e4;border-radius:18px;padding:18px;margin:14px 0;background:rgba(249,251,254,.8);color:#234366}.portfolio-timeline h3{font-size:21px;margin:5px 0 12px}.portfolio-timeline svg{width:100%;display:block;touch-action:pan-y}.timeline-key,.timeline-note{font-size:11px;color:#64748b}.timeline-readout{display:flex;gap:14px;flex-wrap:wrap;padding:12px;border:1px solid #dbe7f3;border-radius:12px;background:#fff;margin:10px 0;font-size:12px}.timeline-readout b{color:#265889}.timeline-allocation{display:grid;grid-template-columns:220px 1fr;gap:24px;align-items:center;border-top:1px solid #dbe7f3;padding-top:20px}.timeline-donut{width:190px;height:190px;border-radius:50%;display:grid;place-items:center}.timeline-donut>div{width:120px;height:120px;border-radius:50%;background:#f9fbfe;display:flex;flex-direction:column;justify-content:center;text-align:center}.timeline-donut b{font-size:15px}.timeline-fund{display:grid;grid-template-columns:10px minmax(0,1fr) auto 55px;gap:10px;padding:9px 0;border-bottom:1px solid #e1e8f1;font-size:12px}.timeline-fund i{width:10px;height:10px;border-radius:50%;margin-top:4px}.timeline-fund small{display:block;color:#64748b}.timeline-slider{display:block;margin:14px 0;font-size:12px}.timeline-slider input{width:100%;accent-color:#356aa5;display:block}.provider-filter{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}.provider-filter button{cursor:pointer}.report-transactions>summary{cursor:pointer;color:#356aa5;font-weight:700;padding:8px;border:1px solid #c5d5e7;border-radius:9px;list-style:none;display:inline-block}.report-transactions[open]>summary{margin-bottom:12px}.report-transactions{margin:10px 0}.report-fund-detail{box-shadow:none!important}.timeline-note{line-height:1.5}@media(max-width:650px){.timeline-allocation{grid-template-columns:1fr}.timeline-donut{margin:auto}.timeline-fund{grid-template-columns:10px minmax(0,1fr) auto}.timeline-share{grid-column:3}.portfolio-timeline{padding:10px}}@media print{.timeline-slider,.timeline-reset{display:none}.portfolio-timeline{break-inside:avoid}.report-transactions>summary{display:none}.report-transactions::details-content{content-visibility:visible}}`;
@@ -11150,7 +11169,7 @@ function clientOutput_xFundProfileHtml(f) {
   return `<section class="fund-profile"><h4>Informace o fondu</h4><div>${fields.map(([label,value])=>`<p><small>${clientOutput_xEsc(label)}</small><b>${clientOutput_xEsc(value)}</b></p>`).join('')}</div>${officialUrl?`<a href="${clientOutput_xEsc(officialUrl)}" target="_blank" rel="noopener">Oficiální informace fondu ↗</a>`:''}${p.metadataAsOf?`<em>Produktové údaje evidované k ${clientOutput_xDate(p.metadataAsOf)}. Rozhodují aktuální dokumenty fondu a sjednaná smlouva.</em>`:''}</section>`;
 }
 function clientOutput_xFundDetail(f, i, scenario = false) {
-  const perf = clientOutput_xPerf(f.amount, f.invested, f.realized),
+  const perf = clientOutput_xTotals([f]),
     valueDate = f.valueDate || clientOutput_xValueDate(f.area === 'FKI' ? 'fki' : 'investice', f.key, f.isin, f.date || ''),
     comment = f.comment || clientOutput_xComment(f.area === 'FKI' ? 'fki' : 'investice', f.key, f.isin),
     rows = clientOutput_xFundRows(f),
@@ -11163,13 +11182,13 @@ function clientOutput_xFundDetail(f, i, scenario = false) {
   }
   const tax = liquidity_taxSummary(rows.map(x => x.taxInfo));
   const rowHtml = rows.map(x => `<tr><td><b>${clientOutput_xEsc(clientOutput_xRowTitle(x.r, x.i))}</b><br><small>${clientOutput_xEsc([x.date && 'připsání ' + clientOutput_xDate(x.date), x.emission && 'emise ' + clientOutput_xDate(x.emission)].filter(Boolean).join(' · '))}</small></td><td class="money">${clientOutput_xMoney(x.invested)}</td><td class="money">${x.cp ? clientOutput_xDecimal(x.cp) : '-'}</td><td>${x.cpValue ? clientOutput_xDecimal(x.cpValue) : '-'}</td><td class="money"><b>${clientOutput_xMoney(x.current)}</b><br><small class="date-highlight">${x.valueDate ? 'k ' + clientOutput_xDate(x.valueDate) : ''}</small></td><td class="money"><b class="${x.perf.gain >= 0 ? 'green' : 'red'}">${clientOutput_xPct(x.perf.pct)}</b><br><small>${clientOutput_xMoney(x.perf.gain)}</small></td><td><b>${x.taxInfo ? clientOutput_xDate(x.taxInfo.taxReady) : 'Datum nákupu chybí'}</b><br><small>${x.taxInfo ? clientOutput_xNum(x.taxInfo.rules.taxMonths) + ' měsíců od ' + clientOutput_xDate(x.taxStart) : 'Bez odhadu'}</small></td><td><b class="${(x.pa || 0) >= 0 ? 'green' : 'red'}">${clientOutput_xPctPlain(x.pa)}</b></td></tr>`).join('');
-  return `<article class="report-fund-detail" id="report-fund-${clientOutput_xEsc(i)}"><div class="report-fund-head"><div><h3>${clientOutput_xEsc(title)}</h3><div class="fund-tags">${[f.company, f.area, f.isin && 'ISIN ' + f.isin, valueDate && 'hodnota k ' + clientOutput_xDate(valueDate)].filter(Boolean).map(x => `<span>${clientOutput_xEsc(x)}</span>`).join('')}</div></div><div class="fund-return ${perf.gain >= 0 ? 'green' : 'red'}">${clientOutput_xPct(perf.pct)}</div></div><p class="fund-note">${clientOutput_xEsc(comment || 'Popis fondu zatím není doplněný v CRM.')}</p><div class="metrics"><div><small>Investováno</small><b>${clientOutput_xMoney(f.invested)}</b></div><div><small>${scenario ? 'Modelovaná hodnota' : 'Aktuální hodnota'}</small><b>${clientOutput_xMoney(f.amount)}</b></div><div><small>Čistý výnos</small><b class="${perf.gain >= 0 ? 'green' : 'red'}">${clientOutput_xMoney(perf.gain)}</b></div><div><small>Celkový výnos</small><b class="${perf.gain >= 0 ? 'green' : 'red'}">${clientOutput_xPct(perf.pct)}</b></div></div>${profile}<details class="report-transactions"><summary>Transakce · ${rows.length}</summary><div class="report-table-scroll"><table class="fund-transactions"><thead><tr><th>Transakce</th><th>Investice</th><th>Počet CP</th><th>Hodnota CP</th><th>${scenario ? 'Modelovaná hodnota' : 'Aktuální hodnota'}</th><th>Celkové zhodnocení</th><th>Časový test</th><th>Výnos p.a.</th></tr></thead><tbody>${rowHtml || `<tr><td colspan="8" class="muted">Bez samostatných transakcí.</td></tr>`}</tbody></table></div></details>${clientOutput_xRedemptionHtml(f, rows)}</article>`;
+  return `<article data-report-item="${esc(f.reportId||'')}" class="report-fund-detail" id="report-fund-${clientOutput_xEsc(i)}"><div class="report-fund-head"><div><h3>${clientOutput_xEsc(title)}</h3><div class="fund-tags">${[f.company, f.area, f.isin && 'ISIN ' + f.isin, valueDate && 'hodnota k ' + clientOutput_xDate(valueDate)].filter(Boolean).map(x => `<span>${clientOutput_xEsc(x)}</span>`).join('')}</div></div><div class="fund-return ${perf.gain >= 0 ? 'green' : 'red'}">${clientOutput_xPct(perf.pct)}</div></div><p class="fund-note">${clientOutput_xEsc(comment || 'Popis fondu zatím není doplněný v CRM.')}</p><div class="metrics"><div><small>Investováno</small><b>${clientOutput_xMoney(f.invested)}</b></div><div><small>${scenario ? 'Modelovaná hodnota' : 'Aktuální hodnota'}</small><b>${clientOutput_xMoney(f.amount)}</b></div><div><small>Čistý výnos</small><b class="${perf.gain >= 0 ? 'green' : 'red'}">${clientOutput_xMoney(perf.gain)}</b></div><div><small>Celkový výnos</small><b class="${perf.gain >= 0 ? 'green' : 'red'}">${clientOutput_xPct(perf.pct)}</b></div></div>${profile}<details class="report-transactions"><summary>Transakce · ${rows.length}</summary><div class="report-table-scroll"><table class="fund-transactions"><thead><tr><th>Transakce</th><th>Investice</th><th>Počet CP</th><th>Hodnota CP</th><th>${scenario ? 'Modelovaná hodnota' : 'Aktuální hodnota'}</th><th>Celkové zhodnocení</th><th>Časový test</th><th>Výnos p.a.</th></tr></thead><tbody>${rowHtml || `<tr><td colspan="8" class="muted">Bez samostatných transakcí.</td></tr>`}</tbody></table></div></details>${clientOutput_xRedemptionHtml(f, rows)}</article>`;
 }
 function clientOutput_xCompactReportCss() {
   return `.fund-profile{margin:12px 0;padding:14px;border:1px solid #d7e4ef;border-radius:14px;background:#f8fbfd}.fund-profile h4{margin:0 0 10px;font-size:15px}.fund-profile>div{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.fund-profile p{margin:0;padding:8px;border-radius:9px;background:#fff}.fund-profile small,.fund-profile b{display:block}.fund-profile small{color:#71869d;font-size:9px;text-transform:uppercase}.fund-profile b{margin-top:3px;font-size:12px}.fund-profile a{display:inline-block;margin-top:10px;color:#176f69;font-weight:850;text-decoration:none}.fund-profile em{display:block;margin-top:8px;color:#71869d;font-size:9px}@media(max-width:760px){.fund-profile>div{grid-template-columns:repeat(2,minmax(0,1fr))}}.report-redemption{background:#edf5fc;border:1px solid #b4cce4;border-radius:14px;padding:14px;margin:14px 0}.report-redemption h4{margin:0 0 10px;font-size:18px;color:#234f79}.report-redemption p{font-size:12px;line-height:1.4}.report-redemption td,.report-redemption th{padding:7px;font-size:12px}.allocation-note{margin:10px 0 0;color:#64748b;font-size:13px;line-height:1.45}.report-fund-detail{background:rgba(255,255,255,.82);border:1px solid var(--line);border-radius:22px;padding:18px;margin:14px 0;break-inside:avoid;box-shadow:0 14px 34px rgba(15,39,68,.06)}.report-fund-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:14px}.report-fund-head h3{margin:0 0 7px;font-size:24px;line-height:1.12}.fund-tags{display:flex;flex-wrap:wrap;gap:7px}.fund-tags span{background:#eaf6fb;color:#0f4168;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:850}.fund-return{font-size:24px;font-weight:950;white-space:nowrap}.fund-note{margin:14px 0 16px;color:#274563;font-size:15px;line-height:1.55}.fund-transactions th,.fund-transactions td{padding:10px 12px}.fund-transactions small{color:#64748b;font-weight:750}@media(max-width:760px){.report-fund-head{display:block}.fund-return{margin-top:10px}.fund-transactions{font-size:12px}}@media print{.report-fund-detail{box-shadow:none;page-break-inside:avoid}.allocation-note{font-size:12px}}.report-redemption{background:transparent;border:0;border-top:1px solid #dbe7f3;border-radius:0;padding:9px 0 0;margin:12px 0 0;color:#64748b;font-size:11px;line-height:1.4}.report-redemption p{font-size:11px;margin:4px 0}.report-redemption b{color:#49617b}.report-fund-detail>.metrics b{font-size:25px}.report-fund-detail>.metrics{margin-bottom:16px}.fund-note{margin:8px 0 16px}.report-history-legend{display:flex;flex-wrap:wrap;gap:16px;font-size:12px;margin:8px 0}.report-history-legend span{border-left:4px solid;padding-left:7px}.report-brand{display:flex;justify-content:space-between;align-items:center;font-size:15px;font-weight:800;color:#356aa5;margin-bottom:16px}.report-brand span{font-size:12px;font-weight:500}.hero{padding:24px;background:linear-gradient(130deg,#edf3fa,#f7f9fc);border-color:#bdcfe3}.hero h1{font-size:30px;margin:7px 0}.hero .lead{margin:8px 0 0;font-size:14px}.report-fund-overview th,.report-fund-overview td{font-size:12px;padding:9px 7px}.report-fund-overview a{color:#234f79;text-decoration:none}.report-fund-overview small{color:#71869d}.report-fund-overview tfoot{border-top:2px solid #356aa5}.report-table-scroll{overflow-x:auto}.report-fund-details{break-inside:auto!important}.report-fund-detail .fund-note{padding:10px 12px;background:#f1f5fa;border:1px solid #dbe7f3;border-radius:10px;font-size:13px;line-height:1.5}.report-fund-detail>.metrics b{font-size:21px}.report-fund-detail .fund-tags span{background:#e8eff7;color:#356aa5}.timeline-reset{border:1px solid #abc2dd;color:#356aa5;background:#f4f8fd;border-radius:8px;padding:7px 12px;cursor:pointer}.portfolio-summary-card{display:grid;gap:14px}.portfolio-summary-block{display:grid;grid-template-columns:minmax(210px,1.45fr) repeat(5,minmax(100px,1fr));gap:14px;align-items:center;border:1px solid #d7e3ef;border-radius:17px;padding:16px;background:#fff}.portfolio-summary-block.total{color:#fff;border-color:#164f7b;background:linear-gradient(120deg,#123f68,#246c92)}.portfolio-summary-block.total small,.portfolio-summary-block.total .portfolio-summary-name span{color:#cce8f2}.portfolio-summary-block.classic{border-left:7px solid #2d7fb3}.portfolio-summary-block.fki{border-left:7px solid #7557a5}.portfolio-summary-block small{display:block;color:#7a8fa6;font-size:10px;text-transform:uppercase;font-weight:850}.portfolio-summary-block b{display:block;font-size:17px;margin-top:3px}.portfolio-summary-name h2{margin:2px 0 0;font-size:20px}.portfolio-summary-name span{font-size:10px;text-transform:uppercase;font-weight:900;letter-spacing:.08em;color:#58728c}.portfolio-summary-value b{font-size:23px}.portfolio-summary-split{display:grid;gap:10px}.report-area{margin:30px 0 44px}.report-area-banner{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;border-radius:22px;padding:22px 26px;color:#fff;box-shadow:0 15px 34px rgba(15,39,68,.12)}.report-area-classic .report-area-banner{background:linear-gradient(120deg,#18547f,#2f86b6)}.report-area-fki .report-area-banner{background:linear-gradient(120deg,#493873,#7557a5)}.report-area-banner span{font-size:11px;text-transform:uppercase;font-weight:900;letter-spacing:.1em;opacity:.8}.report-area-banner h2{font-size:27px;margin:3px 0}.report-area-banner p{margin:0;opacity:.85}.report-area-banner>b{font-size:25px;white-space:nowrap}.report-provider-block{border:2px solid #d9d1e8;background:linear-gradient(135deg,#fbfaff,#f4f0fa);padding:20px;margin:20px 0 28px}.report-provider-head{display:flex;justify-content:space-between;gap:20px;align-items:flex-end;border-bottom:2px solid #d9d1e8;padding:0 2px 15px}.report-provider-head>div:last-child{text-align:right}.report-provider-head span,.report-provider-head small{display:block;color:#786990;font-size:11px;font-weight:800;text-transform:uppercase}.report-provider-head h2{margin:3px 0;font-size:25px}.report-provider-head b{display:block;font-size:24px;color:#493873}.report-provider-funds .report-fund-detail{box-shadow:none;border-color:#ded7ea;background:#fff}.report-area-fki .report-fund-overview{border-color:#d9d1e8}@media(max-width:760px){.portfolio-summary-block{grid-template-columns:repeat(2,minmax(0,1fr))}.portfolio-summary-name{grid-column:1/-1}.report-area-banner,.report-provider-head{display:block}.report-area-banner>b,.report-provider-head>div:last-child{display:block;text-align:left;margin-top:12px}}@media print{@page{size:A4;margin:12mm}.wrap{max-width:none}.hero{margin-bottom:12px;padding:16px}.hero h1{font-size:24px}.card{padding:14px}.report-fund-overview{break-inside:auto}.report-fund-detail{padding:12px}.report-fund-detail h3{font-size:19px}.report-fund-detail .metrics{grid-template-columns:repeat(4,1fr)}.report-fund-detail>.metrics b{font-size:16px}.fund-transactions th,.fund-transactions td{font-size:9px;padding:5px}.portfolio-timeline{padding:12px}.timeline-allocation{grid-template-columns:150px 1fr;gap:14px}.timeline-donut{width:130px;height:130px}.timeline-donut>div{width:85px;height:85px}.timeline-donut b{font-size:12px}.timeline-fund{font-size:10px}.report-fund-overview th,.report-fund-overview td{font-size:10px;padding:6px}.report-redemption p{font-size:9px}.report-brand{margin-bottom:10px}.portfolio-summary-block{grid-template-columns:1.4fr repeat(5,1fr);gap:7px;padding:10px}.portfolio-summary-block b{font-size:12px}.portfolio-summary-value b{font-size:16px}.portfolio-summary-name h2{font-size:14px}.report-area-banner{padding:14px 18px;break-after:avoid}.report-area-banner h2{font-size:20px}.report-provider-block{break-before:page;padding:12px}.report-provider-head{break-after:avoid}.report-provider-head h2{font-size:20px}}@media print{.hero+.card .kpis{grid-template-columns:repeat(5,minmax(0,1fr));gap:7px}.hero+.card .kpi{padding:9px}.hero+.card .kpi b{font-size:16px}.hero+.card .kpi small{font-size:9px}.portfolio-timeline h3{font-size:18px}.timeline-readout{padding:8px;font-size:10px;gap:8px}.timeline-note{font-size:9px}.report-fund-details{break-before:page;border:0;padding:0}.report-fund-details>.eyebrow,.report-fund-details>h2{break-after:avoid}.report-fund-details .report-fund-detail{margin-top:10px}.report-fund-overview{break-inside:avoid}.timeline-allocation{padding-top:12px}.portfolio-timeline .timeline-note{margin-bottom:0}}.date-highlight{display:inline-block;color:#155e75!important;background:#e6f6fa;border:1px solid #bce5ef;border-radius:6px;padding:2px 6px;font-size:12px;font-weight:700;white-space:nowrap}.report-brand span,.timeline-date{color:#155e75;background:#e6f6fa;border-radius:6px;padding:4px 8px}.report-fund-overview th{background:#f3f7fb;color:#526b85}.report-fund-overview tfoot{font-weight:700}.money,.metrics,.timeline-readout,.timeline-amount,.timeline-share{font-variant-numeric:tabular-nums lining-nums}.report-table-scroll{max-width:100%}.timeline-fund{align-items:center}.timeline-share{white-space:nowrap}.timeline-fund small{margin-top:3px}.portfolio-timeline svg polyline{stroke-linejoin:round;stroke-linecap:round}.legend-row>span>span{display:block}.legend-row>b{white-space:nowrap;text-align:right}@media(max-width:760px){.wrap{padding:12px}.hero,.card{padding:16px;min-width:0}.metrics,.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.metrics>div,.kpi{min-width:0}.metrics b,.kpi b{font-size:18px}.fund-transactions{min-width:650px}.report-fund-overview table{min-width:700px}.report-fund-detail{padding:12px}.timeline-readout{gap:9px}.timeline-fund{font-size:11px}.legend-row>span{min-width:0;overflow-wrap:anywhere}}@media print{*{-webkit-print-color-adjust:exact;print-color-adjust:exact}.report-fund-overview table,.fund-transactions{min-width:0}.report-fund-overview .date-highlight,.fund-transactions .date-highlight{font-size:9px;padding:2px 3px}.report-table-scroll{overflow:visible}.report-fund-overview th,.report-fund-overview td{font-size:9px;padding:6px 4px}.report-fund-detail .metrics{grid-template-columns:repeat(4,minmax(0,1fr))}thead{display:table-header-group}tr{break-inside:avoid}.timeline-funds{min-width:0}}`;
 }
 function clientOutput_xTable(title, heads, rows, empty = 'Bez položek.') {
-  return `<section class="card"><div class="section-head"><div><span>${clientOutput_xEsc(title)}</span><h2>${clientOutput_xEsc(title)}</h2></div><div class="section-sum"><b>${clientOutput_xNum(rows.length)}</b><small>položek</small></div></div><table><thead><tr>${heads.map(h => `<th>${clientOutput_xEsc(h)}</th>`).join('')}</tr></thead><tbody>${rows.length ? rows.join('') : `<tr><td colspan="${heads.length}" class="muted">${clientOutput_xEsc(empty)}</td></tr>`}</tbody></table></section>`;
+  return `<section class="card"><div class="section-head"><div><span>${clientOutput_xEsc(title)}</span><h2>${clientOutput_xEsc(title)}</h2></div><div class="section-sum"><b>${clientOutput_xNum(rows.length)}</b><small>položek</small></div></div><div class="report-table-scroll"><table><thead><tr>${heads.map(h => `<th>${clientOutput_xEsc(h)}</th>`).join('')}</tr></thead><tbody>${rows.length ? rows.join('') : `<tr><td colspan="${heads.length}" class="muted">${clientOutput_xEsc(empty)}</td></tr>`}</tbody></table></div></section>`;
 }
 function clientOutput_xCss() {
   return (document.getElementById("portfolio-typography")?.textContent || "") + `:root{--ink:#0f2744;--muted:#64748b;--line:#dbe7f3;--blue:#2563eb;--cyan:#44b5c6;--green:#16a34a;--red:#dc2626;--bg:#eef6ff}*{box-sizing:border-box}body{margin:0;font-family:Fustat,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:radial-gradient(circle at 12% 0%,rgba(210,244,250,.9),transparent 35%),linear-gradient(135deg,#f8fcff,#eef6ff);color:var(--ink)}.wrap{max-width:1120px;margin:0 auto;padding:32px}.hero,.card,.fund-card{background:rgba(255,255,255,.78);border:1px solid var(--line);border-radius:24px;box-shadow:0 18px 50px rgba(15,39,68,.08);backdrop-filter:blur(14px)}.hero{padding:32px;margin-bottom:22px}.eyebrow{font-size:12px;font-weight:850;letter-spacing:.12em;text-transform:uppercase;color:var(--cyan)}h1{font-size:38px;margin:8px 0 10px}h2{font-size:22px;margin:0 0 14px}.lead{font-size:16px;line-height:1.6;color:var(--muted)}.kpis,.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}.kpi,.metrics>div{background:rgba(255,255,255,.9);border:1px solid var(--line);border-radius:18px;padding:14px}.kpi small,.metrics small{display:block;color:#8aa0b8;text-transform:uppercase;font-weight:850;font-size:11px}.kpi b,.metrics b{font-size:21px}.green{color:var(--green)!important}.red{color:var(--red)!important}.muted{color:var(--muted)}.card{padding:24px;margin:18px 0}.section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:14px}.section-head span{font-size:11px;color:#8aa0b8;text-transform:uppercase;font-weight:850;letter-spacing:.6px}.section-sum{text-align:right}.section-sum b{display:block;font-size:22px}.section-sum small{font-weight:850;color:var(--green)}.alloc{display:grid;grid-template-columns:300px 1fr;gap:24px;align-items:center}.donut{width:240px;height:240px;border-radius:50%;position:relative;margin:auto}.donut:after{content:'';position:absolute;inset:58px;background:#fff;border-radius:50%;box-shadow:inset 0 0 0 8px #e8eef5}.donut-mid{position:absolute;inset:82px 38px auto;z-index:2;text-align:center}.donut-mid b{display:block;font-size:18px}.donut-mid span{display:block;color:#8aa0b8;font-size:11px;font-weight:850;text-transform:uppercase;margin-top:4px}.legend-row{display:flex;justify-content:space-between;gap:14px;border:1px solid #e8eef5;border-radius:12px;padding:10px 13px;margin-bottom:8px;background:rgba(255,255,255,.72)}.legend-row span{display:flex;align-items:center;gap:9px}.legend-row i{width:13px;height:13px;border-radius:50%;display:inline-block;flex:0 0 13px}.legend-row small{color:#8aa0b8}.sim-box{border:1px solid var(--line);border-radius:22px;padding:18px;background:rgba(255,255,255,.82)}.sim-head{display:flex;justify-content:space-between;gap:16px}.sim-head h4{margin:0 0 4px}.sim-chart{width:100%;height:auto}.chart-label{font-size:12px;fill:#64748b}.chart-value{font-size:9px;font-weight:850;fill:#0f2744}.line{fill:none;stroke-width:3.2;stroke-linecap:round;stroke-linejoin:round}.line.base{stroke:#2563eb}.line.max{stroke:#16a34a}.line.min{stroke:#14b8a6;stroke-dasharray:7 5}.sim-chart circle{fill:#fff;stroke:#2563eb;stroke-width:3}.fund-card{padding:20px;margin:12px 0}.fund-card h3{margin:0 0 4px}table{width:100%;border-collapse:collapse}th,td{padding:10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{font-size:12px;text-transform:uppercase;color:#8aa0b8}.money{text-align:right;white-space:nowrap}.fund-slide{position:relative;overflow:hidden;background:#fff;border:1px solid #dbe7f3;border-radius:0;min-height:560px;margin:22px 0;box-shadow:0 18px 50px rgba(15,39,68,.08);break-inside:avoid}.fund-slide:after{content:'';position:absolute;top:0;bottom:0;right:210px;width:10px;background:var(--accent,#0d2c54)}.fund-slide-top{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;padding:48px 62px 24px}.fund-slide-top h3{font-size:44px;line-height:1.03;margin:0;color:#0d416a;text-transform:uppercase;letter-spacing:.02em}.fund-slide-top p{font-size:24px;line-height:1.25;margin:14px 0 0;color:#0d416a}.lion-mark{font-size:42px;color:#0d416a}.slide-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:0;background:#f4f5f6;padding:26px 62px;margin:0}.slide-stat b{display:block;font-size:38px;line-height:1;color:#0d416a}.slide-stat span{display:block;font-size:17px;color:#0d416a;margin-top:10px;line-height:1.25}.fund-slide-body{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:30px;padding:38px 62px 30px}.fund-slide-body ul{margin:0;padding-left:22px;font-size:19px;line-height:1.45;color:#0d416a}.fund-visual{display:flex;align-items:center;justify-content:center}.fund-shape{width:220px;height:176px;border-radius:55% 45% 50% 50%;background:linear-gradient(135deg,var(--accent,#0d2c54),#111827);color:white;display:flex;align-items:center;justify-content:center;font-size:72px;font-weight:900;opacity:.86}.fund-slide-foot{display:flex;justify-content:space-between;gap:18px;padding:0 62px 30px;color:#139db0;font-size:17px}.print{position:fixed;right:18px;bottom:18px;border:0;border-radius:15px;padding:13px 17px;font-weight:950;background:#2563eb;color:#fff;box-shadow:0 16px 40px rgba(37,99,235,.28);cursor:pointer;z-index:5}@media(max-width:760px){.wrap{padding:16px}.alloc{grid-template-columns:1fr}.fund-slide{min-height:auto}.fund-slide:after{right:22px}.fund-slide-top,.slide-stats,.fund-slide-body,.fund-slide-foot{padding-left:24px;padding-right:44px}.fund-slide-top h3{font-size:30px}.fund-slide-top p{font-size:18px}.slide-stats{grid-template-columns:1fr;gap:16px}.slide-stat b{font-size:30px}.fund-slide-body{grid-template-columns:1fr}.fund-visual{display:none}}@media print{body{background:white}.wrap{padding:0}.hero,.card,.fund-card{box-shadow:none;break-inside:avoid}.print{display:none}.fund-slide{page-break-inside:avoid;break-inside:avoid;box-shadow:none;margin:0 0 12mm}}`;
@@ -11181,15 +11200,17 @@ function clientOutput_xFundOverview(items, options = {}) {
   const totals=clientOutput_xTotals(items);
   const eyebrow=options.eyebrow||'Celkový přehled',title=options.title||'Portfolio fond po fondu',idPrefix=options.idPrefix||'';
   return `<section class="card report-fund-overview"><div class="eyebrow">${clientOutput_xEsc(eyebrow)}</div><h2>${clientOutput_xEsc(title)}</h2><div class="report-table-scroll"><table><thead><tr><th>Fond / společnost</th><th>Vloženo</th><th>Aktuální hodnota</th><th>Čistý výnos</th><th>Zhodnocení</th><th>Průměr p.a.</th><th>Ocenění k</th></tr></thead><tbody>${items.map((f,i)=>{
-    const perf=clientOutput_xPerf(f.amount,f.invested,f.realized),rate=clientOutput_xReportRate(f);
-    return `<tr><td><a href="#report-fund-${clientOutput_xEsc(idPrefix+i)}"><b>${esc(f.product)}</b></a><br><small>${esc(f.company)} · ${esc(f.area)}</small></td><td class="money">${clientOutput_xMoney(f.invested)}</td><td class="money"><b>${clientOutput_xMoney(f.amount)}</b></td><td class="money ${perf.gain>=0?'green':'red'}">${clientOutput_xMoney(perf.gain)}</td><td class="money">${clientOutput_xPct(perf.pct)}</td><td class="money">${rate===null?'—':clientOutput_xPctPlain(rate)}</td><td><span class="date-highlight">${f.valueDate?clientOutput_xEsc(clientOutput_xDate(f.valueDate)):'Neuvedeno'}</span></td></tr>`;
+    const perf=clientOutput_xTotals([f]),rate=clientOutput_xReportRate(f);
+    return `<tr data-report-item="${esc(f.reportId||'')}"><td><a href="#report-fund-${clientOutput_xEsc(idPrefix+i)}"><b>${esc(f.product)}</b></a><br><small>${esc(f.company)} · ${esc(f.area)}</small></td><td class="money">${clientOutput_xMoney(f.invested)}</td><td class="money"><b>${clientOutput_xMoney(f.amount)}</b></td><td class="money ${perf.gain>=0?'green':'red'}">${clientOutput_xMoney(perf.gain)}</td><td class="money">${clientOutput_xPct(perf.pct)}</td><td class="money">${rate===null?'—':clientOutput_xPctPlain(rate)}</td><td><span class="date-highlight">${f.valueDate?clientOutput_xEsc(clientOutput_xDate(f.valueDate)):'Neuvedeno'}</span></td></tr>`;
   }).join('')}</tbody><tfoot><tr><th>Celkem</th><th class="money">${clientOutput_xMoney(totals.invested)}</th><th class="money">${clientOutput_xMoney(totals.current)}</th><th class="money">${clientOutput_xMoney(totals.gain)}</th><th class="money">${clientOutput_xPct(totals.pct)}</th><th></th><th></th></tr></tfoot></table></div><p class="timeline-note">Aktuální hodnoty vycházejí z posledních ocenění jednotlivých fondů; datum reportu není datem ocenění. Realizované výběry: ${clientOutput_xMoney(totals.realized)}. Průměr p.a. používá dosavadní metodiku CRM; nejde o XIRR.</p></section>`;
 }
-function clientOutput_xPortfolioSummary(items) {
-  const total=clientOutput_xTotals(items),classicItems=items.filter(x=>x.area!=='FKI'),fkiItems=items.filter(x=>x.area==='FKI'),classic=clientOutput_xTotals(classicItems),fki=clientOutput_xTotals(fkiItems);
-  const block=(label,subtitle,t,count,kind)=>`<div class="portfolio-summary-block ${kind}"><div class="portfolio-summary-name"><span>${clientOutput_xEsc(subtitle)}</span><h2>${clientOutput_xEsc(label)}</h2></div><div class="portfolio-summary-value"><small>Aktuální hodnota</small><b>${clientOutput_xMoney(t.current)}</b></div><div><small>Vloženo</small><b>${clientOutput_xMoney(t.invested)}</b></div><div><small>Čistý výnos</small><b class="${t.gain>=0?'green':'red'}">${clientOutput_xMoney(t.gain)}</b></div><div><small>Zhodnocení</small><b class="${t.gain>=0?'green':'red'}">${clientOutput_xPct(t.pct)}</b></div><div><small>Pozic</small><b>${clientOutput_xNum(count)}</b></div></div>`;
-  return `<section class="card portfolio-summary-card"><div class="eyebrow">Rozdělení majetku</div>${block('Investiční portfolio celkem','Celkový pohled',total,items.length,'total')}
-  <div class="portfolio-summary-split">${block('Běžné investice','Investice',classic,classicItems.length,'classic')}${block('Fondy kvalifikovaných investorů','FKI',fki,fkiItems.length,'fki')}</div></section>`;
+function clientOutput_xPortfolioSummary(items, pensions=[]) {
+  const block=(label,group,rows)=>{
+    const t=clientOutput_xTotals(rows);
+    return `<div class="portfolio-summary-block ${group}" data-summary-group="${group}"><div class="portfolio-summary-name"><h2>${esc(label)}</h2></div><div class="portfolio-summary-value"><small>Aktuální hodnota</small><b data-value="current">${clientOutput_xMoney(t.current)}</b><small data-unknown></small></div>${group==='total'||group==='pensions'?'':`<div><small>Vloženo</small><b data-value="invested">${clientOutput_xMoney(t.invested)}</b></div><div><small>Čistý výnos</small><b data-value="gain">${clientOutput_xMoney(t.gain)}</b></div><div><small>Zhodnocení</small><b data-value="pct">${clientOutput_xPct(t.pct)}</b></div>`}<div><small>Položek</small><b data-value="count">${rows.length}</b></div></div>`;
+  };
+  const pen=pensions.map(x=>({amount:x.amount}));
+  return `<section class="card portfolio-summary-card" data-report-section="summary"><div class="eyebrow">Rozdělení majetku</div>${block('Investiční portfolio celkem','total',[...items,...pen])}<div class="portfolio-summary-split">${items.some(x=>x.area!=='FKI')?block('Běžné investice','classic',items.filter(x=>x.area!=='FKI')):''}${items.some(x=>x.area==='FKI')?block('Fondy kvalifikovaných investorů','fki',items.filter(x=>x.area==='FKI')):''}${pen.length?block('DPS / DIP – penzijní majetek','pensions',pen):''}</div></section>`;
 }
 function clientOutput_xSeparatedInvestmentSection(items) {
   const classic=items.filter(x=>x.area!=='FKI').sort((a,b)=>b.amount-a.amount||String(a.product).localeCompare(String(b.product),'cs')),
@@ -11224,29 +11245,94 @@ function clientOutput_xPensions(c) {
   });
 }
 function clientOutput_xPensionSection(c) {
-  return clientOutput_xTable('DPS / DIP – penzijní produkty',['Produkt','Společnost','Číslo smlouvy','Platba / evidovaný objem','Aktuální hodnota','Stav'],clientOutput_xPensions(c).map(x=>{
-    const snapshot=x.kind==='contract'?contractInvestmentSnapshot(x.source):null;
-    const value=snapshot?investmentSnapshotLiveCurrent(snapshot):null;
-    return `<tr><td><b>${clientOutput_xEsc(x.product)}</b><br>${clientOutput_xEsc(x.type)}</td><td>${clientOutput_xEsc(x.company)}</td><td>${clientOutput_xEsc(x.number)}</td><td>${clientOutput_xMoney(x.amount)}<br><small>${x.kind==='contract'?'Platba evidovaná u smlouvy':'Objem evidovaný u obchodu'}</small></td><td>${value==null?'Neuvedena':clientOutput_xMoney(value)}${snapshot?.date?`<br><small>K ${clientOutput_xEsc(clientOutput_xDate(snapshot.date))}</small>`:''}</td><td>${clientOutput_xEsc(x.status.map(s=>STATUS_LABELS?.[s]||s).join(', '))}</td></tr>`;
+  return clientOutput_xTable('DPS / DIP – penzijní produkty',['Produkt','Společnost','Číslo smlouvy','Aktuální hodnota účtu','Měsíční příspěvek','Stav'],clientOutput_xPensions(c).map(x=>{
+    const value=pensionCurrentValue(x.source,x.kind),payment=x.source.pensionMonthlyPayment,date=x.source.pensionValueDate;
+    return `<tr data-report-item="pension-${x.kind}-${x.id}"><td><b>${esc(x.product)}</b><br>${esc(x.type)}</td><td>${esc(x.company)}</td><td>${esc(x.number)}</td><td>${value===null?'Neuvedena':clientOutput_xMoney(value)}${date?`<br><small>K ${esc(clientOutput_xDate(date))}</small>`:''}</td><td>${payment==null?'Neuveden':clientOutput_xMoney(payment)}</td><td>${esc(x.status.map(s=>STATUS_LABELS?.[s]||s).join(', '))}</td></tr>`;
   }));
 }
+// Runs inside the downloaded report without access to CRM or the network.
+function clientReportInteractive() {
+  const controls=document.getElementById('reportSelection');
+  const data=JSON.parse(decodeURIComponent(controls.dataset.items));
+  const money=v=>new Intl.NumberFormat('cs-CZ',{maximumFractionDigits:0}).format(v)+' Kč';
+  const pct=v=>(v>0?'+':'')+new Intl.NumberFormat('cs-CZ',{maximumFractionDigits:1}).format(v)+' %';
+  const all=(selector,root=document)=>Array.from(root.querySelectorAll(selector));
+  const originalTimeline=document.querySelector('.portfolio-timeline');
+  const originalModel=originalTimeline?JSON.parse(decodeURIComponent(originalTimeline.dataset.model)):null;
+  function totals(rows){
+    const sum=k=>rows.reduce((s,r)=>s+(+r[k]||0),0), invested=sum('invested');
+    return {current:sum('current'),invested,gain:sum('gain'),realized:sum('realized'),pct:invested?rows.reduce((s,r)=>s+r.pct*r.invested,0)/invested:0,count:rows.length};
+  }
+  function color(el,value){el.classList.toggle('green',value>=0);el.classList.toggle('red',value<0);}
+  function update(){
+    const selected=new Set(all('[data-pick-item]:checked',controls).map(x=>x.dataset.pickItem));
+    const rows=data.filter(x=>selected.has(x.id));
+    all('[data-report-item]').forEach(el=>el.hidden=!selected.has(el.dataset.reportItem));
+    all('[data-pick-group]',controls).forEach(input=>{const list=data.filter(x=>x.group===input.dataset.pickGroup),count=list.filter(x=>selected.has(x.id)).length;input.checked=count===list.length;input.indeterminate=count>0&&count<list.length;});
+    all('[data-summary-group]').forEach(el=>{
+      const group=el.dataset.summaryGroup,chosen=group==='total'?rows:rows.filter(x=>x.group===group), t=totals(chosen);
+      el.hidden=group!=='total'&&!chosen.length;
+      all('[data-value]',el).forEach(node=>{const key=node.dataset.value;node.textContent=key==='count'?String(t.count):key==='pct'?pct(t.pct):money(t[key]);if(key==='gain'||key==='pct')color(node,t[key]);});
+      const unknown=el.querySelector('[data-unknown]');if(unknown){const n=chosen.filter(x=>!x.known).length;unknown.textContent=n?`${n} ${n===1?'položka':'položek'} bez doložené hodnoty`:'';}
+    });
+    all('.report-fund-overview').forEach(el=>{
+      const ids=all('tbody [data-report-item]',el).map(x=>x.dataset.reportItem),t=totals(rows.filter(x=>ids.includes(x.id)));
+      el.hidden=!t.count;
+      const cells=all('tfoot th',el);
+      if(cells.length>=5){cells[1].textContent=money(t.invested);cells[2].textContent=money(t.current);cells[3].textContent=money(t.gain);cells[4].textContent=pct(t.pct);color(cells[3],t.gain);color(cells[4],t.pct);}
+      const note=el.querySelector('.timeline-note');if(note)note.textContent=`Hodnoty k posledním oceněním fondů. Realizované výběry: ${money(t.realized)}. Průměr p.a. používá dosavadní metodiku CRM; nejde o XIRR.`;
+    });
+    all('.report-provider-block').forEach(el=>{
+      const ids=all('.report-fund-detail',el).map(x=>x.dataset.reportItem),t=totals(rows.filter(x=>ids.includes(x.id)));el.hidden=!t.count;
+      const head=el.querySelector('.report-provider-head');head.children[0].querySelector('small').textContent=`${t.count} fondů v portfoliu klienta`;head.children[1].querySelector('b').textContent=money(t.current);head.children[1].querySelector('span').textContent=pct(t.pct);color(head.children[1].querySelector('span'),t.pct);
+    });
+    ['classic','fki'].forEach(group=>{const el=document.querySelector('.report-area-'+group),chosen=rows.filter(x=>x.group===group);if(el){el.hidden=!chosen.length;el.querySelector('.report-area-banner>b').textContent=money(totals(chosen).current);}});
+    const pen=document.querySelector('[data-report-section=pensions]');if(pen){const sum=pen.querySelector('.section-sum b');if(sum)sum.textContent=String(rows.filter(x=>x.group==='pensions').length);}
+    all('[data-pick-section]',controls).forEach(input=>all('[data-report-section="'+input.dataset.pickSection+'"]').forEach(el=>el.hidden=!input.checked || (input.dataset.pickSection==='pensions'&&!rows.some(x=>x.group==='pensions'))));
+    if(originalTimeline){
+      const model={...originalModel,funds:originalModel.funds.map(f=>selected.has(f.reportId)?f:{...f,current:0,positions:[]})};
+      originalTimeline.dataset.model=encodeURIComponent(JSON.stringify(model));
+      all('.timeline-fund',originalTimeline).forEach((el,i)=>el.hidden=!selected.has(originalModel.funds[i].reportId));
+      originalTimeline.hidden=!rows.some(x=>x.group!=='pensions')||!controls.querySelector('[data-pick-section=charts]').checked;
+      const dates=new Set([model.start,model.now,model.end]);for(let d=new Date(model.start);d.getTime()<model.end;d.setMonth(d.getMonth()+1))dates.add(d.getTime());
+      model.funds.forEach(f=>f.positions.forEach(p=>{dates.add(p.date);if(p.date>model.start)dates.add(p.date-1);}));
+      const samples=[...dates].sort((a,b)=>a-b).map(t=>({t,...portfolioTimelineValue(model,t)})),max=Math.max(1,...samples.flatMap(p=>[p.total,p.invested]))*1.15;
+      const points=(list,key='total')=>list.map(p=>`${80+(p.t-model.start)/(model.end-model.start||1)*740},${270-p[key]/max*235}`).join(' ');
+      originalTimeline.querySelector('[data-series=contributions]').setAttribute('points',points(samples,'invested'));
+      originalTimeline.querySelector('[data-series=history]').setAttribute('points',points(samples.filter(p=>p.t<=model.now)));
+      originalTimeline.querySelector('[data-series=forecast]').setAttribute('points',points(samples.filter(p=>p.t>=model.now)));
+      all('svg text[x="4"]',originalTimeline).forEach((el,i)=>el.textContent=Math.round(max*i/4/1000)+' tis.');
+      portfolioTimelineSelect(originalTimeline,null,model.now);
+    }
+  }
+  controls.addEventListener('change',e=>{const group=e.target.dataset.pickGroup;if(group)all('[data-pick-item]',controls).filter(x=>data.find(d=>d.id===x.dataset.pickItem)?.group===group).forEach(x=>x.checked=e.target.checked);update();});
+  update();
+}
+function clientReportSelectionHtml(items,pensions,opts){
+  const data=[...items.map(f=>({id:f.reportId,group:f.area==='FKI'?'fki':'classic',name:f.product,company:f.company,known:true,...clientOutput_xTotals([f])})),...pensions.map(x=>({id:'pension-'+x.kind+'-'+x.id,group:'pensions',name:x.product,company:x.company,known:pensionCurrentValue(x.source,x.kind)!==null,current:x.amount,invested:0,gain:0,pct:0,realized:0}))];
+  const groups=[['classic','Investice'],['fki','FKI'],['pensions','DPS / DIP']].filter(([key])=>data.some(x=>x.group===key));
+  const sectionOptions=[['summary','Rozdělení majetku',opts.summary!==false],['charts','Grafy investic a FKI',items.length],['open','Rozpracováno',opts.open],['insurance','Pojištění',opts.insurance],['loans','Úvěry a hypotéky',opts.loans],['pensions','Přehled DPS / DIP',opts.pensions],['notice','Upozornění',opts.notice!==false]];
+  return `<details class="card report-selection" id="reportSelection" data-items="${esc(encodeURIComponent(JSON.stringify(data)))}"><summary>Upravit zobrazení reportu</summary><div class="report-switches">${sectionOptions.filter(x=>x[2]).map(([id,label])=>`<label><input type="checkbox" data-pick-section="${id}" checked> ${esc(label)}</label>`).join('')}</div><p class="muted">Vyber majetek zahrnutý do součtů a detailů. Penzijní zůstatky jsou součástí AUM, nikoli grafu výnosnosti.</p>${groups.map(([id,label])=>`<fieldset><legend><label><input type="checkbox" data-pick-group="${id}" checked> ${esc(label)}</label></legend>${data.filter(x=>x.group===id).map(x=>`<label><input type="checkbox" data-pick-item="${x.id}" checked> ${esc(x.name)} · ${esc(x.company)} <b>${x.known?clientOutput_xMoney(x.current):'Hodnota neuvedena'}</b></label>`).join('')}</fieldset>`).join('')}</details>`;
+}
+
 function clientOutput_xReportHtml(c, opts = {}, note = '') {
-  const items = clientOutput_xClientInvestments(c),
+  const items = clientOutput_xClientInvestments(c).filter(x=>x.area==='FKI'?(opts.fki??opts.investments)!==false:opts.investments!==false).map((x,i)=>({...x,reportId:'holding-'+i})),
+    pensions=opts.pensions?clientOutput_xPensions(c):[],
     insurance = clientOutput_xContracts(c, 'insurance'),
     loans = clientOutput_xContracts(c, 'loans'),
     open = clientOutput_xOpen(c),
     today = new Date().toLocaleDateString('cs-CZ'),
     sections = [];
-  if (opts.summary !== false && opts.investments !== false && items.length) sections.push(clientOutput_xPortfolioSummary(items));
+  if (opts.summary !== false && (items.length || pensions.length)) sections.push(clientOutput_xPortfolioSummary(items,pensions));
   if (note) sections.push(`<section class="card"><div class="section-head"><div><span>Poznámka</span><h2>Doplnění k reportu</h2></div></div><p class="lead">${clientOutput_xEsc(note).replace(/\n/g, '<br>')}</p></section>`);
-  if (opts.investments !== false && items.length) sections.push(clientOutput_xInvestmentSection(items, opts, false));
-  if (opts.open) sections.push(clientOutput_xTable('Aktuálně rozpracováno', ['Oblast', 'Produkt', 'Společnost', 'Stav', 'Termín'], open.map(x => `<tr><td>${clientOutput_xEsc(x.area)}</td><td><b>${clientOutput_xEsc(x.title)}</b></td><td>${clientOutput_xEsc(x.company)}</td><td>${clientOutput_xEsc(x.status)}</td><td>${clientOutput_xEsc(x.date ? clientOutput_xDate(x.date) : '')}</td></tr>`)));
-  if (opts.insurance) sections.push(clientOutput_xTable('Pojištění', ['Produkt', 'Společnost', 'Číslo smlouvy', 'Stav', 'Výročí'], insurance.map(s => `<tr><td><b>${clientOutput_xEsc(s.product || s.type || 'Pojištění')}</b></td><td>${clientOutput_xEsc(s.company || '')}</td><td>${clientOutput_xEsc(s.number || '')}</td><td>${clientOutput_xEsc((typeof getStatuses === 'function' ? getStatuses(s) : [s.status]).filter(Boolean).map(x => STATUS_LABELS?.[x] || x).join(', '))}</td><td>${clientOutput_xEsc(s.anniv ? clientOutput_xDate(s.anniv) : '')}</td></tr>`)));
-  if (opts.loans) sections.push(clientOutput_xTable('Úvěry a hypotéky', ['Produkt', 'Společnost', 'Objem', 'Stav', 'Termín'], loans.map(s => `<tr><td><b>${clientOutput_xEsc(s.product || s.type || 'Úvěr')}</b></td><td>${clientOutput_xEsc(s.company || '')}</td><td class="money">${clientOutput_xMoney(s.amount || s.volume || 0)}</td><td>${clientOutput_xEsc((typeof getStatuses === 'function' ? getStatuses(s) : [s.status]).filter(Boolean).map(x => STATUS_LABELS?.[x] || x).join(', '))}</td><td>${clientOutput_xEsc(s.anniv ? clientOutput_xDate(s.anniv) : '')}</td></tr>`)));
+  if (items.length) sections.push(clientOutput_xInvestmentSection(items, opts, false));
+  if (opts.open) sections.push(`<div data-report-section="open">${clientOutput_xTable('Aktuálně rozpracováno', ['Oblast', 'Produkt', 'Společnost', 'Stav', 'Termín'], open.map(x => `<tr><td>${clientOutput_xEsc(x.area)}</td><td><b>${clientOutput_xEsc(x.title)}</b></td><td>${clientOutput_xEsc(x.company)}</td><td>${clientOutput_xEsc(x.status)}</td><td>${clientOutput_xEsc(x.date ? clientOutput_xDate(x.date) : '')}</td></tr>`))}</div>`);
+  if (opts.insurance) sections.push(`<div data-report-section="insurance">${clientOutput_xTable('Pojištění', ['Produkt', 'Společnost', 'Číslo smlouvy', 'Stav', 'Výročí'], insurance.map(s => `<tr><td><b>${clientOutput_xEsc(s.product || s.type || 'Pojištění')}</b></td><td>${clientOutput_xEsc(s.company || '')}</td><td>${clientOutput_xEsc(s.number || '')}</td><td>${clientOutput_xEsc((typeof getStatuses === 'function' ? getStatuses(s) : [s.status]).filter(Boolean).map(x => STATUS_LABELS?.[x] || x).join(', '))}</td><td>${clientOutput_xEsc(s.anniv ? clientOutput_xDate(s.anniv) : '')}</td></tr>`))}</div>`);
+  if (opts.loans) sections.push(`<div data-report-section="loans">${clientOutput_xTable('Úvěry a hypotéky', ['Produkt', 'Společnost', 'Objem', 'Stav', 'Termín'], loans.map(s => `<tr><td><b>${clientOutput_xEsc(s.product || s.type || 'Úvěr')}</b></td><td>${clientOutput_xEsc(s.company || '')}</td><td class="money">${clientOutput_xMoney(s.amount || s.volume || 0)}</td><td>${clientOutput_xEsc((typeof getStatuses === 'function' ? getStatuses(s) : [s.status]).filter(Boolean).map(x => STATUS_LABELS?.[x] || x).join(', '))}</td><td>${clientOutput_xEsc(s.anniv ? clientOutput_xDate(s.anniv) : '')}</td></tr>`))}</div>`);
 
-  if (opts.pensions) sections.push(clientOutput_xPensionSection(c));
-  if (opts.notice !== false) sections.push(`<section class="card muted">Report je informativní přehled k datu ${clientOutput_xEsc(today)}. Hodnota investic se může měnit a rozhodující jsou vždy oficiální dokumenty, výpisy a aktuální podklady jednotlivých společností.</section>`);
-  return `<!doctype html><html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Klientský report - ${clientOutput_xEsc(clientOutput_xName(c))}</title><style>${clientOutput_xCss()}${portfolioTimelineCss()}${clientOutput_xCompactReportCss()}</style></head><body><button class="print" onclick="window.print()">Tisk / PDF</button><div class="wrap"><section class="hero"><div class="report-brand">FILIP CRM <span>${clientOutput_xEsc(today)}</span></div><div class="eyebrow">Klientský report</div><h1>${clientOutput_xEsc(clientOutput_xName(c))}</h1><p class="lead">Přehled vybraných produktů a údajů z evidence.</p></section>${sections.join('')}</div><script>${portfolioTimelineValue.toString()}\n${portfolioTimelineSelect.toString()}\nwindow.addEventListener('beforeprint',()=>{document.querySelectorAll('.portfolio-timeline').forEach(r=>{r.dataset.printTime=r.querySelector('input').value;portfolioTimelineSelect(r,null,JSON.parse(decodeURIComponent(r.dataset.model)).now);});document.querySelectorAll('.report-transactions').forEach(d=>{d.dataset.printOpen=d.open?'1':'0';d.open=true;});});window.addEventListener('afterprint',()=>{document.querySelectorAll('.portfolio-timeline').forEach(r=>portfolioTimelineSelect(r,null,r.dataset.printTime));document.querySelectorAll('.report-transactions').forEach(d=>{d.open=d.dataset.printOpen==='1';});});</script></body></html>`;
+  if (opts.pensions) sections.push(`<div data-report-section="pensions">${clientOutput_xPensionSection(c)}</div>`);
+  if (opts.notice !== false) sections.push(`<section class="card muted" data-report-section="notice">Report je informativní přehled k datu ${clientOutput_xEsc(today)}. Hodnota investic se může měnit a rozhodující jsou vždy oficiální dokumenty, výpisy a aktuální podklady jednotlivých společností.</section>`);
+  return `<!doctype html><html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Klientský report - ${clientOutput_xEsc(clientOutput_xName(c))}</title><style>${clientOutput_xCss()}${portfolioTimelineCss()}${clientOutput_xCompactReportCss()}[hidden]{display:none!important}.report-switches{display:flex;gap:12px;flex-wrap:wrap}.report-selection summary{cursor:pointer;font-weight:700}.report-selection fieldset{border:1px solid #dbe7f3;border-radius:12px;margin-top:12px}.report-selection fieldset>label{display:flex;gap:8px;align-items:center;margin:10px 0;flex-wrap:wrap}.report-selection input{width:auto}.report-selection b{margin-left:auto}.portfolio-summary-block.total,.portfolio-summary-block.pensions{grid-template-columns:2fr 2fr 1fr}@media print{.report-selection{display:none!important}}</style></head><body><button class="print" onclick="window.print()">Tisk / PDF</button><div class="wrap"><section class="hero"><div class="report-brand">FILIP CRM <span>${clientOutput_xEsc(today)}</span></div><div class="eyebrow">Klientský report</div><h1>${clientOutput_xEsc(clientOutput_xName(c))}</h1><p class="lead">Přehled vybraných produktů a údajů z evidence.</p></section>${clientReportSelectionHtml(items,pensions,opts)}${sections.join('')}</div><script>${portfolioTimelineValue.toString()}\n${portfolioTimelineSelect.toString()}\n${clientReportInteractive.toString()}\nclientReportInteractive();\nwindow.addEventListener('beforeprint',()=>{document.querySelectorAll('.portfolio-timeline').forEach(r=>{r.dataset.printTime=r.querySelector('input').value;portfolioTimelineSelect(r,null,JSON.parse(decodeURIComponent(r.dataset.model)).now);});document.querySelectorAll('.report-transactions').forEach(d=>{d.dataset.printOpen=d.open?'1':'0';d.open=true;});});window.addEventListener('afterprint',()=>{document.querySelectorAll('.portfolio-timeline').forEach(r=>portfolioTimelineSelect(r,null,r.dataset.printTime));document.querySelectorAll('.report-transactions').forEach(d=>{d.open=d.dataset.printOpen==='1';});});</script></body></html>`;
 }
 function clientOutput_xScenarioRate(r) {
   const defs = typeof window.defaultFundExpectedRate === 'function' ? window.defaultFundExpectedRate(r?.area, r?.key, r?.isin, r) : {};
@@ -13104,7 +13190,7 @@ function openClientReportModal(id) {
     insurance = clientOutput_xContracts(c, 'insurance'),
     loans = clientOutput_xContracts(c, 'loans'),
     open = clientOutput_xOpen(c),
-    opts = [['summary', 'Souhrn', 'Hlavní čísla portfolia a produktů', true], ['open', 'Rozpracováno', 'Aktuálně řešené návrhy a servis', open.length], ['insurance', 'Pojištění', 'Sjednané pojistné produkty', insurance.length], ['loans', 'Úvěry a hypotéky', 'Úvěrové a hypoteční produkty', loans.length], ['investments', 'Investice', 'Portfolio, grafy a fondové karty', items.length], ['pensions', 'DPS / DIP', 'Penzijní produkty a evidované smlouvy', clientOutput_xPensions(c).length], ['notice', 'Upozornění', 'Krátké upozornění k reportu', true]];
+    opts = [['summary', 'Souhrn', 'Hlavní čísla portfolia a produktů', true], ['open', 'Rozpracováno', 'Aktuálně řešené návrhy a servis', open.length], ['insurance', 'Pojištění', 'Sjednané pojistné produkty', insurance.length], ['loans', 'Úvěry a hypotéky', 'Úvěrové a hypoteční produkty', loans.length], ['investments', 'Investice', 'Běžné investice a jejich grafy', items.some(x=>x.area!=='FKI')], ['fki', 'FKI', 'Fondy kvalifikovaných investorů', items.some(x=>x.area==='FKI')], ['pensions', 'DPS / DIP', 'Penzijní produkty a evidované smlouvy', clientOutput_xPensions(c).length], ['notice', 'Upozornění', 'Krátké upozornění k reportu', true]];
   if (typeof setText === 'function') setText('clientReportTitle', 'Report pro klienta: ' + clientOutput_xName(c));
   if (typeof setVal === 'function') setVal('clientReportNote', '');
   const box = document.getElementById('clientReportOptions');
@@ -13515,7 +13601,7 @@ const WEEKLY_GOAL_METRICS = {
 // Focus planning stores references to CRM activities, never duplicate trades or commissions.
 let focusEditingDay = '', focusEditingSlot = 1, focusDraftTimer = null, focusLastToday = null;
 const FOCUS_WEEK_FIELDS = ['wgTitle','wgWhy','wgCategory','wgMetricType','wgKpiLabel','wgTarget','wgManualActual','wgDueDate','wgStatus'];
-const FOCUS_DAY_FIELDS = ['fpTitle','fpActivity','fpClient','fpGoal','fpTarget','fpUnit','fpStatus'];
+const FOCUS_DAY_FIELDS = ['fpTitle','fpNote','fpActivity','fpClient','fpGoal','fpTarget','fpUnit','fpStatus'];
 const FOCUS_REVIEW_FIELDS = ['wrSuccess','wrFailure','wrDifferent','wrOpportunities','wrWaste','wrCarry','wrEfficiency','wrCommission'];
 const FOCUS_THEMES = ['Obchod a podpisy','Investice a AUM','Provize a kontrola'];
 function focusDraftKey(modal) {
@@ -13561,7 +13647,7 @@ function openFocusHistory() {
 function focusDay() {return val('dailyFocusDate') || dashboardToday();}
 function focusPriorityFor(slot, day=focusDay()) {return state.dailyPriorities.find(x => x.date===day && +x.slot===+slot);}
 function focusActivity(p) {return p?.activityId ? state.activities.find(a=>String(a.id)===String(p.activityId)) : null;}
-function focusPriorityTitle(p) {return focusActivity(p)?.text || p.title || 'Priorita';}
+function focusPriorityTitle(p) {return p.title || focusActivity(p)?.text || 'Priorita';}
 function focusPriorityStatus(p) {
   if (p.status==='Hotovo') return 'Hotovo';
   const a=focusActivity(p);
@@ -13576,8 +13662,8 @@ function renderDailyPriorities() {
   byId('dailyPrioritiesList').innerHTML=[1,2,3].map(slot=>{
     const p=focusPriorityFor(slot,day);
     if(!p)return `<div class="focus-row empty"><span class="weekly-goal-number">${slot}</span><span>Volná priorita</span><button class="btn" onclick="openDailyPriority(${slot})">+ Přidat</button></div>`;
-    const status=focusPriorityStatus(p), client=findClient(focusActivity(p)?.clientId || p.clientId), goal=state.weeklyGoals.find(g=>String(g.id)===String(p.goalId));
-    return `<div class="focus-row ${status==='Hotovo'?'focus-done':''}"><button class="focus-check" aria-label="${status==='Hotovo'?'Znovu otevřít':'Dokončit'} prioritu ${slot}" onclick="toggleDailyPriority(${slot})">${status==='Hotovo'?'✓':slot}</button><div class="focus-title"><b>${esc(focusPriorityTitle(p))}</b><small>${esc([client?clientName(client):'',goal?goal.title:'',p.target!==null&&p.target!==undefined&&p.target!==''?`${num(p.target)} ${p.unit||''}`:'',p.resolution==='task'?'Přesunuto mezi úkoly':p.resolution==='cancelled'?'Zrušeno jako neaktuální':''].filter(Boolean).join(' · '))}</small></div><span class="badge ${status==='Hotovo'?'green':'blue'}">${esc(status)}</span><div class="actions"><button class="btn" aria-label="Posunout prioritu ${slot} výše" ${slot===1?'disabled':''} onclick="moveDailyPriority(${slot},-1)">↑</button><button class="btn" aria-label="Posunout prioritu ${slot} níže" ${slot===3?'disabled':''} onclick="moveDailyPriority(${slot},1)">↓</button><button class="btn" onclick="openDailyPriority(${slot})">Upravit</button></div></div>`;
+    const status=focusPriorityStatus(p);
+    return `<div class="focus-row ${status==='Hotovo'?'focus-done':''}"><button class="focus-check" aria-label="${status==='Hotovo'?'Znovu otevřít':'Dokončit'} prioritu ${slot}" onclick="toggleDailyPriority(${slot})">${status==='Hotovo'?'✓':slot}</button><button class="focus-title focus-open" onclick="openDailyPriority(${slot})" title="${esc(focusPriorityTitle(p))}"><b>${esc(focusPriorityTitle(p))}</b></button><div class="actions"><button class="btn" aria-label="Posunout prioritu ${slot} výše" ${slot===1?'disabled':''} onclick="moveDailyPriority(${slot},-1)">↑</button><button class="btn" aria-label="Posunout prioritu ${slot} níže" ${slot===3?'disabled':''} onclick="moveDailyPriority(${slot},1)">↓</button></div></div>`;
   }).join('');
   const days=[...new Set(state.dailyPriorities.map(x=>x.date))].sort().reverse();
   byId('dailyFocusHistoryList').innerHTML=days.map(d=>{const rows=state.dailyPriorities.filter(x=>x.date===d);return `<button class="btn" onclick="setVal('dailyFocusDate','${esc(d)}');renderDailyPriorities()">${esc(d)} · ${rows.filter(p=>focusPriorityStatus(p)==='Hotovo').length}/3 hotovo</button>`;}).join(' ') || '<p class="note">Uložené priority tu zůstanou i bez uzavření dne.</p>';
@@ -13591,13 +13677,13 @@ function openDailyPriority(slot) {
   byId('fpActivity').innerHTML='<option value="">Vlastní priorita</option>'+activities.map(a=>`<option value="${a.id}">${esc([a.date,clientName(findClient(a.clientId)),a.text].filter(Boolean).join(' · '))}</option>`).join('');
   byId('fpClient').innerHTML='<option value="">Bez klienta</option>'+state.clients.map(c=>`<option value="${c.id}">${esc(clientName(c))}</option>`).join('');
   byId('fpGoal').innerHTML='<option value="">Bez vazby</option>'+weeklyGoalsFor(key).map(g=>`<option value="${g.id}">${esc(g.title)}</option>`).join('');
-  setVal('fpTitle',p?focusPriorityTitle(p):'');setVal('fpActivity',p?.activityId||'');setVal('fpClient',p?.clientId||'');setVal('fpGoal',p?.goalId||'');setVal('fpTarget',p?.target??'');setVal('fpUnit',p?.unit||'');setVal('fpStatus',p?focusPriorityStatus(p):'Čeká');
-  focusRestoreDraft('dailyPriorityModal');byId('fpTitle').readOnly=!!val('fpActivity');byId('fpClient').disabled=!!val('fpActivity');openModal('dailyPriorityModal');
+  setVal('fpNote',p?.note||'');setVal('fpTitle',p?focusPriorityTitle(p):'');setVal('fpActivity',p?.activityId||'');setVal('fpClient',p?.clientId||'');setVal('fpGoal',p?.goalId||'');setVal('fpTarget',p?.target??'');setVal('fpUnit',p?.unit||'');setVal('fpStatus',p?focusPriorityStatus(p):'Čeká');
+  focusRestoreDraft('dailyPriorityModal');byId('fpTitle').readOnly=false;byId('fpClient').disabled=!!val('fpActivity');openModal('dailyPriorityModal');
 }
 function selectFocusActivity() {
   const a=state.activities.find(x=>String(x.id)===val('fpActivity'));
   if(a){setVal('fpTitle',a.text);setVal('fpClient',a.clientId||'');}
-  byId('fpTitle').readOnly=!!a;byId('fpClient').disabled=!!a;focusCaptureDraft('dailyPriorityModal');
+  byId('fpTitle').readOnly=false;byId('fpClient').disabled=!!a;focusCaptureDraft('dailyPriorityModal');
 }
 function saveDailyPriority() {
   const title=val('fpTitle').trim();if(!title)return alert('Doplň název priority.');
@@ -13607,7 +13693,7 @@ function saveDailyPriority() {
   let p=focusPriorityFor(focusEditingSlot,focusEditingDay);
   const wasDone=p && focusPriorityStatus(p)==='Hotovo';
   if(!p){p={id:uid(),date:focusEditingDay,slot:focusEditingSlot,createdAt:new Date().toISOString()};state.dailyPriorities.push(p);}
-  Object.assign(p,{title,activityId,clientId:+val('fpClient')||null,goalId:+val('fpGoal')||null,target:val('fpTarget')===''?null:+val('fpTarget'),unit:val('fpUnit').trim(),status:val('fpStatus'),updatedAt:new Date().toISOString()});
+  Object.assign(p,{title,note:val('fpNote').trim(),activityId,clientId:+val('fpClient')||null,goalId:+val('fpGoal')||null,target:val('fpTarget')===''?null:+val('fpTarget'),unit:val('fpUnit').trim(),status:val('fpStatus'),updatedAt:new Date().toISOString()});
   if(p.status==='Hotovo'){p.completedAt=dashboardToday();focusCompleteLinkedActivity(p);}
   else if(wasDone){delete p.completedAt;const a=focusActivity(p);if(a){a.completed=false;a.completedAt='';a.outcome='agreed';a.updatedAt=dashboardToday();}}
   focusClearDraft('dailyPriorityModal');if(!persist())return;
@@ -13715,7 +13801,7 @@ function weeklyGoalActual(goal, key = goal?.weekKey || weekKey()) {
   const range = weekRange(key),
     actuals = typeof analysisActuals === 'function' ? analysisActuals(range.start, range.end, key) : {};
   if (goal.metricType === 'opportunities') return (state.opportunities || []).filter(x => dateInRange(x.createdAt || x.statusDate, range.start, range.end)).length;
-  if (goal.metricType === 'signed_deals') return (typeof visibleDeals === 'function' ? visibleDeals() : state.deals || []).filter(x => dateInRange(x.date, range.start, range.end)).length;
+  if (goal.metricType === 'signed_deals') return (typeof visibleDeals === 'function' ? visibleDeals() : state.deals || []).filter(x => !isInternalCommission(x) && dateInRange(x.date, range.start, range.end)).length;
   if (goal.metricType === 'contacted_clients') {
     const ids = new Set();
     (state.activities || []).forEach(x => {
@@ -13796,18 +13882,18 @@ function renderWeeklyGoals() {
   if (select) select.innerHTML = keys.map(k => `<option value="${k}" ${k === key ? 'selected' : ''}>${esc(weeklyGoalPeriod(k))} · ${weeklyGoalWeekStatus(k)}${k === weekKey() ? ' · aktuální' : ''}</option>`).join('');
   const pending = keys.filter(k => k < weekKey() && weeklyGoalsFor(k).length && !weeklyReviewFor(k));
   const pendingBox = byId('weeklyGoalsPending');
-  if (pendingBox) pendingBox.innerHTML = pending.length ? `<div class="weekly-pending"><div><b>Neuzavřené minulé týdny: ${pending.length}</b><p>Cíle zůstávají uložené. Výsledky můžeš doplnit a týden vyhodnotit kdykoliv.</p></div><button class="btn" onclick="selectWeeklyGoalsWeek('${pending[0]}')">Otevřít ${esc(weeklyGoalPeriod(pending[0]))}</button></div>` : '';
+  if (pendingBox) pendingBox.innerHTML = pending.length ? `<div class="weekly-pending"><div><b>Neuzavřené minulé týdny: ${pending.length}</b></div><button class="btn" onclick="selectWeeklyGoalsWeek('${pending[0]}')">Otevřít ${esc(weeklyGoalPeriod(pending[0]))}</button></div>` : '';
   const closeBtn = byId('closeWeeklyGoalsBtn');
   if (closeBtn) { closeBtn.disabled = !review && !weeklyGoalsFor(key).length; closeBtn.textContent = review ? 'Zobrazit vyhodnocení' : 'Vyhodnotit týden'; }
   const setBtn = byId('setWeeklyGoalsBtn');
   if (setBtn) { setBtn.hidden = !!review; setBtn.textContent = weeklyGoalsFor(key).length ? 'Upravit cíle' : 'Nastavit cíle'; }
   grid.innerHTML = [1,2,3].map(slot => {
     const goal=review?.goals?.find(g=>+g.slot===slot)||weeklyGoalForSlot(slot,key);
-    if(!goal)return `<article class="weekly-goal focus-row empty"><span class="weekly-goal-number">${slot}</span><div class="focus-title"><b>${review?'Cíl nebyl nastaven':esc(FOCUS_THEMES[slot-1])}</b><small>${review?'':'Výchozí oblast – můžeš zvolit jiný cíl.'}</small></div>${review?'':`<button class="btn" onclick="openWeeklyGoalModal(${slot})">+ Nastavit cíl</button>`}</article>`;
+    if(!goal)return `<article class="weekly-goal focus-row empty"><span class="weekly-goal-number">${slot}</span><div class="focus-title"><b>${review?'Cíl nebyl nastaven':esc(FOCUS_THEMES[slot-1])}</b></div>${review?'':`<button class="btn" onclick="openWeeklyGoalModal(${slot})">+ Nastavit cíl</button>`}</article>`;
     const p=weeklyGoalProgress(goal,key),status=weeklyGoalDisplayStatus(goal,p,!!review);
     const resolution=weeklyGoalForSlot(slot,key)?.resolution;
     const carry=key<weekKey() && p.actual<p.target && !resolution ? weeklyGoalWasCarried(goal)?'<small>Pokračuje v aktuálním týdnu.</small>':`<button class="btn slim" onclick="carryWeeklyGoalForward(${slot})">${goal.target==null?'Pokračovat v aktuálním týdnu':`Přenést zbývajících ${num(p.target-p.actual)} do aktuálního týdne`}</button>`:'';
-    return `<article class="weekly-goal focus-row"><span class="weekly-goal-number">${slot}</span><div class="focus-title"><b>${esc(goal.title)}</b><small>${esc(resolution==='cancelled'?'Zrušeno jako neaktuální':resolution==='task'?'Přesunuto mezi běžné úkoly':goal.category||'')}</small>${carry}</div><div class="focus-score">${goal.target==null?'':`<b>${p.actual===null?'Nedostupné':num(p.actual)} / ${num(p.target)} ${esc(weeklyGoalMetricLabel(goal))}</b><div class="weekly-progress"><span style="width:${p.bar}%"></span></div><small>${esc(WEEKLY_GOAL_METRICS[goal.metricType]?.[0]||'Ručně')}</small>`}</div><span class="badge ${weeklyGoalStatusClass(status)}">${esc(status==='Nezahájeno'?'Čeká':status==='Splněno'?'Hotovo':status)}</span>${review?'':`<div class="actions">${goal.target==null?`<button class="btn" onclick="completeWeeklyFocus(${slot})">${status==='Splněno'?'Znovu otevřít':'Hotovo'}</button>`:''}<button class="btn slim" onclick="openWeeklyGoalModal(${slot})">Aktualizovat</button></div>`}</article>`;
+    return `<article class="weekly-goal focus-row"><span class="weekly-goal-number">${slot}</span><div class="focus-title"><button class="focus-open" onclick="${review?'openWeeklyReviewModal()':`openWeeklyGoalModal(${slot})`}"><b>${esc(goal.title)}</b></button><small class="focus-extra">${esc(resolution==='cancelled'?'Zrušeno jako neaktuální':resolution==='task'?'Přesunuto mezi běžné úkoly':goal.category||'')}</small>${carry}</div><div class="focus-score">${goal.target==null?'':`<b>${p.actual===null?'Nedostupné':num(p.actual)} / ${num(p.target)} ${esc(goal.unit||'')}</b><div class="weekly-progress"><span style="width:${p.bar}%"></span></div>`}</div><span class="badge ${weeklyGoalStatusClass(status)}">${esc(status==='Nezahájeno'?'Čeká':status==='Splněno'?'Hotovo':status)}</span>${review?'':`<div class="actions">${goal.target==null?`<button class="btn" onclick="completeWeeklyFocus(${slot})">${status==='Splněno'?'Znovu otevřít':'Hotovo'}</button>`:''}<button class="btn slim" onclick="openWeeklyGoalModal(${slot})" aria-label="Upravit cíl ${slot}">•••</button></div>`}</article>`;
   }).join('');
   renderFocusUnfinished();
   renderWeeklyGoalsHistory();
@@ -13907,9 +13993,9 @@ function carryWeeklyGoalForward(slot) {
 function renderDashboard() {
   focusCaptureAum();
   renderDailyPriorities();renderWeeklyGoals();
-  if(byId('dashboardStats')?.open)renderDashboardMetrics();
+  renderDashboardMetrics();
   try {
-    if(byId('dashboardTasks')?.open)renderDashboardWorkQueue();
+    renderDashboardWorkQueue();
   } catch (e) {
     console.error('Render denních úkolů', e);
   }
@@ -14405,7 +14491,7 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.22-3';
+const VERSION = '2026.10.22-4';
 const VERSION_NOTE = 'Klasické investice: pravidelné i jednorázové vklady, ruční hodnoty a automatický dopočet. Přesun smlouvy z DIP do investic respektuje zvolený typ.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';

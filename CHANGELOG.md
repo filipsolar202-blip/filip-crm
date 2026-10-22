@@ -1,3 +1,11 @@
+## 2026.10.22-4
+- Denní priority i týdenní cíle jsou na počítači ve třech kompaktních kartách vedle sebe. Delší poznámka je v detailu, produkční grafy jsou opět viditelné hned pod cíli a aktivity pod grafy. Historie a rozpracované cíle zůstávají zachované.
+- HTML report obsahuje přepínače sekcí, kategorií i jednotlivých fondů a penzijních účtů. Součty, přehledy, detaily a grafy reagují společně, bez připojení; tisk respektuje výběr. Investice a FKI lze z exportu vyřadit samostatně.
+- Celkové portfolio v reportu zahrnuje aktuální penzijní majetek. Penzijní hodnota a měsíční příspěvek mají v editaci smlouvy oddělená pole. Starší evidovaná částka používá dosavadní význam v klientském AUM; neznámá hodnota se nezaměňuje za doloženou nulu. DPS/DIP nevstupují do grafu výkonnosti ani investičního výnosu.
+- Následné provize mají vlastní formulář a přehled v Obchodech. Nevytvářejí klienta, smlouvu, BJ, investiční produkci ani FKI/AUM. Příčina chyby byla technická klientská karta a odhad investiční oblasti podle společnosti.
+- Rozpoznané technické klienty a chybné odvozené pozice aplikace přesune mimo aktivní evidenci do archivu opravy v záloze; částky a výplaty provizí zachová. Obnova i sloučení záloh podporují provize bez klienta a nevytvářejí je znovu.
+- Ověřeno na syntetických datech: ukládání, historie cílů, penzijní zůstatky včetně nuly, výběry v samostatném HTML, tisk, mobilní šířka, odstranění technického klienta, provizní příjmy a zálohy.
+
 ## 2026.10.22-3
 - Dashboard začíná třemi denními prioritami a třemi týdenními cíli. Běžné úkoly, filtry, statistiky, grafy a kontrola duplicit jsou dostupné po rozbalení; náročné přehledy se nevykreslují při běžném otevření dashboardu.
 - Denní priorita může navazovat na klienta, týdenní cíl nebo existující aktivitu. Dokončení sdíleného úkolu nevytváří druhý záznam. Priority lze řadit a procházet podle dnů.
