@@ -1,3 +1,12 @@
+## 2026.10.22-3
+- Dashboard začíná třemi denními prioritami a třemi týdenními cíli. Běžné úkoly, filtry, statistiky, grafy a kontrola duplicit jsou dostupné po rozbalení; náročné přehledy se nevykreslují při běžném otevření dashboardu.
+- Denní priorita může navazovat na klienta, týdenní cíl nebo existující aktivitu. Dokončení sdíleného úkolu nevytváří druhý záznam. Priority lze řadit a procházet podle dnů.
+- Výchozí týdenní oblasti jsou Obchod a podpisy, Investice a AUM, Provize a kontrola. Povinný je jen název; BJ a investiční objem lze čerpat z uzavřených obchodů, AUM ze stejné vlastní správy jako v reportech. Podrobnosti cíle jsou volitelné.
+- Nedokončené priority zůstávají uložené, nic se automaticky nepřenáší. Nabídka Pokračovat / Mezi běžné úkoly / Zrušit jako neaktuální uchovává původní historii. Uzavření týdne lze provést zpětně.
+- Vyhodnocení archivuje cíle, BJ, investiční produkci, dostupné pozorované změny AUM, výsledek kontroly provizí a dvě reflexe. Chybějící historická AUM se nevymýšlejí; změna mezi uloženými daty zahrnuje i přecenění. Starší reflexe zůstávají čitelné.
+- Roční cíle rozšiřují dosavadní plán o celkové BJ, cílové AUM a osobní/podnikatelské cíle. Rozepsané denní, týdenní, roční cíle i vyhodnocení se uchovávají při přepínání a obnovení stránky. Nová evidence je součástí společné zálohy.
+- Klientský export FKI + investice nabízí samostatné volby Pojištění, Úvěry a hypotéky, Investice, DPS/DIP a Upozornění. DPS/DIP používá současnou evidenci penzí, rozlišuje platbu a ocenění a eliminuje navázaný duplicitní obchod. Vypnutí investic vypne i jejich souhrn.
+
 ## 2026.10.22-2
 - Opraveno ukládání u fondů s více historickými aktualizacemi: upravuje se otevřený záznam místo prvního nalezeného. Starší aktualizace tak nezastíní ručně změněnou částku. Datum klientského ocenění je samostatné od společné ceny CP. Reprodukční test Atrisu ověřuje skutečné tlačítko karty, historii a obnovení stránky.
 - Investiční smlouva nabízí přímo celkové vklady, aktuální hodnotu, výnos v Kč / %, roční údaj producenta a režim investování. Sdílí jeden uložený záznam s detailem investice. Pravidelná platba smlouvy, obchodní objem ani BJ se aktualizací majetku nemění.

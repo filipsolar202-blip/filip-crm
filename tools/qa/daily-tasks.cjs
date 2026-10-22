@@ -35,7 +35,7 @@ const root=path.resolve(__dirname,'../..');
   assert.equal(migrated.length,6);assert(migrated.every(a=>a.completed&&a.outcome==='realized'&&a.recordKind==='history'));
   assert.equal(migrated[0].completedAt,'2026-09-01','Preserve historical date rather than inventing contact today');
   assert.equal(await page.evaluate(()=>state.activities.length),fixture.activities.length,'No history deletion');
-  await page.reload();assert.deepEqual(await ids(),[10,12,13,16,20,11,17]);
+  await page.reload();await page.evaluate(()=>openFocusPanel('dashboardTasks'));assert.deepEqual(await ids(),[10,12,13,16,20,11,17]);
   await page.locator('#dashTaskType').selectOption('Telefon');assert.deepEqual(await ids(),[10]);
   await page.locator('#dashTaskType').selectOption('Email');assert.deepEqual(await ids(),[12,20]);
   await page.locator('#dashTaskType').selectOption('');await page.locator('#dashTaskPeriod').selectOption('week');assert((await ids()).includes(14));assert(!(await ids()).includes(15));
@@ -61,7 +61,7 @@ const root=path.resolve(__dirname,'../..');
   await page.locator('.dashboard-tasks').screenshot({path:'/private/tmp/crm-daily-mobile.png'});
   await page.setViewportSize({width:1440,height:1100});
   await page.locator('#dashTasks [data-dash-action="done"][data-id="10"]').click();assert(!(await ids()).includes(10));
-  await page.reload();assert(!(await ids()).includes(10));
+  await page.reload();await page.evaluate(()=>openFocusPanel('dashboardTasks'));assert(!(await ids()).includes(10));
   await page.evaluate(()=>{addActivity(1,'Smlouva','Upravena Test',true);persist();renderDashboardWorkQueue();});
   assert.equal(await page.evaluate(()=>state.activities.at(-1).recordKind),'history');
   // Manual entry resembling an automatic event remains explicitly actionable.

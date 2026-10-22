@@ -12,6 +12,8 @@ node tools/qa/classic-valuation.cjs
 node tools/qa/contract-investment.cjs
 node tools/qa/atris-manual.cjs
 node tools/qa/weekly-goals.cjs
+node tools/qa/focus-dashboard.cjs
+node tools/qa/daily-tasks.cjs
 node tools/qa/delegation.cjs
 ```
 
@@ -20,3 +22,5 @@ Prohlížečový test vyžaduje Playwright a Chrome/Chromium. runtime.cjs hledá
 Regrese porovnává aktuální aplikaci s commitem d332145; ten musí být v lokální historii Git. Používá pouze fixture.cjs a izolovaný profil. Síťové požadavky jsou nahrazené testovacími odpověďmi, skutečný diskový server ani Google se nepoužívají. Diskový test zapisuje výhradně do dočasné složky; test Google používá paměťovou tabulku.
 
 Regrese ukládá souhrn a náhledy do /private/tmp/crm-regression-results.json, /private/tmp/crm-unified-fki.png a /private/tmp/crm-unified-ipad.png. Tento výstupní adresář odpovídá současnému testovacímu Macu. smoke.cjs je doplňkový průchod prázdným stavem.
+
+focus-dashboard.cjs ověřuje rozepsané cíle, dokončení sdílené aktivity, změny pořadí, přelom dne/týdne, výslovné rozhodování o nedokončených položkách, archiv vyhodnocení, roční cíle, export DPS/DIP a vypnutých sekcí, izolaci klientů, obnovu a slučování zálohy a mobilní šířku. Používá jen syntetická data.

@@ -59,7 +59,7 @@ const root = path.resolve(__dirname, '../..');
     // Late closure and immutable review snapshot.
     await page.locator('#closeWeeklyGoalsBtn').click();
     await page.locator('#wrSuccess').fill('Dokončený postup, 14 kontaktů a dvě schůzky.');
-    await page.locator('#wrCarry').fill('Dokončit zbývajících šest kontaktů.');
+    await page.locator('#wrDifferent').fill('Dokončit zbývajících šest kontaktů.');
     await page.locator('#weeklyReviewModal').getByText('Uzavřít a archivovat týden', {exact:true}).click();
     assert.equal(await page.evaluate(() => weeklyReviewFor('2026-W42').totalPct), 70);
     await page.evaluate(() => {state.analysisEntries.push({id:99112,date:'2026-10-13',type:'Schůzka stávající klient',count:9,outcome:'realized'});persist();renderWeeklyGoals();});

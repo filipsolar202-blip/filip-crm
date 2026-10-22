@@ -78,6 +78,9 @@ function def() {
     analysisPlans: {},
     weeklyGoals: [],
     weeklyReviews: [],
+    dailyPriorities: [],
+    focusDrafts: [],
+    focusSnapshots: [],
     delegationProcesses: [],
     contractOpportunityStatuses: {},
     verifiedDuplicates: {},
@@ -145,7 +148,7 @@ function normalizeState(s) {
   delete s.mailHeaders;
   delete s.aiInbox;
   try { localStorage.removeItem('filip_crm_ai_active_job'); } catch (e) {}
-  ['clients', 'contracts', 'deals', 'activities', 'referrals', 'referrerPayouts', 'managementPartners', 'managementPayouts', 'notes', 'opportunities', 'investmentRecords', 'investmentSnapshots', 'commissionImports', 'analysisEntries', 'campaigns', 'externalInvestments', 'investmentForecasts', 'weeklyGoals', 'weeklyReviews', 'delegationProcesses'].forEach(k => s[k] = Array.isArray(s[k]) ? s[k] : []);
+  ['clients', 'contracts', 'deals', 'activities', 'referrals', 'referrerPayouts', 'managementPartners', 'managementPayouts', 'notes', 'opportunities', 'investmentRecords', 'investmentSnapshots', 'commissionImports', 'analysisEntries', 'campaigns', 'externalInvestments', 'investmentForecasts', 'weeklyGoals', 'weeklyReviews', 'dailyPriorities', 'focusDrafts', 'focusSnapshots', 'delegationProcesses'].forEach(k => s[k] = Array.isArray(s[k]) ? s[k] : []);
   normalizeActivityHistory(s.activities);
   if (!s.managementPartners.length) s.managementPartners = base.managementPartners;
   if (!s.managementPartners.some(x => x.id === 'filip')) s.managementPartners.unshift(base.managementPartners[0]);
@@ -159,7 +162,7 @@ function normalizeState(s) {
   Object.values(s.plans).forEach(p => normalizePlan(p, s.settings.bjCoef));
   dedupeInvestmentRecordsInState(s);
   dedupeInvestmentSnapshotsInState(s);
-  let maxId = Math.max(0, ...['clients', 'contracts', 'deals', 'activities', 'referrals', 'referrerPayouts', 'managementPayouts', 'notes', 'opportunities', 'commissionImports', 'investmentSnapshots', 'analysisEntries', 'campaigns', 'externalInvestments', 'investmentForecasts', 'weeklyGoals', 'weeklyReviews', 'delegationProcesses'].flatMap(k => s[k].map(x => +x.id || 0)));
+  let maxId = Math.max(0, ...['clients', 'contracts', 'deals', 'activities', 'referrals', 'referrerPayouts', 'managementPayouts', 'notes', 'opportunities', 'commissionImports', 'investmentSnapshots', 'analysisEntries', 'campaigns', 'externalInvestments', 'investmentForecasts', 'weeklyGoals', 'weeklyReviews', 'dailyPriorities', 'focusDrafts', 'focusSnapshots', 'delegationProcesses'].flatMap(k => s[k].map(x => +x.id || 0)));
   if (!s.nextId || s.nextId <= maxId) s.nextId = maxId + 1;
   return s;
 }
@@ -2006,7 +2009,10 @@ function renderPlanProgress() {
       pct = target ? Math.min(100, Math.round(actual / target * 100)) : 0;
     return `<div class="progress-card"><div class="progress-row"><b>${esc(c)}</b><span>${pct}% splněno</span></div><div class="note">Splněno ${metricLabel(c, actual)} / cíl ${metricLabel(c, target)} · zbývá ${metricLabel(c, left)}</div><div class="note">${planPaceNote(y, target, actual, c)}</div><div class="progress"><span style="width:${pct}%"></span></div></div>`;
   }).join('');
-  document.querySelectorAll('.planProgress').forEach(el => el.innerHTML = html);
+  const actualBj=visibleDeals().filter(d=>yearOf(d.date)===y).reduce((sum,d)=>sum+dealBJ(d),0),newClients=state.clients.filter(c=>yearOf(c.createdAt)===y).length,annualAum=focusCurrentAum();
+  const bjTarget=p.totalBj??(['Životní pojištění','Neživotní pojištění','Úvěry','Penze'].reduce((sum,c)=>sum+(+p.categories?.[c]||0),0)||null);
+  const extra=`<div class="progress-card"><b>Celkové BJ</b><p>${num(actualBj)} / ${bjTarget==null?'cíl nezadán':num(bjTarget)} BJ</p></div><div class="progress-card"><b>AUM – vlastní správa</b><p>${money(annualAum)} / ${p.aum==null?'cíl nezadán':money(p.aum)}</p><small>Aktuální stav investic a FKI k ${esc(dashboardToday())}.</small></div><div class="progress-card"><b>Noví klienti v roce ${y}</b><p>${num(newClients)} / ${num(p.clients||0)}</p></div>`;
+  document.querySelectorAll('.planProgress').forEach(el => el.innerHTML = extra+html);
 }
 function contractPlanCategory(s) {
   const c = categoryFrom([s.type, s.product, s.company].join(' '));
@@ -2079,6 +2085,7 @@ function renderPlanForm() {
     p = getPlan(y);
   setVal('planYear', y);
   setVal('planBjCoef', p.bjCoef ?? state.settings.bjCoef ?? 150);
+  setVal('planTotalBj',p.totalBj??'');setVal('planAum',p.aum??'');renderAnnualFocusGoals();
   setVal('planClients', p.clients || '');
   setVal('planInvestment', p.categories?.['Investice'] || p.investment || '');
   setVal('planMortgage', p.categories?.['Hypotéky'] || p.mortgage || '');
@@ -2086,11 +2093,14 @@ function renderPlanForm() {
   setVal('planNonLife', p.categories?.['Neživotní pojištění'] || '');
   setVal('planLoans', p.categories?.['Úvěry'] || '');
   setVal('planPension', p.categories?.['Penze'] || '');
+  byId('planYear').dataset.editingYear=String(y);
+  const draft=state.focusDrafts.find(x=>x.id===`annual:${y}`);if(draft)Object.entries(draft.values).forEach(([id,value])=>setVal(id,value));
 }
 function savePlan() {
   const y = +val('planYear') || new Date().getFullYear(),
     p = getPlan(y);
   p.bjCoef = +val('planBjCoef') || +state.settings.bjCoef || 150;
+  p.totalBj=val('planTotalBj')===''?null:+val('planTotalBj');p.aum=val('planAum')===''?null:+val('planAum');
   p.clients = +val('planClients') || 0;
   p.investment = +val('planInvestment') || 0;
   p.mortgage = +val('planMortgage') || 0;
@@ -2106,7 +2116,8 @@ function savePlan() {
   state.settings.bjCoef = p.bjCoef;
   setVal('chartYear', y);
   setVal('dealYear', y);
-  persist();
+  state.focusDrafts=state.focusDrafts.filter(x=>x.id!==`annual:${y}`);
+  focusFlushDraft();persist();
   renderAll();
   saveToast('Roční plán uložen');
 }
@@ -5485,7 +5496,7 @@ function dateObj(s) {
   const [y, m, d] = String(s).slice(0, 10).split('-').map(Number);
   return new Date(y || new Date().getFullYear(), (m || 1) - 1, d || 1);
 }
-function weekKey(d = today()) {
+function weekKey(d = dashboardToday()) {
   const date = dateObj(d);
   date.setHours(0, 0, 0, 0);
   date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
@@ -5613,6 +5624,7 @@ function openModal(id) {
   byId(id).classList.add('show');
 }
 function closeModal(id) {
+  focusFlushDraft();
   byId(id).classList.remove('show');
 }
 function toggleLeadFields() {
@@ -7737,6 +7749,36 @@ function mergeIncomingStateCore(incoming) {
     });
     count.referrals++;
   });
+  const goalIds=new Map();
+  incoming.weeklyGoals.forEach(g=>{
+    let local=state.weeklyGoals.find(x=>x.weekKey===g.weekKey && +x.slot===+g.slot);
+    if(!local){local={...g,id:uid()};state.weeklyGoals.push(local);}else if(local.title!==g.title){count.skipped++;return;}
+    goalIds.set(String(g.id),local.id);
+  });
+  incoming.weeklyReviews.forEach(r=>{if(!state.weeklyReviews.some(x=>x.weekKey===r.weekKey))state.weeklyReviews.push({...r,id:uid(),goals:(r.goals||[]).map(g=>({...g,id:goalIds.get(String(g.id))||g.id}))});});
+  incoming.dailyPriorities.forEach(p=>{
+    if(state.dailyPriorities.some(x=>x.date===p.date && +x.slot===+p.slot)){count.skipped++;return;}
+    const a=incoming.activities.find(x=>String(x.id)===String(p.activityId));
+    const local=a?state.activities.find(x=>String(x.clientId||'')===String(mappedClient(a.clientId)||'') && x.date===a.date && x.type===a.type && norm(x.text)===norm(a.text)):null;
+    state.dailyPriorities.push({...p,id:uid(),clientId:mappedClient(p.clientId),activityId:local?.id||null,goalId:goalIds.get(String(p.goalId))||null});
+  });
+  incoming.focusSnapshots.forEach(x=>{if(!state.focusSnapshots.some(s=>s.date===x.date))state.focusSnapshots.push({...x,id:uid()});});
+  incoming.focusDrafts.forEach(x=>{
+    if(state.focusDrafts.some(s=>s.id===x.id))return;
+    const values={...x.values};
+    if(values.fpClient)values.fpClient=String(mappedClient(values.fpClient)||'');
+    if(values.fpActivity){const a=incoming.activities.find(a=>String(a.id)===String(values.fpActivity));const local=a?state.activities.find(l=>l.date===a.date&&l.type===a.type&&norm(l.text)===norm(a.text)&&String(l.clientId||'')===String(mappedClient(a.clientId)||'')):null;values.fpActivity=local?String(local.id):'';}
+    if(values.fpGoal)values.fpGoal=String(goalIds.get(String(values.fpGoal))||'');
+    state.focusDrafts.push({...x,values});
+  });
+  Object.entries(incoming.plans||{}).forEach(([year,plan])=>{
+    if(!state.plans[year])state.plans[year]=JSON.parse(JSON.stringify(plan));
+    else {
+      ['totalBj','aum'].forEach(k=>{if(state.plans[year][k]==null && plan[k]!=null)state.plans[year][k]=plan[k];});
+      const goals=state.plans[year].developmentGoals=state.plans[year].developmentGoals||[];
+      (plan.developmentGoals||[]).forEach(g=>{if(!goals.some(x=>x.title===g.title))goals.push({...g,id:uid()});});
+    }
+  });
   relinkAllStrongIdentities();
   return count;
 }
@@ -7802,6 +7844,14 @@ function restoreIncomingStateFromGoogle(incoming, source) {
     lastGoogleImportDevice: source || deviceModeLabel(),
     lastGoogleImportMode: 'full-restore'
   };
+  before.focusDrafts.forEach(d=>{
+    next.focusDrafts=next.focusDrafts.filter(x=>x.id!==d.id);
+    const copy=JSON.parse(JSON.stringify(d));
+    if(copy.values?.fpClient){const c=before.clients.find(x=>String(x.id)===String(copy.values.fpClient));const match=c?next.clients.find(x=>clientMatchKey(x)===clientMatchKey(c)):null;copy.values.fpClient=match?String(match.id):'';}
+    if(copy.values?.fpActivity){const a=before.activities.find(x=>String(x.id)===String(copy.values.fpActivity));const match=a?next.activities.find(x=>x.text===a.text&&x.date===a.date&&String(x.clientId||'')===String(copy.values.fpClient||'')):null;copy.values.fpActivity=match?String(match.id):'';}
+    if(copy.values?.fpGoal){const g=before.weeklyGoals.find(x=>String(x.id)===String(copy.values.fpGoal));const match=g?next.weeklyGoals.find(x=>x.weekKey===g.weekKey&&x.slot===g.slot&&x.title===g.title):null;copy.values.fpGoal=match?String(match.id):'';}
+    next.focusDrafts.push(copy);
+  });
   state = next;
   relinkAllStrongIdentities();
   return backupStateDelta(before, state);
@@ -11164,6 +11214,22 @@ function clientOutput_xInvestmentSection(items, opts = {}, scenario = false) {
     series = scenario ? clientOutput_xSeries(shown, years, true) : clientOutput_xSeries(items, Math.max(4, Math.min(10, new Date().getFullYear() - 2022 + 1)), false);
   return `<section class="card"><div class="section-head"><div><span>Rozložení portfolia</span><h2>${scenario ? 'Skladba nového nákupu' : 'Skladba investic'}</h2></div><div class="section-sum"><b>${clientOutput_xMoney(total.current)}</b><small>${clientOutput_xPct(total.pct)}</small></div></div><div class="alloc">${clientOutput_xDonut(shown, total.current)}<div>${legend || '<p class="muted">Zatím bez investičních položek.</p>'}</div></div><p class="allocation-note">Koláčový graf ukazuje procentuální rozložení podle aktuální hodnoty jednotlivých investic. Nejde o porovnání výnosů fondů.</p></section><section class="card"><h2>${scenario ? 'Model vývoje portfolia' : 'Vývoj portfolia'}</h2><div class="sim-box"><div class="sim-head"><div><h4>${scenario ? 'Minimální, očekávaný a maximální scénář' : 'Od prvního vkladu k dnešní hodnotě'}</h4><div class="muted">${scenario ? 'Pásmo ukazuje orientační rozsah podle min/max zhodnocení u jednotlivých fondů.' : 'Zeleně zjednodušený průběh od prvního vkladu, modře navazující prognóza.'}</div></div></div>${scenario ? clientOutput_xLineChart(series, true) : clientOutput_xHistoryChart(items)}<div class="muted">${scenario ? 'Nejde o garanci budoucího výnosu.' : 'Hodnoty se mohou měnit podle aktuálních výpisů a dat fondů.'}</div></div></section><section class="card"><div class="section-head"><div><span>Detail jednotlivých fondů</span><h2>${scenario ? 'Navržené fondy' : 'Fondy a transakce'}</h2></div><div class="section-sum"><b>${clientOutput_xNum(items.length)}</b><small>fondů</small></div></div>${items.length ? items.map((x, i) => clientOutput_xFundDetail(x, i, scenario)).join('') : '<p class="muted">Bez investičních položek.</p>'}</section>`;
 }
+function clientOutput_xPensions(c) {
+  const rows=pensions_pItems().filter(x=>String(x.clientId)===String(c.id)), seen=new Set();
+  return rows.filter(x=>{
+    const contract=x.kind==='deal' ? state.contracts.find(s=>String(s.id)===String(x.source.contractId||x.source.fromContractId)||String(s.fromDealId)===String(x.id)) : null;
+    if(contract && rows.some(r=>r.kind==='contract' && String(r.id)===String(contract.id)))return false;
+    const key=x.number?[x.company,x.number].map(norm).join('|'):[x.kind,x.id].join('|');
+    if(seen.has(key))return false;seen.add(key);return true;
+  });
+}
+function clientOutput_xPensionSection(c) {
+  return clientOutput_xTable('DPS / DIP – penzijní produkty',['Produkt','Společnost','Číslo smlouvy','Platba / evidovaný objem','Aktuální hodnota','Stav'],clientOutput_xPensions(c).map(x=>{
+    const snapshot=x.kind==='contract'?contractInvestmentSnapshot(x.source):null;
+    const value=snapshot?investmentSnapshotLiveCurrent(snapshot):null;
+    return `<tr><td><b>${clientOutput_xEsc(x.product)}</b><br>${clientOutput_xEsc(x.type)}</td><td>${clientOutput_xEsc(x.company)}</td><td>${clientOutput_xEsc(x.number)}</td><td>${clientOutput_xMoney(x.amount)}<br><small>${x.kind==='contract'?'Platba evidovaná u smlouvy':'Objem evidovaný u obchodu'}</small></td><td>${value==null?'Neuvedena':clientOutput_xMoney(value)}${snapshot?.date?`<br><small>K ${clientOutput_xEsc(clientOutput_xDate(snapshot.date))}</small>`:''}</td><td>${clientOutput_xEsc(x.status.map(s=>STATUS_LABELS?.[s]||s).join(', '))}</td></tr>`;
+  }));
+}
 function clientOutput_xReportHtml(c, opts = {}, note = '') {
   const items = clientOutput_xClientInvestments(c),
     insurance = clientOutput_xContracts(c, 'insurance'),
@@ -11171,15 +11237,16 @@ function clientOutput_xReportHtml(c, opts = {}, note = '') {
     open = clientOutput_xOpen(c),
     today = new Date().toLocaleDateString('cs-CZ'),
     sections = [];
-  if (opts.summary !== false) sections.push(clientOutput_xPortfolioSummary(items));
+  if (opts.summary !== false && opts.investments !== false && items.length) sections.push(clientOutput_xPortfolioSummary(items));
   if (note) sections.push(`<section class="card"><div class="section-head"><div><span>Poznámka</span><h2>Doplnění k reportu</h2></div></div><p class="lead">${clientOutput_xEsc(note).replace(/\n/g, '<br>')}</p></section>`);
   if (opts.investments !== false && items.length) sections.push(clientOutput_xInvestmentSection(items, opts, false));
   if (opts.open) sections.push(clientOutput_xTable('Aktuálně rozpracováno', ['Oblast', 'Produkt', 'Společnost', 'Stav', 'Termín'], open.map(x => `<tr><td>${clientOutput_xEsc(x.area)}</td><td><b>${clientOutput_xEsc(x.title)}</b></td><td>${clientOutput_xEsc(x.company)}</td><td>${clientOutput_xEsc(x.status)}</td><td>${clientOutput_xEsc(x.date ? clientOutput_xDate(x.date) : '')}</td></tr>`)));
   if (opts.insurance) sections.push(clientOutput_xTable('Pojištění', ['Produkt', 'Společnost', 'Číslo smlouvy', 'Stav', 'Výročí'], insurance.map(s => `<tr><td><b>${clientOutput_xEsc(s.product || s.type || 'Pojištění')}</b></td><td>${clientOutput_xEsc(s.company || '')}</td><td>${clientOutput_xEsc(s.number || '')}</td><td>${clientOutput_xEsc((typeof getStatuses === 'function' ? getStatuses(s) : [s.status]).filter(Boolean).map(x => STATUS_LABELS?.[x] || x).join(', '))}</td><td>${clientOutput_xEsc(s.anniv ? clientOutput_xDate(s.anniv) : '')}</td></tr>`)));
   if (opts.loans) sections.push(clientOutput_xTable('Úvěry a hypotéky', ['Produkt', 'Společnost', 'Objem', 'Stav', 'Termín'], loans.map(s => `<tr><td><b>${clientOutput_xEsc(s.product || s.type || 'Úvěr')}</b></td><td>${clientOutput_xEsc(s.company || '')}</td><td class="money">${clientOutput_xMoney(s.amount || s.volume || 0)}</td><td>${clientOutput_xEsc((typeof getStatuses === 'function' ? getStatuses(s) : [s.status]).filter(Boolean).map(x => STATUS_LABELS?.[x] || x).join(', '))}</td><td>${clientOutput_xEsc(s.anniv ? clientOutput_xDate(s.anniv) : '')}</td></tr>`)));
 
+  if (opts.pensions) sections.push(clientOutput_xPensionSection(c));
   if (opts.notice !== false) sections.push(`<section class="card muted">Report je informativní přehled k datu ${clientOutput_xEsc(today)}. Hodnota investic se může měnit a rozhodující jsou vždy oficiální dokumenty, výpisy a aktuální podklady jednotlivých společností.</section>`);
-  return `<!doctype html><html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Klientský report - ${clientOutput_xEsc(clientOutput_xName(c))}</title><style>${clientOutput_xCss()}${portfolioTimelineCss()}${clientOutput_xCompactReportCss()}</style></head><body><button class="print" onclick="window.print()">Tisk / PDF</button><div class="wrap"><section class="hero"><div class="report-brand">FILIP CRM <span>${clientOutput_xEsc(today)}</span></div><div class="eyebrow">Přehled investičního portfolia</div><h1>${clientOutput_xEsc(clientOutput_xName(c))}</h1><p class="lead">Celkový přehled, vývoj a informace o jednotlivých fondech.</p></section>${sections.join('')}</div><script>${portfolioTimelineValue.toString()}\n${portfolioTimelineSelect.toString()}\nwindow.addEventListener('beforeprint',()=>{document.querySelectorAll('.portfolio-timeline').forEach(r=>{r.dataset.printTime=r.querySelector('input').value;portfolioTimelineSelect(r,null,JSON.parse(decodeURIComponent(r.dataset.model)).now);});document.querySelectorAll('.report-transactions').forEach(d=>{d.dataset.printOpen=d.open?'1':'0';d.open=true;});});window.addEventListener('afterprint',()=>{document.querySelectorAll('.portfolio-timeline').forEach(r=>portfolioTimelineSelect(r,null,r.dataset.printTime));document.querySelectorAll('.report-transactions').forEach(d=>{d.open=d.dataset.printOpen==='1';});});</script></body></html>`;
+  return `<!doctype html><html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Klientský report - ${clientOutput_xEsc(clientOutput_xName(c))}</title><style>${clientOutput_xCss()}${portfolioTimelineCss()}${clientOutput_xCompactReportCss()}</style></head><body><button class="print" onclick="window.print()">Tisk / PDF</button><div class="wrap"><section class="hero"><div class="report-brand">FILIP CRM <span>${clientOutput_xEsc(today)}</span></div><div class="eyebrow">Klientský report</div><h1>${clientOutput_xEsc(clientOutput_xName(c))}</h1><p class="lead">Přehled vybraných produktů a údajů z evidence.</p></section>${sections.join('')}</div><script>${portfolioTimelineValue.toString()}\n${portfolioTimelineSelect.toString()}\nwindow.addEventListener('beforeprint',()=>{document.querySelectorAll('.portfolio-timeline').forEach(r=>{r.dataset.printTime=r.querySelector('input').value;portfolioTimelineSelect(r,null,JSON.parse(decodeURIComponent(r.dataset.model)).now);});document.querySelectorAll('.report-transactions').forEach(d=>{d.dataset.printOpen=d.open?'1':'0';d.open=true;});});window.addEventListener('afterprint',()=>{document.querySelectorAll('.portfolio-timeline').forEach(r=>portfolioTimelineSelect(r,null,r.dataset.printTime));document.querySelectorAll('.report-transactions').forEach(d=>{d.open=d.dataset.printOpen==='1';});});</script></body></html>`;
 }
 function clientOutput_xScenarioRate(r) {
   const defs = typeof window.defaultFundExpectedRate === 'function' ? window.defaultFundExpectedRate(r?.area, r?.key, r?.isin, r) : {};
@@ -11617,6 +11684,9 @@ function criticalBackupCounts(s = state) {
     analysisEntries: s.analysisEntries.length,
     weeklyGoals: (s.weeklyGoals || []).length,
     weeklyReviews: (s.weeklyReviews || []).length,
+    dailyPriorities: s.dailyPriorities.length,
+    focusDrafts: s.focusDrafts.length,
+    focusSnapshots: s.focusSnapshots.length,
     delegationProcesses: (s.delegationProcesses || []).length,
     wealthRecords: s.clients.reduce((n,c) => n + (c.wealthProfile?.assets?.length || 0) + (c.wealthProfile?.contracts?.length || 0) + (c.wealthProfile?.context ? 1 : 0), 0),
     commissionImports: (s.commissionImports || []).length,
@@ -13034,11 +13104,11 @@ function openClientReportModal(id) {
     insurance = clientOutput_xContracts(c, 'insurance'),
     loans = clientOutput_xContracts(c, 'loans'),
     open = clientOutput_xOpen(c),
-    opts = [['summary', 'Souhrn', 'Hlavní čísla portfolia a produktů', true], ['open', 'Rozpracováno', 'Aktuálně řešené návrhy a servis', open.length], ['insurance', 'Pojištění', 'Sjednané pojistné produkty', insurance.length], ['loans', 'Úvěry a hypotéky', 'Úvěrové a hypoteční produkty', loans.length], ['investments', 'Investice', 'Portfolio, grafy a fondové karty', items.length], ['notice', 'Upozornění', 'Krátké upozornění k reportu', true]];
+    opts = [['summary', 'Souhrn', 'Hlavní čísla portfolia a produktů', true], ['open', 'Rozpracováno', 'Aktuálně řešené návrhy a servis', open.length], ['insurance', 'Pojištění', 'Sjednané pojistné produkty', insurance.length], ['loans', 'Úvěry a hypotéky', 'Úvěrové a hypoteční produkty', loans.length], ['investments', 'Investice', 'Portfolio, grafy a fondové karty', items.length], ['pensions', 'DPS / DIP', 'Penzijní produkty a evidované smlouvy', clientOutput_xPensions(c).length], ['notice', 'Upozornění', 'Krátké upozornění k reportu', true]];
   if (typeof setText === 'function') setText('clientReportTitle', 'Report pro klienta: ' + clientOutput_xName(c));
   if (typeof setVal === 'function') setVal('clientReportNote', '');
   const box = document.getElementById('clientReportOptions');
-  if (box) box.innerHTML = opts.filter(x => x[3]).map(x => `<label class="mini-card" style="display:flex;gap:10px;align-items:flex-start;margin:0"><input type="checkbox" class="report-section-check" value="${clientOutput_xEsc(x[0])}" checked><span><b>${clientOutput_xEsc(x[1])}</b><br><span class="note">${clientOutput_xEsc(x[2])}</span></span></label>`).join('');
+  if (box) box.innerHTML = opts.map(x => `<label class="mini-card" style="display:flex;gap:10px;align-items:flex-start;margin:0"><input type="checkbox" class="report-section-check" value="${clientOutput_xEsc(x[0])}" ${x[3]?'checked':''}><span><b>${clientOutput_xEsc(x[1])}</b><br><span class="note">${clientOutput_xEsc(x[2])}</span></span></label>`).join('');
   openModal('clientReportModal');
 }
 function downloadClientReport() {
@@ -13058,6 +13128,7 @@ function clientOverviewReportHtml(c, opts, note) {
     open: true,
     insurance: true,
     loans: true,
+    pensions: true,
     investments: true,
     notice: true
   }, note || '');
@@ -13069,7 +13140,9 @@ function fkClientReportHtml(c, row, opts = {}) {
     insurance: false,
     loans: false,
     investments: true,
-    notice: true
+    notice: true,
+    pensions: false,
+    ...opts
   }, '');
 }
 function downloadFkClientReport(clientId) {
@@ -13427,6 +13500,9 @@ let selectedWeeklyGoalsWeek = null;
 let weeklyGoalEditingWeek = null;
 const WEEKLY_GOAL_METRICS = {
   manual: ['Ručně', ''],
+  bj: ['BJ uzavřených obchodů', 'BJ'],
+  investment_volume: ['Nové investice – objem obchodů', 'Kč'],
+  aum: ['Aktuální AUM – investice + FKI', 'Kč'],
   contacted_clients: ['Kontaktovaní klienti', 'klientů'],
   opportunities: ['Nové obchodní případy', 'příležitostí'],
   meetings: ['Uskutečněné schůzky', 'schůzek'],
@@ -13436,6 +13512,184 @@ const WEEKLY_GOAL_METRICS = {
   signatures: ['Podpisy', 'podpisů'],
   signed_deals: ['Uzavřené obchody', 'obchodů']
 };
+// Focus planning stores references to CRM activities, never duplicate trades or commissions.
+let focusEditingDay = '', focusEditingSlot = 1, focusDraftTimer = null, focusLastToday = null;
+const FOCUS_WEEK_FIELDS = ['wgTitle','wgWhy','wgCategory','wgMetricType','wgKpiLabel','wgTarget','wgManualActual','wgDueDate','wgStatus'];
+const FOCUS_DAY_FIELDS = ['fpTitle','fpActivity','fpClient','fpGoal','fpTarget','fpUnit','fpStatus'];
+const FOCUS_REVIEW_FIELDS = ['wrSuccess','wrFailure','wrDifferent','wrOpportunities','wrWaste','wrCarry','wrEfficiency','wrCommission'];
+const FOCUS_THEMES = ['Obchod a podpisy','Investice a AUM','Provize a kontrola'];
+function focusDraftKey(modal) {
+  if (modal === 'weeklyGoalModal') return `week:${weeklyGoalEditingWeek}:${weeklyGoalEditingSlot}`;
+  if (modal === 'dailyPriorityModal') return `day:${focusEditingDay}:${focusEditingSlot}`;
+  return `review:${byId('weeklyReviewSummary')?.dataset.weekKey}`;
+}
+function focusCaptureDraft(modal) {
+  const fields = modal === 'weeklyGoalModal' ? FOCUS_WEEK_FIELDS : modal === 'dailyPriorityModal' ? FOCUS_DAY_FIELDS : modal === 'weeklyReviewModal' ? FOCUS_REVIEW_FIELDS : null;
+  if (!fields || !byId(modal)?.classList.contains('show')) return;
+  if (modal === 'weeklyReviewModal' && weeklyReviewFor(byId('weeklyReviewSummary').dataset.weekKey)) return;
+  const id = focusDraftKey(modal), values = Object.fromEntries(fields.map(f => [f,val(f)]));
+  const draft = state.focusDrafts.find(x => x.id === id);
+  if (draft && JSON.stringify(draft.values) === JSON.stringify(values)) return;
+  const next = {id, values, updatedAt:new Date().toISOString()};
+  if (draft) Object.assign(draft,next); else state.focusDrafts.push(next);
+  clearTimeout(focusDraftTimer);
+  focusDraftTimer = setTimeout(() => {focusDraftTimer=null;persist();},400);
+}
+function focusFlushDraft() {
+  if (focusDraftTimer) {clearTimeout(focusDraftTimer);focusDraftTimer=null;persist();}
+}
+function focusRestoreDraft(modal) {
+  const draft = state.focusDrafts.find(x => x.id === focusDraftKey(modal));
+  if (draft) Object.entries(draft.values).forEach(([id,value]) => setVal(id,value));
+}
+function focusClearDraft(modal) {
+  clearTimeout(focusDraftTimer);focusDraftTimer=null;
+  state.focusDrafts = state.focusDrafts.filter(x => x.id !== focusDraftKey(modal));
+}
+function switchWeeklyGoalSlot(slot) {
+  focusCaptureDraft('weeklyGoalModal');focusFlushDraft();weeklyGoalEditingSlot=slot;fillWeeklyGoalEditor();
+}
+function openFocusPanel(id) {
+  const panel=byId(id);if (!panel) return;
+  panel.open=true;panel.scrollIntoView({block:'start',behavior:'smooth'});
+}
+function openFocusHistory() {
+  byId('dailyFocusHistory').open=true;
+  const details=byId('weeklyGoalsHistory')?.querySelector('details');if(details)details.open=true;
+  byId('weeklyGoalsHistory')?.scrollIntoView({block:'center',behavior:'smooth'});
+}
+function focusDay() {return val('dailyFocusDate') || dashboardToday();}
+function focusPriorityFor(slot, day=focusDay()) {return state.dailyPriorities.find(x => x.date===day && +x.slot===+slot);}
+function focusActivity(p) {return p?.activityId ? state.activities.find(a=>String(a.id)===String(p.activityId)) : null;}
+function focusPriorityTitle(p) {return focusActivity(p)?.text || p.title || 'Priorita';}
+function focusPriorityStatus(p) {
+  if (p.status==='Hotovo') return 'Hotovo';
+  const a=focusActivity(p);
+  if(a?.completed && String(a.completedAt || '').slice(0,10) && String(a.completedAt).slice(0,10)<=p.date) return 'Hotovo';
+  return p.status || 'Čeká';
+}
+function renderDailyPriorities() {
+  if(!val('dailyFocusDate') || (focusLastToday && focusLastToday!==dashboardToday() && val('dailyFocusDate')===focusLastToday))setVal('dailyFocusDate',dashboardToday());
+  focusLastToday=dashboardToday();
+  const day=focusDay();
+  setText('dailyFocusTitle',day===dashboardToday()?'DNES – 3 PRIORITY':'PRIORITY DNE');
+  byId('dailyPrioritiesList').innerHTML=[1,2,3].map(slot=>{
+    const p=focusPriorityFor(slot,day);
+    if(!p)return `<div class="focus-row empty"><span class="weekly-goal-number">${slot}</span><span>Volná priorita</span><button class="btn" onclick="openDailyPriority(${slot})">+ Přidat</button></div>`;
+    const status=focusPriorityStatus(p), client=findClient(focusActivity(p)?.clientId || p.clientId), goal=state.weeklyGoals.find(g=>String(g.id)===String(p.goalId));
+    return `<div class="focus-row ${status==='Hotovo'?'focus-done':''}"><button class="focus-check" aria-label="${status==='Hotovo'?'Znovu otevřít':'Dokončit'} prioritu ${slot}" onclick="toggleDailyPriority(${slot})">${status==='Hotovo'?'✓':slot}</button><div class="focus-title"><b>${esc(focusPriorityTitle(p))}</b><small>${esc([client?clientName(client):'',goal?goal.title:'',p.target!==null&&p.target!==undefined&&p.target!==''?`${num(p.target)} ${p.unit||''}`:'',p.resolution==='task'?'Přesunuto mezi úkoly':p.resolution==='cancelled'?'Zrušeno jako neaktuální':''].filter(Boolean).join(' · '))}</small></div><span class="badge ${status==='Hotovo'?'green':'blue'}">${esc(status)}</span><div class="actions"><button class="btn" aria-label="Posunout prioritu ${slot} výše" ${slot===1?'disabled':''} onclick="moveDailyPriority(${slot},-1)">↑</button><button class="btn" aria-label="Posunout prioritu ${slot} níže" ${slot===3?'disabled':''} onclick="moveDailyPriority(${slot},1)">↓</button><button class="btn" onclick="openDailyPriority(${slot})">Upravit</button></div></div>`;
+  }).join('');
+  const days=[...new Set(state.dailyPriorities.map(x=>x.date))].sort().reverse();
+  byId('dailyFocusHistoryList').innerHTML=days.map(d=>{const rows=state.dailyPriorities.filter(x=>x.date===d);return `<button class="btn" onclick="setVal('dailyFocusDate','${esc(d)}');renderDailyPriorities()">${esc(d)} · ${rows.filter(p=>focusPriorityStatus(p)==='Hotovo').length}/3 hotovo</button>`;}).join(' ') || '<p class="note">Uložené priority tu zůstanou i bez uzavření dne.</p>';
+  renderFocusUnfinished();
+}
+function openDailyPriority(slot) {
+  focusEditingDay=focusDay();focusEditingSlot=slot;
+  const p=focusPriorityFor(slot,focusEditingDay), key=weekKey(focusEditingDay);
+  setText('dailyPriorityPeriod',`${focusEditingDay} · priorita ${slot}`);
+  const activities=state.activities.filter(a=>(!a.completed && !activityIsInformational(a)) || String(a.id)===String(p?.activityId));
+  byId('fpActivity').innerHTML='<option value="">Vlastní priorita</option>'+activities.map(a=>`<option value="${a.id}">${esc([a.date,clientName(findClient(a.clientId)),a.text].filter(Boolean).join(' · '))}</option>`).join('');
+  byId('fpClient').innerHTML='<option value="">Bez klienta</option>'+state.clients.map(c=>`<option value="${c.id}">${esc(clientName(c))}</option>`).join('');
+  byId('fpGoal').innerHTML='<option value="">Bez vazby</option>'+weeklyGoalsFor(key).map(g=>`<option value="${g.id}">${esc(g.title)}</option>`).join('');
+  setVal('fpTitle',p?focusPriorityTitle(p):'');setVal('fpActivity',p?.activityId||'');setVal('fpClient',p?.clientId||'');setVal('fpGoal',p?.goalId||'');setVal('fpTarget',p?.target??'');setVal('fpUnit',p?.unit||'');setVal('fpStatus',p?focusPriorityStatus(p):'Čeká');
+  focusRestoreDraft('dailyPriorityModal');byId('fpTitle').readOnly=!!val('fpActivity');byId('fpClient').disabled=!!val('fpActivity');openModal('dailyPriorityModal');
+}
+function selectFocusActivity() {
+  const a=state.activities.find(x=>String(x.id)===val('fpActivity'));
+  if(a){setVal('fpTitle',a.text);setVal('fpClient',a.clientId||'');}
+  byId('fpTitle').readOnly=!!a;byId('fpClient').disabled=!!a;focusCaptureDraft('dailyPriorityModal');
+}
+function saveDailyPriority() {
+  const title=val('fpTitle').trim();if(!title)return alert('Doplň název priority.');
+  if(val('fpTarget')!=='' && (!Number.isFinite(+val('fpTarget')) || +val('fpTarget')<0))return alert('Cílová hodnota musí být nezáporné číslo.');
+  const activityId=+val('fpActivity')||null;
+  if(activityId && state.dailyPriorities.some(x=>x.date===focusEditingDay && +x.slot!==focusEditingSlot && String(x.activityId)===String(activityId)))return alert('Tento úkol už je mezi prioritami dne.');
+  let p=focusPriorityFor(focusEditingSlot,focusEditingDay);
+  const wasDone=p && focusPriorityStatus(p)==='Hotovo';
+  if(!p){p={id:uid(),date:focusEditingDay,slot:focusEditingSlot,createdAt:new Date().toISOString()};state.dailyPriorities.push(p);}
+  Object.assign(p,{title,activityId,clientId:+val('fpClient')||null,goalId:+val('fpGoal')||null,target:val('fpTarget')===''?null:+val('fpTarget'),unit:val('fpUnit').trim(),status:val('fpStatus'),updatedAt:new Date().toISOString()});
+  if(p.status==='Hotovo'){p.completedAt=dashboardToday();focusCompleteLinkedActivity(p);}
+  else if(wasDone){delete p.completedAt;const a=focusActivity(p);if(a){a.completed=false;a.completedAt='';a.outcome='agreed';a.updatedAt=dashboardToday();}}
+  focusClearDraft('dailyPriorityModal');if(!persist())return;
+  closeModal('dailyPriorityModal');renderDailyPriorities();renderWeeklyGoals();saveToast('Priorita uložena');
+}
+function focusCompleteLinkedActivity(p) {
+  const a=focusActivity(p);if(!a || a.completed)return;
+  a.completed=true;a.completedAt=dashboardToday();a.outcome='realized';a.analysisType=activities_aDefaultAnalysisType(a)||'Poznámka';a.updatedAt=dashboardToday();
+}
+function toggleDailyPriority(slot) {
+  const p=focusPriorityFor(slot);if(!p)return;
+  if(focusPriorityStatus(p)==='Hotovo'){
+    // Reopening a linked priority also reopens its task, so the two never disagree.
+    p.status='Čeká';delete p.completedAt;const a=focusActivity(p);if(a){a.completed=false;a.outcome='agreed';a.completedAt='';a.updatedAt=dashboardToday();}
+  }else{p.status='Hotovo';p.completedAt=dashboardToday();focusCompleteLinkedActivity(p);}
+  p.updatedAt=new Date().toISOString();persist();renderDashboard();
+}
+function moveDailyPriority(slot,delta) {
+  const p=focusPriorityFor(slot),next=slot+delta;if(!p || next<1 || next>3)return;
+  const other=focusPriorityFor(next);if(other)other.slot=slot;p.slot=next;
+  const left=`day:${focusDay()}:${slot}`,right=`day:${focusDay()}:${next}`;state.focusDrafts.forEach(d=>{if(d.id===left)d.id=right;else if(d.id===right)d.id=left;});
+  persist();renderDailyPriorities();
+}
+function focusUnfinishedItems() {
+  const days=state.dailyPriorities.filter(p=>p.date<dashboardToday() && !p.resolution && focusPriorityStatus(p)!=='Hotovo').map(p=>({kind:'day',p,title:focusPriorityTitle(p),period:p.date}));
+  const weeks=state.weeklyGoals.filter(g=>g.weekKey<weekKey(dashboardToday()) && !g.resolution && !weeklyGoalWasCarried(g) && weeklyGoalDisplayStatus(g,weeklyGoalProgress(g,g.weekKey),!!weeklyReviewFor(g.weekKey))!=='Splněno').map(p=>({kind:'week',p,title:p.title,period:p.weekKey}));
+  return [...days,...weeks].sort((a,b)=>b.period.localeCompare(a.period));
+}
+function renderFocusUnfinished() {
+  const box=byId('focusUnfinishedList');if(!box)return;
+  const items=focusUnfinishedItems();setText('focusUnfinishedCount',`· ${items.length}`);
+  box.innerHTML=items.map(({kind,p,title,period})=>`<div class="focus-review-row"><div><b>${esc(title)}</b><small>${esc(period)}</small></div><div class="actions"><button class="btn" onclick="resolveFocusItem('${kind}',${p.id},'continue')">Pokračovat</button><button class="btn" onclick="resolveFocusItem('${kind}',${p.id},'task')">Mezi běžné úkoly</button><button class="btn" onclick="resolveFocusItem('${kind}',${p.id},'cancelled')">Zrušit jako neaktuální</button></div></div>`).join('')||'<p class="note">Žádné nedokončené priority k posouzení.</p>';
+}
+function resolveFocusItem(kind,id,action) {
+  const source=(kind==='day'?state.dailyPriorities:state.weeklyGoals).find(x=>String(x.id)===String(id));if(!source || source.resolution)return;
+  if(action==='continue'){
+    if(kind==='week'){
+      const original=activeWeeklyGoalsWeek();selectedWeeklyGoalsWeek=source.weekKey;carryWeeklyGoalForward(source.slot);selectedWeeklyGoalsWeek=original;
+      if(!weeklyGoalWasCarried(source))return;
+    }else{
+      const day=dashboardToday(),slot=[1,2,3].find(s=>!focusPriorityFor(s,day));
+      if(!slot)return alert('Dnes už máš 3 priority. Nic se nepřepsalo.');
+      if(source.activityId && state.dailyPriorities.some(x=>x.date===day && String(x.activityId)===String(source.activityId)))return alert('Tento úkol už je v dnešních prioritách.');
+      state.dailyPriorities.push({...source,id:uid(),date:day,slot,status:'Čeká',completedAt:'',carriedFromId:source.id,goalId:null,createdAt:new Date().toISOString()});
+    }
+    source.resolution='continued';
+  }else if(action==='task'){
+    const a=kind==='day'?focusActivity(source):null;
+    if(!a){const id=uid();state.activities.push({id,clientId:source.clientId||null,type:'Úkol',date:dashboardToday(),text:source.title,completed:false,outcome:'agreed',recordKind:'task',source:'focus',sourceFocusId:source.id,sourceFocusKind:kind,createdAt:dashboardToday()});source.taskId=id;}
+    else source.taskId=a.id;
+    source.resolution='task';
+  }else if(action==='cancelled')source.resolution='cancelled';else return;
+  source.resolvedAt=new Date().toISOString();persist();renderDashboard();
+}
+function focusCurrentAum() {return managementInvestmentItems(ownManagementId()).reduce((s,x)=>s+(+x.amount||0),0);}
+function focusCaptureAum() {
+  const day=dashboardToday();if(!state.clients.length || state.focusSnapshots.some(x=>x.date===day))return;
+  state.focusSnapshots.push({id:uid(),date:day,aum:focusCurrentAum(),capturedAt:new Date().toISOString()});persist();
+}
+function focusBusinessSummary(key) {
+  const range=weekRange(key),deals=visibleDeals().filter(d=>dateInRange(d.date,range.start,range.end));
+  const samples=state.focusSnapshots.filter(x=>x.date>=range.start && x.date<=range.end).sort((a,b)=>a.date.localeCompare(b.date));
+  const start=samples[0],end=samples.at(-1);
+  const goals=weeklyGoalsFor(key), bjPlan=goals.filter(g=>g.metricType==='bj').reduce((sum,g)=>sum+(+g.target||0),0);
+  return {bjPlan:goals.some(g=>g.metricType==='bj')?bjPlan:null,bj:deals.reduce((s,d)=>s+dealBJ(d),0),investment:deals.filter(d=>['investice','fki'].includes(areaForDeal(d))).reduce((s,d)=>s+dealVolume(d),0),aumChange:start&&end&&start.date!==end.date?end.aum-start.aum:null,aumFrom:start?.date||'',aumTo:end?.date||''};
+}
+function focusBusinessHtml(data) {
+  return `<div class="focus-review-metrics"><p><b>BJ plán / skutečnost:</b> ${data.bjPlan===null?'Plán nebyl zadán':num(data.bjPlan)} / ${num(data.bj)} BJ</p><p><b>Nové investice:</b> ${money(data.investment)} <small>Objem uzavřených obchodů, nikoliv růst hodnoty portfolia.</small></p><p><b>Změna AUM:</b> ${data.aumChange===null?'Údaj není dostupný – chybí dva uložené stavy.':`${money(data.aumChange)} <small>Mezi uloženými stavy ${esc(data.aumFrom)} a ${esc(data.aumTo)}. Zahrnuje vklady, výběry i přecenění.</small>`}</p></div>`;
+}
+function renderAnnualFocusGoals() {
+  const year=+val('planYear')||new Date().getFullYear(),p=getPlan(year);
+  byId('annualFocusGoals').innerHTML=(p.developmentGoals||[]).map((g,i)=>`<div class="focus-row"><input type="checkbox" aria-label="Splněný rozvojový cíl ${i+1}" ${g.done?'checked':''} onchange="updateAnnualFocusGoal(${i},'done',this.checked)"><input aria-label="Rozvojový cíl ${i+1}" value="${esc(g.title)}" onchange="updateAnnualFocusGoal(${i},'title',this.value)"></div>`).join('')||'<p class="note">Přidej například dokončení vzdělávání nebo zavedení delegování.</p>';
+}
+function addAnnualFocusGoal() {
+  const title=prompt('Název osobního nebo podnikatelského cíle');if(!title?.trim())return;
+  const p=getPlan(+val('planYear')||new Date().getFullYear());p.developmentGoals=p.developmentGoals||[];p.developmentGoals.push({id:uid(),title:title.trim(),done:false});persist();renderAnnualFocusGoals();
+}
+function updateAnnualFocusGoal(i,field,value) {
+  const p=getPlan(+val('planYear')||new Date().getFullYear());if(!p.developmentGoals?.[i])return;
+  p.developmentGoals[i][field]=value;persist();
+}
+
 function weeklyGoalsFor(key = weekKey()) {
   return (state.weeklyGoals || []).filter(x => x.weekKey === key).sort((a, b) => (+a.slot || 0) - (+b.slot || 0));
 }
@@ -13447,8 +13701,17 @@ function weeklyGoalForSlot(slot, key = weekKey()) {
 }
 function weeklyGoalActual(goal, key = goal?.weekKey || weekKey()) {
   if (!goal) return 0;
-  if (goal.closedActual !== undefined && weeklyReviewFor(key)) return +goal.closedActual || 0;
-  if (!goal.metricType || goal.metricType === 'manual') return +goal.manualActual || 0;
+  if (goal.closedActual !== undefined && weeklyReviewFor(key)) return goal.closedActual === null ? null : +goal.closedActual || 0;
+  if (!goal.metricType || goal.metricType === 'manual') return goal.target == null ? (goal.status === 'Splněno' ? 1 : 0) : +goal.manualActual || 0;
+  if (goal.metricType === 'aum') {
+    if(key===weekKey(dashboardToday()))return focusCurrentAum();
+    const range=weekRange(key),sample=state.focusSnapshots.filter(x=>x.date>=range.start&&x.date<=range.end).sort((a,b)=>b.date.localeCompare(a.date))[0];
+    return sample?.aum ?? null;
+  }
+  if (['bj','investment_volume'].includes(goal.metricType)) {
+    const range=weekRange(key),deals=visibleDeals().filter(d=>dateInRange(d.date,range.start,range.end));
+    return goal.metricType==='bj' ? deals.reduce((sum,d)=>sum+dealBJ(d),0) : deals.filter(d=>['investice','fki'].includes(areaForDeal(d))).reduce((sum,d)=>sum+dealVolume(d),0);
+  }
   const range = weekRange(key),
     actuals = typeof analysisActuals === 'function' ? analysisActuals(range.start, range.end, key) : {};
   if (goal.metricType === 'opportunities') return (state.opportunities || []).filter(x => dateInRange(x.createdAt || x.statusDate, range.start, range.end)).length;
@@ -13473,6 +13736,8 @@ function weeklyGoalProgress(goal, key = goal?.weekKey || weekKey()) {
   return {actual, target, pct:Math.max(0, Math.round(actual / target * 100)), bar:Math.min(100, Math.max(0, actual / target * 100))};
 }
 function weeklyGoalDisplayStatus(goal, progress, closed = false) {
+  if (progress.actual === null) return 'Chybí data';
+  if (goal.status === 'Splněno') return 'Splněno';
   if (closed) return progress.pct >= 100 ? 'Splněno' : progress.actual > 0 ? 'Částečně splněno' : 'Nesplněno';
   if (progress.pct >= 100) return 'Splněno';
   if (goal.status === 'Nesplněno') return 'Nesplněno';
@@ -13536,29 +13801,31 @@ function renderWeeklyGoals() {
   if (closeBtn) { closeBtn.disabled = !review && !weeklyGoalsFor(key).length; closeBtn.textContent = review ? 'Zobrazit vyhodnocení' : 'Vyhodnotit týden'; }
   const setBtn = byId('setWeeklyGoalsBtn');
   if (setBtn) { setBtn.hidden = !!review; setBtn.textContent = weeklyGoalsFor(key).length ? 'Upravit cíle' : 'Nastavit cíle'; }
-  grid.innerHTML = [1, 2, 3].map(slot => {
-    const goal = review?.goals?.find(g => +g.slot === slot) || weeklyGoalForSlot(slot, key);
-    if (!goal) return `<article class="weekly-goal empty"><span class="weekly-goal-number">${slot}</span><h3>${review ? 'Cíl nebyl nastaven' : 'Zatím nenastaveno'}</h3>${review ? '' : `<p class="note">Vyber jednu prioritu pro tento týden.</p><button class="btn" onclick="openWeeklyGoalModal(${slot})">+ Nastavit cíl</button>`}</article>`;
-    const p = weeklyGoalProgress(goal, key), status = weeklyGoalDisplayStatus(goal, p, !!review), late = !review && goal.dueDate && goal.dueDate < today() && p.pct < 100;
-    const carry = key < weekKey() && p.actual < p.target ? weeklyGoalWasCarried(goal) ? '<p class="note">Přeneseno do aktuálního týdne.</p>' : `<button class="btn slim" onclick="carryWeeklyGoalForward(${slot})">Přenést zbývajících ${num(p.target - p.actual)} do aktuálního týdne</button>` : '';
-    return `<article class="weekly-goal ${late ? 'late' : ''}"><div class="weekly-goal-head"><span class="weekly-goal-number">${slot}</span><span class="badge ${weeklyGoalStatusClass(status)}">${esc(status)}</span></div><div><span class="eyebrow">${esc(goal.category || 'Jiné')}</span><h3>${esc(goal.title)}</h3></div>${goal.why ? `<p class="note weekly-goal-why">${esc(goal.why)}</p>` : ''}${goal.carriedFromWeek ? `<p class="note">Navazuje na ${esc(weeklyGoalPeriod(goal.carriedFromWeek))}.</p>` : ''}<div class="weekly-goal-score"><b>${num(p.actual)} / ${num(p.target)} ${esc(weeklyGoalMetricLabel(goal))}</b><strong>${num(p.pct)} %</strong></div><div class="weekly-progress"><span style="width:${p.bar}%"></span></div><div class="weekly-goal-foot"><span>${goal.dueDate ? 'Termín ' + esc(goal.dueDate) : 'Bez termínu'}</span>${late ? '<b class="red">Po termínu</b>' : `<span>${esc(WEEKLY_GOAL_METRICS[goal.metricType]?.[0] || 'Ručně')}</span>`}</div>${review ? '' : `<button class="btn slim" onclick="openWeeklyGoalModal(${slot})">Aktualizovat</button>`}${carry}</article>`;
+  grid.innerHTML = [1,2,3].map(slot => {
+    const goal=review?.goals?.find(g=>+g.slot===slot)||weeklyGoalForSlot(slot,key);
+    if(!goal)return `<article class="weekly-goal focus-row empty"><span class="weekly-goal-number">${slot}</span><div class="focus-title"><b>${review?'Cíl nebyl nastaven':esc(FOCUS_THEMES[slot-1])}</b><small>${review?'':'Výchozí oblast – můžeš zvolit jiný cíl.'}</small></div>${review?'':`<button class="btn" onclick="openWeeklyGoalModal(${slot})">+ Nastavit cíl</button>`}</article>`;
+    const p=weeklyGoalProgress(goal,key),status=weeklyGoalDisplayStatus(goal,p,!!review);
+    const resolution=weeklyGoalForSlot(slot,key)?.resolution;
+    const carry=key<weekKey() && p.actual<p.target && !resolution ? weeklyGoalWasCarried(goal)?'<small>Pokračuje v aktuálním týdnu.</small>':`<button class="btn slim" onclick="carryWeeklyGoalForward(${slot})">${goal.target==null?'Pokračovat v aktuálním týdnu':`Přenést zbývajících ${num(p.target-p.actual)} do aktuálního týdne`}</button>`:'';
+    return `<article class="weekly-goal focus-row"><span class="weekly-goal-number">${slot}</span><div class="focus-title"><b>${esc(goal.title)}</b><small>${esc(resolution==='cancelled'?'Zrušeno jako neaktuální':resolution==='task'?'Přesunuto mezi běžné úkoly':goal.category||'')}</small>${carry}</div><div class="focus-score">${goal.target==null?'':`<b>${p.actual===null?'Nedostupné':num(p.actual)} / ${num(p.target)} ${esc(weeklyGoalMetricLabel(goal))}</b><div class="weekly-progress"><span style="width:${p.bar}%"></span></div><small>${esc(WEEKLY_GOAL_METRICS[goal.metricType]?.[0]||'Ručně')}</small>`}</div><span class="badge ${weeklyGoalStatusClass(status)}">${esc(status==='Nezahájeno'?'Čeká':status==='Splněno'?'Hotovo':status)}</span>${review?'':`<div class="actions">${goal.target==null?`<button class="btn" onclick="completeWeeklyFocus(${slot})">${status==='Splněno'?'Znovu otevřít':'Hotovo'}</button>`:''}<button class="btn slim" onclick="openWeeklyGoalModal(${slot})">Aktualizovat</button></div>`}</article>`;
   }).join('');
+  renderFocusUnfinished();
   renderWeeklyGoalsHistory();
 }
+function completeWeeklyFocus(slot) {
+  const goal=weeklyGoalForSlot(slot);if(!goal || weeklyReviewFor(activeWeeklyGoalsWeek()) || goal.target!=null)return;
+  goal.status=goal.status==='Splněno'?'Nezahájeno':'Splněno';goal.updatedAt=new Date().toISOString();persist();renderWeeklyGoals();
+}
 function renderWeeklyGoalsHistory() {
-  const box = byId('weeklyGoalsHistory');
-  if (!box) return;
-  const rows = [...(state.weeklyReviews || [])].sort((a, b) => String(b.weekKey).localeCompare(String(a.weekKey))).slice(0, 12);
-  const keys = weeklyGoalWeekKeys().filter(k => weeklyGoalsFor(k).length || weeklyReviewFor(k));
-  if (!keys.length) { box.innerHTML = '<p class="note">Cíle se ukládají průběžně. Minulé týdny tu zůstanou i bez uzavření.</p>'; return; }
-  const avg = Math.round(rows.reduce((s, x) => s + (+x.totalPct || 0), 0) / rows.length), completed = rows.reduce((s, x) => s + (+x.completed || 0), 0);
-  const totalGoals = rows.reduce((s, x) => s + (x.goals?.length || 0), 0);
-  box.innerHTML = `<details><summary><b>Historie cílů a rozpracované týdny · ${keys.length}</b><span class="note">Rozbalit přehled</span></summary><div class="weekly-history-list">${keys.map(k => { const review = weeklyReviewFor(k), stats = review || weeklyReviewAutoSummary(weeklyGoalsFor(k), k); return `<button class="weekly-history-row" type="button" onclick="selectWeeklyGoalsWeek('${k}')"><span><b>${esc(weeklyGoalPeriod(k))}</b><small>${k}</small></span><strong>${num(stats.completed)} / ${(review?.goals || weeklyGoalsFor(k)).length} cílů · ${num(stats.totalPct)} %</strong><span class="badge ${review ? 'green' : 'orange'}">${review ? 'Uzavřený' : 'Čeká na vyhodnocení'}</span></button>`; }).join('')}</div>${rows.length ? `<p class="note">Trend posledních ${rows.length} uzavřených týdnů: průměr ${num(avg)} % · splněno ${completed} z ${totalGoals} cílů</p><div class="weekly-history-bars">${rows.map(x => `<button type="button" title="${esc(x.summary || '')}" onclick="openWeeklyReviewModal('${esc(x.weekKey)}')"><span style="height:${Math.min(100, +x.totalPct || 0)}%"></span><b>${esc(String(x.weekKey).replace(/^\d{4}-/, ''))}</b><small>${num(x.totalPct || 0)} %</small></button>`).join('')}</div>` : ''}</details>`;
+  const box=byId('weeklyGoalsHistory');if(!box)return;
+  const expanded=box.querySelector('details')?.open;
+  const keys=weeklyGoalWeekKeys().filter(k=>weeklyGoalsFor(k).length||weeklyReviewFor(k));
+  box.innerHTML=`<details ${expanded?'open':''}><summary>Historie a vyhodnocení · ${keys.length} týdnů</summary><div class="weekly-history-list">${keys.map(k=>{const review=weeklyReviewFor(k),stats=review||weeklyReviewAutoSummary(weeklyGoalsFor(k),k);return `<button class="weekly-history-row" onclick="selectWeeklyGoalsWeek('${k}')"><span>${esc(weeklyGoalPeriod(k))}</span><b>${stats.completed}/3 hotovo</b><span>${review?'Uzavřený':'Neuzavřený'}</span></button>`;}).join('')||'<p class="note">Cíle zůstávají uložené i bez uzavření týdne.</p>'}</div></details>`;
 }
 function openWeeklyGoalModal(slot = null) {
   const key = activeWeeklyGoalsWeek();
   if (weeklyReviewFor(key)) return alert('Tento týden už je uzavřený. Jeho výsledky jsou v historii.');
-  weeklyGoalEditingWeek = key;
+  focusCaptureDraft('weeklyGoalModal');focusFlushDraft();weeklyGoalEditingWeek = key;
   weeklyGoalEditingSlot = +(slot || [1, 2, 3].find(x => !weeklyGoalForSlot(x, key)) || 1);
   fillWeeklyGoalEditor();
   openModal('weeklyGoalModal');
@@ -13566,11 +13833,12 @@ function openWeeklyGoalModal(slot = null) {
 function fillWeeklyGoalEditor() {
   const key = weeklyGoalEditingWeek || activeWeeklyGoalsWeek(), range = weekRange(key), goal = weeklyGoalForSlot(weeklyGoalEditingSlot, key);
   setText('weeklyGoalEditorRange', weeklyGoalPeriod(key));
-  byId('weeklyGoalTabs').innerHTML = [1,2,3].map(x => `<button class="btn ${x === weeklyGoalEditingSlot ? 'primary' : ''}" onclick="weeklyGoalEditingSlot=${x};fillWeeklyGoalEditor()">Cíl ${x}${weeklyGoalForSlot(x, key) ? ' ✓' : ''}</button>`).join('');
-  setVal('wgTitle', goal?.title || ''); setVal('wgWhy', goal?.why || ''); setVal('wgCategory', goal?.category || 'Obchod');
+  byId('weeklyGoalTabs').innerHTML = [1,2,3].map(x => `<button class="btn ${x === weeklyGoalEditingSlot ? 'primary' : ''}" onclick="switchWeeklyGoalSlot(${x})">Cíl ${x}${weeklyGoalForSlot(x, key) ? ' ✓' : ''}</button>`).join('');
+  setVal('wgTitle', goal?.title || ''); setVal('wgWhy', goal?.why || ''); setVal('wgCategory', goal?.category || FOCUS_THEMES[weeklyGoalEditingSlot-1]);
+  byId('wgTitle').placeholder=FOCUS_THEMES[weeklyGoalEditingSlot-1];
   setVal('wgMetricType', goal?.metricType || 'manual'); setVal('wgKpiLabel', goal?.kpiLabel || ''); setVal('wgTarget', goal?.target || '');
   setVal('wgManualActual', goal?.manualActual || ''); setVal('wgDueDate', goal?.dueDate || range.end); setVal('wgStatus', goal?.status || 'Nezahájeno');
-  toggleWeeklyGoalMetric();
+  focusRestoreDraft('weeklyGoalModal');toggleWeeklyGoalMetric();
 }
 function toggleWeeklyGoalMetric() {
   const automatic = val('wgMetricType') !== 'manual', field = byId('wgManualActualField');
@@ -13581,15 +13849,16 @@ function saveWeeklyGoal() {
   const title = val('wgTitle').trim(), why = val('wgWhy').trim(), target = +val('wgTarget') || 0, key = weeklyGoalEditingWeek || activeWeeklyGoalsWeek();
   if (weeklyReviewFor(key)) return alert('Tento týden už je uzavřený.');
   if (!title) return alert('Doplň název cíle.');
-  if (!why) return alert('Doplň, jak tento cíl konkrétně posune byznys.');
-  if (target <= 0) return alert('Cílová hodnota musí být větší než nula.');
+
+  if (val('wgTarget') !== '' && target <= 0) return alert('Cílová hodnota musí být větší než nula, nebo ji nech prázdnou.');
+  if (val('wgMetricType') !== 'manual' && !target) return alert('Pro automatické měření doplň cílovou hodnotu.');
   let goal = weeklyGoalForSlot(weeklyGoalEditingSlot, key);
   if (!goal) { goal = {id:uid(), weekKey:key, slot:weeklyGoalEditingSlot, createdAt:new Date().toISOString()}; state.weeklyGoals.push(goal); }
-  Object.assign(goal, {title, why, category:val('wgCategory'), metricType:val('wgMetricType'), kpiLabel:val('wgKpiLabel').trim(), target, manualActual:+val('wgManualActual') || 0, dueDate:val('wgDueDate'), status:val('wgStatus'), updatedAt:new Date().toISOString()});
-  persist(); renderWeeklyGoals(); fillWeeklyGoalEditor(); saveToast('Týdenní cíl uložen');
+  Object.assign(goal, {title, why, category:val('wgCategory'), metricType:val('wgMetricType'), kpiLabel:val('wgKpiLabel').trim(), target:val('wgTarget') === '' ? null : target, manualActual:+val('wgManualActual') || 0, dueDate:val('wgDueDate'), status:val('wgStatus'), updatedAt:new Date().toISOString()});
+  focusClearDraft('weeklyGoalModal');if(!persist())return; renderWeeklyGoals(); renderDailyPriorities(); fillWeeklyGoalEditor(); saveToast('Týdenní cíl uložen');
 }
 function weeklyReviewAutoSummary(goals, key) {
-  const stats = goals.map(g => ({g, ...weeklyGoalProgress(g, key)})), completed = stats.filter(x => x.pct >= 100).length,
+  const stats = goals.map(g => ({g, ...weeklyGoalProgress(g, key)})), completed = stats.filter(x => weeklyGoalDisplayStatus(x.g,x,false)==='Splněno').length,
     totalPct = stats.length ? Math.round(stats.reduce((s, x) => s + Math.min(100, x.pct), 0) / stats.length) : 0,
     best = [...stats].sort((a,b) => b.pct - a.pct)[0], weakest = [...stats].sort((a,b) => a.pct - b.pct)[0];
   return {completed, totalPct, summary:`Splněno ${completed} z ${goals.length} nastavených cílů. Celkové splnění ${totalPct} %.${best ? ` Největší posun: ${best.g.title} (${best.pct} %).` : ''}${weakest && weakest.pct < 100 ? ` Prostor ke zlepšení: ${weakest.g.title} (${weakest.pct} %).` : ''}`};
@@ -13601,23 +13870,27 @@ function openWeeklyReviewModal(key = activeWeeklyGoalsWeek()) {
   setText('weeklyReviewTitle', `${review ? 'Vyhodnocení' : 'Uzavřít'} ${key}`);
   setText('weeklyReviewRange', weeklyGoalPeriod(key) + (goals.length < 3 && !review ? ` · Nastaveno ${goals.length} ze 3 cílů. Vyhodnocení zahrne nastavené cíle.` : ''));
   setText('weeklyReviewAutoSummary', review?.summary || weeklyReviewAutoSummary(goals, key).summary);
-  byId('weeklyReviewSummary').innerHTML = snapshots.map((g, i) => { const actual = g.actual ?? weeklyGoalActual(g, key), target = +g.target || 1, pct = g.pct ?? Math.round(actual / target * 100), status = pct >= 100 ? 'Splněno' : actual > 0 ? 'Částečně splněno' : 'Nesplněno'; return `<div><span class="weekly-goal-number">${i+1}</span><b>${esc(g.title)}</b><span>${num(actual)} / ${num(target)} · ${num(pct)} % · <strong class="${weeklyGoalStatusClass(status)}">${status}</strong></span></div>`; }).join('');
+  byId('weeklyReviewSummary').innerHTML = snapshots.map((g, i) => { const actual = g.actual ?? weeklyGoalActual(g, key), target = +g.target || 1, pct = g.pct ?? Math.round(actual / target * 100), status = g.status === 'Splněno' || pct >= 100 ? 'Splněno' : actual===null ? 'Chybí data' : actual > 0 ? 'Částečně splněno' : 'Nesplněno'; return `<div><span class="weekly-goal-number">${i+1}</span><b>${esc(g.title)}</b><span>${actual===null?'Nedostupné':num(actual)} / ${num(target)} · ${num(pct)} % · <strong class="${weeklyGoalStatusClass(status)}">${status}</strong></span></div>`; }).join('');
   const fields = {wrSuccess:'success',wrFailure:'failure',wrDifferent:'different',wrOpportunities:'opportunities',wrWaste:'waste',wrCarry:'carry',wrEfficiency:'efficiency'};
   Object.entries(fields).forEach(([id, prop]) => { setVal(id, review?.reflection?.[prop] || ''); byId(id).disabled = !!review; });
   const save = byId('weeklyReviewModal').querySelector('.actions .primary');
   if (save) save.style.display = review ? 'none' : '';
   byId('weeklyReviewSummary').dataset.weekKey = key;
+  setVal('wrCommission',review?.commissionCheck||'');byId('wrCommission').disabled=!!review;
+  byId('weeklyReviewBusiness').innerHTML=review && !review.business ? '<p class="note">Starší vyhodnocení neobsahuje ekonomický snímek týdne.</p>' : focusBusinessHtml(review?.business||focusBusinessSummary(key));
+  document.querySelectorAll('.legacy-reflection').forEach(el=>el.hidden=!review||!el.querySelector('textarea').value);
+  if(!review)focusRestoreDraft('weeklyReviewModal');
   openModal('weeklyReviewModal');
 }
 function closeWeeklyGoals() {
   const key = byId('weeklyReviewSummary')?.dataset.weekKey || activeWeeklyGoalsWeek(), goals = weeklyGoalsFor(key);
   if (weeklyReviewFor(key)) return;
   if (!goals.length) return alert('V tomto týdnu zatím není žádný cíl k vyhodnocení.');
-  const snapshots = goals.map(g => { const p = weeklyGoalProgress(g, key); g.closedActual = p.actual; g.status = p.pct >= 100 ? 'Splněno' : 'Nesplněno'; return {...g, actual:p.actual, pct:p.pct}; }), auto = weeklyReviewAutoSummary(goals, key);
+  const snapshots = goals.map(g => { const p = weeklyGoalProgress(g, key); g.closedActual = p.actual; g.status = weeklyGoalDisplayStatus(g,p,false)==='Splněno' ? 'Splněno' : 'Nesplněno'; return {...g, actual:p.actual, pct:p.pct}; }), auto = weeklyReviewAutoSummary(goals, key);
   const reflection = {success:val('wrSuccess').trim(),failure:val('wrFailure').trim(),different:val('wrDifferent').trim(),opportunities:val('wrOpportunities').trim(),waste:val('wrWaste').trim(),carry:val('wrCarry').trim(),efficiency:val('wrEfficiency').trim()};
   state.weeklyReviews = (state.weeklyReviews || []).filter(x => x.weekKey !== key);
-  state.weeklyReviews.push({id:uid(), weekKey:key, closedAt:new Date().toISOString(), range:weekRange(key), goals:snapshots, reflection, ...auto});
-  persist(); closeModal('weeklyReviewModal'); renderWeeklyGoals(); saveToast('Týden uzavřen a uložen do historie');
+  state.weeklyReviews.push({id:uid(), weekKey:key, closedAt:new Date().toISOString(), range:weekRange(key), goals:snapshots, reflection, business:focusBusinessSummary(key), commissionCheck:val('wrCommission'), ...auto});
+  focusClearDraft('weeklyReviewModal');if(!persist())return; closeModal('weeklyReviewModal'); renderWeeklyGoals(); saveToast('Týden uzavřen a uložen do historie');
 }
 function carryWeeklyGoalForward(slot) {
   const sourceKey = activeWeeklyGoalsWeek(), targetKey = weekKey();
@@ -13628,14 +13901,15 @@ function carryWeeklyGoalForward(slot) {
   if (!freeSlot) return alert('Aktuální týden už má 3 cíle. Nic se nepřepsalo. Otevři aktuální týden a rozhodni, kterou prioritu chceš upravit.');
   const progress = weeklyGoalProgress(goal, sourceKey), remaining = progress.target - progress.actual;
   if (remaining <= 0) return;
-  state.weeklyGoals.push({id:uid(), weekKey:targetKey, slot:freeSlot, title:goal.title, why:goal.why, category:goal.category, metricType:goal.metricType, kpiLabel:goal.kpiLabel, target:remaining, manualActual:0, dueDate:weekRange(targetKey).end, status:'Nezahájeno', carriedFromWeek:sourceKey, carriedFromSlot:goal.slot, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString()});
+  state.weeklyGoals.push({id:uid(), weekKey:targetKey, slot:freeSlot, title:goal.title, why:goal.why, category:goal.category, metricType:goal.metricType, kpiLabel:goal.kpiLabel, target:goal.target==null?null:goal.metricType==='aum'?goal.target:remaining, manualActual:0, dueDate:weekRange(targetKey).end, status:'Nezahájeno', carriedFromWeek:sourceKey, carriedFromSlot:goal.slot, createdAt:new Date().toISOString(), updatedAt:new Date().toISOString()});
   persist(); renderWeeklyGoals(); saveToast(`Zbývajících ${num(remaining)} přeneseno do aktuálního týdne. Původní cíl zůstal uložený.`);
 }
 function renderDashboard() {
-  renderDashboardMetrics();
-  renderWeeklyGoals();
+  focusCaptureAum();
+  renderDailyPriorities();renderWeeklyGoals();
+  if(byId('dashboardStats')?.open)renderDashboardMetrics();
   try {
-    renderDashboardWorkQueue();
+    if(byId('dashboardTasks')?.open)renderDashboardWorkQueue();
   } catch (e) {
     console.error('Render denních úkolů', e);
   }
@@ -14131,7 +14405,7 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.22-2';
+const VERSION = '2026.10.22-3';
 const VERSION_NOTE = 'Klasické investice: pravidelné i jednorázové vklady, ruční hodnoty a automatický dopočet. Přesun smlouvy z DIP do investic respektuje zvolený typ.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
@@ -14246,10 +14520,13 @@ const BACKUP_COUNT_LABELS = {
   referrals: 'doporučení',
   weeklyGoals: 'týdenních cílů',
   weeklyReviews: 'uzavřených týdnů',
+  dailyPriorities: 'denních priorit',
+  focusDrafts: 'rozepsaných cílů',
+  focusSnapshots: 'stavů AUM',
   delegationProcesses: 'činností k delegování',
   wealthRecords: 'majetkových podkladů'
 };
-const BACKUP_PROTECTED_KEYS = ['clients', 'contracts', 'deals', 'opportunities', 'notes', 'activities', 'analysisEntries', 'campaigns', 'investments', 'investmentSnapshots', 'externalInvestments', 'investmentForecasts', 'commissionImports', 'referrerPayouts', 'referrals', 'weeklyGoals', 'weeklyReviews', 'delegationProcesses', 'wealthRecords'];
+const BACKUP_PROTECTED_KEYS = ['clients', 'contracts', 'deals', 'opportunities', 'notes', 'activities', 'analysisEntries', 'campaigns', 'investments', 'investmentSnapshots', 'externalInvestments', 'investmentForecasts', 'commissionImports', 'referrerPayouts', 'referrals', 'weeklyGoals', 'weeklyReviews', 'dailyPriorities', 'focusSnapshots', 'delegationProcesses', 'wealthRecords'];
 let scenario_editableScope = '';
 let fkiEditor_editingFkRecordKey = '',
   fkiEditor_editingFkClientId = null;
@@ -14478,3 +14755,18 @@ function activateDueContractReplacements(asOf=today()) {
   });
   if(changed&&typeof fkiSync_syncCrmFkiDealsToRecords==='function')fkiSync_syncCrmFkiDealsToRecords();
 }
+
+// Preserve in-progress focus forms across switching, closing and browser reloads.
+document.addEventListener('input',e=>{const modal=e.target.closest('.modal');if(modal)focusCaptureDraft(modal.id);});
+document.addEventListener('change',e=>{const modal=e.target.closest('.modal');if(modal)focusCaptureDraft(modal.id);});
+window.addEventListener('pagehide',focusFlushDraft);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')focusFlushDraft();else if(focusLastToday && focusLastToday!==dashboardToday() && byId('dashboard')?.classList.contains('active'))renderDashboard();});
+
+function captureAnnualFocusDraft(e) {
+  const fields=['planTotalBj','planAum','planBjCoef','planClients','planInvestment','planMortgage','planLife','planNonLife','planLoans','planPension'];
+  if(!fields.includes(e.target.id))return;
+  const year=byId('planYear').dataset.editingYear,id=`annual:${year}`,values=Object.fromEntries(fields.map(f=>[f,val(f)])),draft=state.focusDrafts.find(x=>x.id===id);
+  if(draft)Object.assign(draft,{values,updatedAt:new Date().toISOString()});else state.focusDrafts.push({id,values,updatedAt:new Date().toISOString()});
+  clearTimeout(focusDraftTimer);focusDraftTimer=setTimeout(()=>{focusDraftTimer=null;persist();},400);
+}
+document.addEventListener('input',captureAnnualFocusDraft);

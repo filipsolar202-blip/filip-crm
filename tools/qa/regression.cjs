@@ -313,7 +313,7 @@ try{
   clearTimeout(diskSaveTimer);const follow=saveStateToDisk('follow-up');respond();await follow;window.fetch=originalFetch;diskLoadDone=false;
   return {retained,latest:bodies[1].clients[0].note};
  });assert(queue.retained);assert.equal(queue.latest,'new edit during slow save');results.push('Slow disk response cannot overwrite newer edits');
- await page.evaluate(()=>{showView('dashboard');const a=state.activities.find(x=>x.id===40);a.completed=false;a.date=today();renderDashboard()});
+ await page.evaluate(()=>{showView('dashboard');const a=state.activities.find(x=>x.id===40);a.completed=false;a.date=today();renderDashboard();openFocusPanel('dashboardTasks')});
  await page.locator('[data-dash-action="done"][data-id="40"]').click();assert.equal(await page.evaluate(()=>state.activities.find(x=>x.id===40).outcome),'realized');results.push('Dashboard uses the shared activity completion action');
  await page.evaluate(()=>{showView('fki');selectFkClient(1)});await page.screenshot({path:'/private/tmp/crm-unified-fki.png',fullPage:true});
  await page.setViewportSize({width:834,height:1112});await page.screenshot({path:'/private/tmp/crm-unified-ipad.png',fullPage:true});results.push('iPad viewport rendered');
@@ -456,12 +456,12 @@ try{
      {id:99105,weekKey:key,slot:3,title:'Systém',why:'Úspora času',category:'CRM / systém',metricType:'manual',manualActual:3,target:3,dueDate:range.end,status:'Probíhá'}
    );
    renderWeeklyGoals();
-   const actuals=state.weeklyGoals.map(g=>weeklyGoalActual(g,key)),cards=document.querySelectorAll('#weeklyGoalsGrid .weekly-goal').length,progress=[...document.querySelectorAll('#weeklyGoalsGrid .weekly-goal-score strong')].map(x=>x.textContent.trim());
+   const actuals=state.weeklyGoals.map(g=>weeklyGoalActual(g,key)),cards=document.querySelectorAll('#weeklyGoalsGrid .weekly-goal').length,progress=[...document.querySelectorAll('#weeklyGoalsGrid .weekly-progress span')].map(x=>x.style.width);
    byId('weeklyReviewSummary').dataset.weekKey=key;setVal('wrSuccess','Test reflexe');closeWeeklyGoals();
-   const review=state.weeklyReviews[0],history=document.querySelectorAll('#weeklyGoalsHistory .weekly-history-bars button').length;
+   const review=state.weeklyReviews[0],history=document.querySelectorAll('#weeklyGoalsHistory .weekly-history-row').length;
    Object.assign(state,original);renderAll();return {actuals,cards,progress,completed:review.completed,totalPct:review.totalPct,reflection:review.reflection.success,history};
  });
- assert.deepEqual(weeklyGoals.actuals,[1,1,3]);assert.equal(weeklyGoals.cards,3);assert.deepEqual(weeklyGoals.progress,['50 %','100 %','100 %']);assert.equal(weeklyGoals.completed,2);assert.equal(weeklyGoals.totalPct,83);assert.equal(weeklyGoals.reflection,'Test reflexe');assert.equal(weeklyGoals.history,1);
+ assert.deepEqual(weeklyGoals.actuals,[1,1,3]);assert.equal(weeklyGoals.cards,3);assert.deepEqual(weeklyGoals.progress,['50%','100%','100%']);assert.equal(weeklyGoals.completed,2);assert.equal(weeklyGoals.totalPct,83);assert.equal(weeklyGoals.reflection,'Test reflexe');assert.equal(weeklyGoals.history,1);
  results.push('Weekly focus keeps exactly three priorities, reads CRM metrics, closes the week and archives its score and reflection');
  const quickActivity=await page.evaluate(()=>{
    const original=state.activities;state.activities=[];
