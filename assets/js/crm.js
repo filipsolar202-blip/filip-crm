@@ -834,13 +834,13 @@ function isFkiText(txt) {
   return /(^|\s)fki(\s|$)|fond kvalifikovanych|kvalifikovanych investoru|sicav|investicni akcie/.test(n);
 }
 function areaForContract(s) {
-  const t = s?.type || '',
-    src = norm([s?.source, s?.product, s?.company].join(' '));
-  if (t === 'DPS' || t === 'DIP' || src.includes('dip') || src.includes('dps') || src.includes('penz')) return 'penze';
-  if (t === 'FKI' || isFkiText(src)) return 'fki';
-  if (t === 'investice' || src.includes('invest')) return 'investice';
-  if (t === 'hypotéka' || t === 'úvěr') return 'uvery';
-  if (t === 'život' || t === 'auto' || t === 'majetek') return 'pojisteni';
+  // The selected contract type is authoritative; names and old import labels are only a fallback.
+  const explicit = {DPS:'penze',DIP:'penze',FKI:'fki',investice:'investice','hypotéka':'uvery','úvěr':'uvery','život':'pojisteni','auto':'pojisteni','majetek':'pojisteni'}[s?.type];
+  if (explicit) return explicit;
+  const src = norm([s?.source, s?.product, s?.company].join(' '));
+  if (/\bdip\b|\bdps\b|penz/.test(src)) return 'penze';
+  if (isFkiText(src)) return 'fki';
+  if (src.includes('invest')) return 'investice';
   return 'ostatni';
 }
 function areaForDeal(d) {
@@ -1059,7 +1059,7 @@ function clientInvestmentItems(clientId) {
   }));
   const items = [...records, ...deals, ...contracts].map(x => investmentAreaOfItem(x) === 'investice' ? applyInvestmentSnapshot(x) : x),
     keys = new Set(items.filter(x => investmentAreaOfItem(x) === 'investice').map(investmentItemKey));
-  const orphans = latestInvestmentSnapshots(clientId).filter(s => !keys.has(investmentSnapshotKeyForSnapshot(s))).map(investmentSnapshotItem);
+  const orphans = latestInvestmentSnapshots(clientId).filter(s => !keys.has(investmentSnapshotKeyForSnapshot(s)) && !isPensionReportItem(s)).map(investmentSnapshotItem);
   return [...items, ...orphans];
 }
 function invNum(v) {
@@ -2482,6 +2482,10 @@ function reportProviderCleanName(name) {
   return raw;
 }
 function isPensionReportItem(x) {
+  const linkedId = x?.snapshot?.sourceContractId || x?.sourceContractId;
+  const linked = linkedId ? state.contracts.find(c => String(c.id) === String(linkedId)) : null;
+  if (linked) return areaForContract(linked) === 'penze';
+  if (x?.sourceType === 'contract' && x.source) return areaForContract(x.source) === 'penze';
   const txt = norm([x?.category, x?.product, x?.company, x?.kind, x?.source?.category, x?.source?.product, x?.source?.type, x?.source?.company].join(' '));
   return /\bdps\b|\bdip\b|penz|duchod|duchodov/.test(txt);
 }
@@ -4176,7 +4180,7 @@ function allInvestmentItems() {
   })));
 }
 function investmentInvestedAmount(x) {
-  return +(x.invested || x.investedAmount || x.volume || x.amount || 0);
+  return +(x.invested ?? x.investedAmount ?? x.volume ?? x.amount ?? 0);
 }
 function investmentRealizedAmount(x) {
   return +(x.realized || x.redemptionAmount || x.snapshot?.redemptionAmount || 0);
@@ -4187,13 +4191,25 @@ function investmentPerformanceGain(current, invested, realized = 0) {
 function investmentPerformancePct(current, invested, realized = 0) {
   return +invested || 0 ? investmentPerformanceGain(current, invested, realized) / (+invested || 0) * 100 : 0;
 }
+function investmentSchedule(s = {}) {
+  return s.investmentSchedule || (+s.regularAmount > 0 || ['Měsíčně','Čtvrtletně','Ročně','Nepravidelně'].includes(s.regularFrequency) ? 'regular' : 'single');
+}
+function investmentScheduleLabel(s = {}) {
+  return {single:'Jednorázová',regular:'Pravidelná',mixed:'Jednorázová i pravidelná'}[investmentSchedule(s)] || 'Jednorázová';
+}
+function investmentHasRegularPayments(x) {
+  return investmentSchedule(x?.snapshot || x?.source || x || {}) !== 'single';
+}
 function investmentReportedGain(x) {
   const v = x?.snapshot?.gainAmount;
-  return v !== '' && v != null && Number.isFinite(+v) ? +v : investmentPerformanceGain(+x?.amount || 0, investmentInvestedAmount(x), investmentRealizedAmount(x));
+  if (v !== '' && v != null && Number.isFinite(+v)) return +v;
+  const pct = x?.snapshot?.gainPct;
+  if (pct !== '' && pct != null && Number.isFinite(+pct)) return investmentInvestedAmount(x) * +pct / 100;
+  return investmentPerformanceGain(+x?.amount || 0, investmentInvestedAmount(x), investmentRealizedAmount(x));
 }
 function investmentReportedPct(x) {
   const v = x?.snapshot?.gainPct;
-  return v !== '' && v != null && Number.isFinite(+v) ? +v : investmentPerformancePct(+x?.amount || 0, investmentInvestedAmount(x), investmentRealizedAmount(x));
+  return v !== '' && v != null && Number.isFinite(+v) ? +v : investmentInvestedAmount(x) ? investmentReportedGain(x) / investmentInvestedAmount(x) * 100 : 0;
 }
 function investmentReportedAnnualPct(x) {
   const v = x?.snapshot?.annualReturnPct;
@@ -4214,6 +4230,16 @@ function investmentSnapshotKeyForSnapshot(s) {
   if (s?.scope === 'provider-total') return [String(s.clientId || ''), 'investment-provider-total', norm(s.providerKey || investmentProviderIdentity(s))].join('|');
   return investmentSnapshotKey(s?.clientId, s?.company, s?.product, s?.isin, s?.mergeKey, s?.fundType || s?.typ || s?.kind);
 }
+function investmentSnapshotUpdateIndex(snapshot, selectedId = '') {
+  const rows = state.investmentSnapshots || [];
+  if (selectedId !== '') {
+    const selected = rows.findIndex(s => String(s.id) === String(selectedId) && String(s.clientId) === String(snapshot.clientId));
+    if (selected >= 0) return selected;
+  }
+  const key = investmentSnapshotKeyForSnapshot(snapshot);
+  const latest = latestInvestmentSnapshots(snapshot.clientId).find(s => investmentSnapshotKeyForSnapshot(s) === key);
+  return latest ? rows.indexOf(latest) : -1;
+}
 function investmentSnapshotMergeKey(s) {
   return [investmentSnapshotKeyForSnapshot(s), s.date, Math.round((+s.current || 0) * 100), Math.round((+s.invested || 0) * 100)].join('|');
 }
@@ -4231,6 +4257,10 @@ function latestInvestmentSnapshots(clientId = null) {
 }
 function latestSnapshotForItem(x) {
   if (x?.snapshot) return x.snapshot;
+  if (x?.sourceType === 'contract') {
+    const linked = latestInvestmentSnapshots(x.clientId).find(s => String(s.sourceContractId || '') === String(x.sourceId || x.source?.id));
+    if (linked) return linked;
+  }
   const key = investmentItemKey(x);
   return latestInvestmentSnapshots(x.clientId || x.client?.id).find(s => investmentSnapshotKeyForSnapshot(s) === key) || null;
 }
@@ -4243,12 +4273,24 @@ function investmentSnapshotFundValue(s = {}) {
   return {};
 }
 function investmentSnapshotLiveCurrent(s = {}) {
-  const manual = s.manualAumOverride === true || s.scope === 'provider-total';
-  const qty = parseMoney(s.quantity ?? s.qty),
+  const manual = s.manualAumOverride === true || (s.scope === 'provider-total' && s.calculationVersion !== 2);
+  const qty = parseMoney(s.quantity ?? s.qty) || (s.calculationVersion === 2 && +s.subscribeValue > 0 ? +s.invested / +s.subscribeValue : 0),
     fv = investmentSnapshotFundValue(s),
     nav = parseMoney(fv.nav);
   if (!manual && qty > 0 && nav > 0) return Math.max(0, qty * nav - parseMoney(s.redemptionAmount));
+  if (!manual && s.calculationVersion === 2) {
+    const invested = +s.invested || 0;
+    const gain = s.gainAmount != null ? +s.gainAmount : s.gainPct != null ? invested * +s.gainPct / 100 : 0;
+    return Math.max(0, invested + gain - parseMoney(s.redemptionAmount));
+  }
   return +s.current || 0;
+}
+function investmentItemValueDate(x) {
+  const snapshot = x?.snapshot;
+  const fv = snapshot ? investmentSnapshotFundValue(snapshot) : state.fundValues?.[investmentFundKey(x)] || {};
+  const qty = snapshot ? parseMoney(snapshot.quantity ?? snapshot.qty) || (snapshot.calculationVersion === 2 && +snapshot.subscribeValue > 0 ? +snapshot.invested / +snapshot.subscribeValue : 0) : 0;
+  if (snapshot && (snapshot.manualAumOverride || snapshot.scope === 'provider-total' || !(qty > 0 && parseMoney(fv.nav) > 0))) return snapshot.date || x.date || '';
+  return fv.date || fv.navDate || snapshot?.date || x?.source?.valueDate || x?.date || '';
 }
 function investmentSnapshotItem(s) {
   return {
@@ -4516,7 +4558,7 @@ function investmentClientRows() {
   return Object.values(map).map(r => ({
     ...r,
     gain: r.items.reduce((sum, x) => sum + investmentReportedGain(x), 0),
-    gainPct: r.invested ? r.items.reduce((sum, x) => sum + investmentReportedGain(x), 0) / r.invested * 100 : 0,
+    gainPct: r.invested ? r.items.reduce((sum, x) => sum + investmentReportedPct(x) * investmentInvestedAmount(x), 0) / r.invested : 0,
     annualReturnPct: (() => {
       const annual = r.items.filter(x => investmentReportedAnnualPct(x) != null);
       const weight = annual.reduce((sum, x) => sum + (+x.amount || 0), 0);
@@ -5826,6 +5868,7 @@ function toggleContractDealFields() {
   });
 }
 function syncContractDealDefaults(forceType = false) {
+  updateContractInvestmentPreview();
   const client = findClient(+val('sClient')),
     lead = clientLeadDefault(client);
   if (val('sStatus') === 'podepsano') setVal('sCreateDeal', 'yes');
@@ -5845,6 +5888,61 @@ function contractDealPrefill(s) {
     ownerType: s.dealOwnerType || lead.ownerType || '',
     ownerPct: (s.dealOwnerType || lead.ownerType) === 'tipar' ? referrerCommissionFor(s.dealOwner || lead.owner) || lead.pct || 0 : 0
   };
+}
+function contractInvestmentSnapshot(s) {
+  if (!s?.id) return null;
+  const linked = latestInvestmentSnapshots(s.clientId).find(x => String(x.sourceContractId || '') === String(s.id));
+  if (linked) return linked;
+  const item = {clientId:s.clientId,company:s.company,product:s.product || s.type,sourceType:'contract',sourceId:s.id,source:s,kind:'Smlouva'};
+  return latestSnapshotForItem(item);
+}
+function loadContractInvestmentFields(s) {
+  const snapshot = contractInvestmentSnapshot(s);
+  byId('sInvestmentFields').dataset.snapshotId = snapshot?.id || '';
+  setVal('sInvestmentSchedule', investmentSchedule(snapshot || {}));
+  setVal('sInvestmentInvested', snapshot?.investedBeforeRedemption ?? snapshot?.invested ?? '');
+  setVal('sInvestmentCurrent', snapshot ? (snapshot.calculationVersion === 2 || snapshot.manualAumOverride === false ? (snapshot.manualAumOverride ? snapshot.current : '') : snapshot.current ?? '') : '');
+  setVal('sInvestmentGain', snapshot?.gainAmount ?? '');
+  setVal('sInvestmentPct', snapshot?.gainPct ?? '');
+  setVal('sInvestmentAnnual', snapshot?.annualReturnPct ?? '');
+  setVal('sInvestmentDate', snapshot?.date || today());
+  setVal('sInvestmentPurchase', snapshot?.purchaseDate || '');
+  setVal('sInvestmentRegular', snapshot?.regularAmount || '');
+  setVal('sInvestmentFrequency', snapshot?.regularFrequency || 'Měsíčně');
+}
+function readContractInvestmentFields() {
+  if (val('sType') !== 'investice') return null;
+  const numeric = ['sInvestmentInvested','sInvestmentCurrent','sInvestmentGain','sInvestmentPct','sInvestmentAnnual','sInvestmentRegular'];
+  if (!numeric.some(id => val(id).trim() !== '')) return null;
+  if (val('sInvestmentInvested').trim() === '') throw new Error('U investice vyplň celkem vloženou částku v Kč.');
+  if (numeric.some(id => val(id).trim() !== '' && !Number.isFinite(Number(val(id))))) throw new Error('Zkontroluj částky a procenta investice.');
+  if (['sInvestmentInvested','sInvestmentCurrent','sInvestmentRegular'].some(id => +val(id) < 0)) throw new Error('Vložená částka, aktuální hodnota a pravidelný vklad nemohou být záporné.');
+  const old = (state.investmentSnapshots || []).find(x => String(x.id) === byId('sInvestmentFields').dataset.snapshotId) || {};
+  const nullable = id => val(id).trim() === '' ? null : Number(val(id));
+  const snapshot = {...old,calculationVersion:2,invested:Number(val('sInvestmentInvested')),investedBeforeRedemption:Number(val('sInvestmentInvested')),manualAumOverride:val('sInvestmentCurrent').trim() !== '',current:nullable('sInvestmentCurrent'),gainAmount:nullable('sInvestmentGain'),gainPct:nullable('sInvestmentPct'),annualReturnPct:nullable('sInvestmentAnnual'),date:val('sInvestmentDate') || today(),purchaseDate:val('sInvestmentPurchase') || '',investmentSchedule:val('sInvestmentSchedule'),regularAmount:val('sInvestmentSchedule') === 'single' ? 0 : parseMoney(val('sInvestmentRegular')),regularFrequency:val('sInvestmentSchedule') === 'single' ? 'Jednorázově' : val('sInvestmentFrequency')};
+  snapshot.manualPerformanceOverride = snapshot.gainAmount !== null || snapshot.gainPct !== null || snapshot.annualReturnPct !== null;
+  snapshot.current = investmentSnapshotLiveCurrent(snapshot);
+  snapshot.currentBeforeRedemption = snapshot.current + (+snapshot.redemptionAmount || 0);
+  return snapshot;
+}
+function updateContractInvestmentPreview() {
+  const box = byId('sInvestmentFields');
+  if (!box) return;
+  box.hidden = val('sType') !== 'investice';
+  box.style.display = box.hidden ? 'none' : '';
+  for (const id of ['sInvestmentRegular','sInvestmentFrequency']) byId(id).disabled = val('sInvestmentSchedule') === 'single';
+  if (box.hidden) return;
+  try {
+    const snapshot = readContractInvestmentFields(), item = snapshot ? investmentSnapshotItem(snapshot) : null;
+    setText('sInvestmentPreview', item ? `Aktuální hodnota: ${money(item.amount)} · Výnos: ${money(investmentReportedGain(item))} · Zhodnocení: ${investmentReportedPct(item).toFixed(2)} %. ` + (snapshot.manualAumOverride ? 'Použije se zadaná hodnota.' : 'Hodnota se dopočítá z CP nebo celkového výnosu; bez těchto podkladů odpovídá vkladům po odkupech.') : 'Celkem vloženo je součet dosavadních vkladů, nikoli měsíční platba. Prázdná hodnota a výnos se dopočítají.');
+  } catch (error) { setText('sInvestmentPreview', error.message); }
+}
+function storeContractInvestmentFields(contract, snapshot) {
+  const oldIndex = (state.investmentSnapshots || []).findIndex(x => snapshot.id && String(x.id) === String(snapshot.id));
+  const item = {clientId:contract.clientId,company:contract.company,product:contract.product || contract.type,source:contract,kind:'Smlouva'};
+  const key = investmentFundKey(item), fv = state.fundValues?.[key] || {};
+  const value = {...snapshot,id:snapshot.id || uid(),clientId:contract.clientId,sourceContractId:contract.id,company:snapshot.company || contract.company,product:snapshot.product || contract.product || 'Investice',isin:snapshot.isin || fv.isin || contract.isin || '',fundType:snapshot.fundType || investmentFundProductType(item),updatedAt:today(),source:snapshot.source || 'Ruční aktualizace smlouvy'};
+  if (oldIndex >= 0) state.investmentSnapshots[oldIndex] = value; else state.investmentSnapshots.push(value);
 }
 function openContractModal(clientId = null, id = null) {
   fillClientSelect('sClient', clientId || selectedClientId);
@@ -5878,6 +5976,7 @@ function openContractModal(clientId = null, id = null) {
   contractAttachmentDraft = (Array.isArray(s.attachments) ? s.attachments : []).map(a => ({
     ...a
   }));
+  loadContractInvestmentFields(s);
   syncContractDealDefaults();
   renderContractAttachments();
   byId('deleteContractBtn').style.display = id ? 'inline-flex' : 'none';
@@ -5886,8 +5985,8 @@ function openContractModal(clientId = null, id = null) {
   openModal('contractModal');
 }
 function fkiSync_before_saveContract() {
-  let caseVolume;
-  try{caseVolume=caseVolumeInput(val('sCaseVolume'));}catch(error){return alert(error.message);}
+  let caseVolume, investmentUpdate;
+  try{caseVolume=caseVolumeInput(val('sCaseVolume'));investmentUpdate=readContractInvestmentFields();}catch(error){return alert(error.message);}
 
   const clientId = +val('sClient');
   if (!clientId) return alert('Vyber klienta.');
@@ -5931,6 +6030,7 @@ function fkiSync_before_saveContract() {
     })),
     updatedAt: today()
   });
+  if (investmentUpdate) storeContractInvestmentFields(s, investmentUpdate);
   if (confirmedDuplicates.length) markDuplicateVerified('contract', [s, ...confirmedDuplicates]);
   if (!s.log) s.log = [];
   if (oldStatus !== s.status) s.log.push({
@@ -6359,6 +6459,7 @@ function fillInvestmentProductSelect(selectedKey = '') {
   syncInvestmentSnapshotProduct();
 }
 function syncInvestmentSnapshotProduct() {
+  byId('investmentSnapshotModal').dataset.snapshotId = '';
   const key = val('isProduct'),
     clientId = +val('isClient') || selectedInvestmentClientId || selectedClientId;
   if (key && key !== '__custom') {
@@ -6368,6 +6469,7 @@ function syncInvestmentSnapshotProduct() {
         fundKey = investmentFundKey(item),
         fv = state.fundValues?.[fundKey] || state.fundValues?.[rawKey] || {},
         snap = latestSnapshotForItem(item);
+      byId('investmentSnapshotModal').dataset.snapshotId = snap?.id ?? '';
       setVal('isCompany', fv.company || item.company || '');
       setVal('isProductName', fv.fond || item.product || item.kind || 'Investice');
       setVal('isIsin', snap?.isin || fv.isin || item.isin || item.source?.isin || '');
@@ -6378,22 +6480,22 @@ function syncInvestmentSnapshotProduct() {
       setVal('isSubscribeValue', snap?.subscribeValue ?? item.source?.subscribeValue ?? '');
       setVal('isFundNav', fv.nav || '');
       setVal('isFundNavDate', fv.date || snap?.date || today());
-      setVal('isDate', fv.date || snap?.date || today());
-      setVal('isCurrent', snap?.currentBeforeRedemption ?? snap?.current ?? item.amount ?? '');
+      setVal('isDate', snap?.date || fv.date || today());
+      setVal('isCurrent', snap?.calculationVersion === 2 ? (snap.manualAumOverride ? snap.current : '') : snap?.manualAumOverride === false ? '' : snap?.current ?? item.amount ?? '');
       setVal('isInvested', snap?.investedBeforeRedemption ?? snap?.invested ?? investmentInvestedAmount(item) ?? '');
-      setVal('isGainAmount', snap?.gainAmount || '');
-      setVal('isGainPct', snap?.gainPct || '');
+      setVal('isGainAmount', snap?.gainAmount ?? '');
+      setVal('isGainPct', snap?.gainPct ?? '');
       setVal('isAnnualReturnPct', snap?.annualReturnPct ?? '');
       setVal('isRedemptionAmount', snap?.redemptionAmount || '');
       setVal('isRedemptionDate', snap?.redemptionDate || '');
+      setVal('isInvestmentSchedule', investmentSchedule(snap || item.source || {}));
       setVal('isRegularAmount', snap?.regularAmount || '');
       setVal('isRegularFrequency', snap?.regularFrequency || '');
       setVal('isSource', snap?.source || '');
       setVal('isNote', snap?.note || '');
       setVal('isSnapshotScope', snap?.scope || '');
       setVal('isProviderKey', snap?.providerKey || '');
-      if (byId('isManualAum')) byId('isManualAum').checked = snap?.manualAumOverride === true || snap?.scope === 'provider-total' || !(parseMoney(snap?.quantity ?? snap?.qty) > 0 && parseMoney(fv.nav) > 0);
-      if (byId('isManualPerformance')) byId('isManualPerformance').checked = !!snap?.manualPerformanceOverride;
+      updateClassicInvestmentPreview();
       return;
     }
   }
@@ -6416,14 +6518,24 @@ function syncInvestmentSnapshotProduct() {
   setVal('isAnnualReturnPct', '');
   setVal('isRedemptionAmount', '');
   setVal('isRedemptionDate', '');
+  setVal('isInvestmentSchedule', 'single');
   setVal('isRegularAmount', '');
   setVal('isRegularFrequency', '');
   setVal('isSource', latest.source || '');
   setVal('isNote', '');
   setVal('isSnapshotScope', '');
   setVal('isProviderKey', '');
-  if (byId('isManualAum')) byId('isManualAum').checked = false;
-  if (byId('isManualPerformance')) byId('isManualPerformance').checked = false;
+  updateClassicInvestmentPreview();
+}
+function updateClassicInvestmentPreview() {
+  const regular = val('isInvestmentSchedule') !== 'single';
+  for (const id of ['isRegularAmount','isRegularFrequency']) byId(id).disabled = !regular;
+  const invested = parseMoney(val('isInvested')), qty = parseMoney(val('isQty')) || (parseMoney(val('isSubscribeValue')) > 0 ? invested / parseMoney(val('isSubscribeValue')) : 0), nav = parseMoney(val('isFundNav')), redemption = parseMoney(val('isRedemptionAmount'));
+  const gainInput = val('isGainAmount').trim(), pctInput = val('isGainPct').trim(), currentInput = val('isCurrent').trim();
+  const current = currentInput !== '' ? parseMoney(currentInput) : qty > 0 && nav > 0 ? Math.max(0,qty * nav - redemption) : Math.max(0,invested + (gainInput !== '' ? parseMoney(gainInput) : pctInput !== '' ? invested * parseMoney(pctInput) / 100 : 0) - redemption);
+  const gain = gainInput !== '' ? parseMoney(gainInput) : pctInput !== '' ? invested * parseMoney(pctInput) / 100 : current + redemption - invested;
+  const pct = pctInput !== '' ? parseMoney(pctInput) : invested ? gain / invested * 100 : 0;
+  setText('isCalculationPreview', `Aktuální hodnota: ${money(current)} · Výnos: ${money(gain)} · Zhodnocení: ${pct.toFixed(2)} %. ` + (currentInput !== '' ? 'Hodnota zadaná ručně má přednost.' : qty > 0 && nav > 0 ? 'Hodnota vypočtená z CP.' : gainInput !== '' || pctInput !== '' ? 'Hodnota dopočtená ze zadaného výnosu.' : 'Bez ceny CP nebo výnosu je hodnota zatím rovna vkladům po odečtení odkupů.') + (regular ? ' Pro přesné p.a. je potřeba výpis producenta nebo data jednotlivých plateb; samotná měsíční částka nestačí.' : ''));
 }
 function openInvestmentSnapshotModal(clientId = null, encodedKey = '') {
   const id = clientId || selectedInvestmentClientId || selectedClientId;
@@ -6448,19 +6560,22 @@ function saveInvestmentSnapshot() {
     subscribeValue = parseMoney(val('isSubscribeValue')),
     nav = parseMoney(val('isFundNav')),
     navDate = val('isFundNavDate') || today(),
-    manualAumOverride = !!byId('isManualAum')?.checked,
+    manualAumOverride = val('isCurrent').trim() !== '',
     currentRaw = val('isCurrent');
-  if (!manualAumOverride && !(quantity > 0 && nav > 0)) return alert('Pro automatický výpočet vyplň počet cenných papírů a aktuální hodnotu CP. U souhrnného produktu můžeš otevřít „Ruční AUM a další údaje“ a zapnout ruční AUM.');
-  if (manualAumOverride && String(currentRaw).trim() === '') return alert('Vyplň ruční AUM / aktuální hodnotu.');
-  const currentBefore = manualAumOverride ? parseMoney(currentRaw) : quantity * nav,
-    investedBefore = parseMoney(val('isInvested')),
+  const numericFields = ['isInvested','isCurrent','isQty','isSubscribeValue','isFundNav','isGainAmount','isGainPct','isAnnualReturnPct','isRedemptionAmount','isRegularAmount'];
+  if (numericFields.some(id => val(id).trim() !== '' && !Number.isFinite(Number(val(id))))) return alert('Zkontroluj zadané částky a procenta.');
+  if (['isInvested','isCurrent','isQty','isSubscribeValue','isFundNav','isRedemptionAmount','isRegularAmount'].some(id => val(id).trim() !== '' && +val(id) < 0)) return alert('Vklady, hodnoty a odkupy musí být nezáporné. Výnos může být záporný.');
+  if (val('isInvested').trim() === '') return alert('Vyplň celkem vloženou částku v Kč.');
+  const investedBefore = parseMoney(val('isInvested')),
     redemptionAmount = parseMoney(val('isRedemptionAmount')),
     redemptionDate = val('isRedemptionDate') || '',
-    current = Math.max(0, currentBefore - redemptionAmount),
+    gainAmount = val('isGainAmount').trim() === '' ? null : parseMoney(val('isGainAmount')),
+    gainPct = val('isGainPct').trim() === '' ? null : parseMoney(val('isGainPct')),
+    annualReturnPct = val('isAnnualReturnPct').trim() === '' ? null : parseMoney(val('isAnnualReturnPct')),
+    effectiveQty = quantity > 0 ? quantity : subscribeValue > 0 ? investedBefore / subscribeValue : 0,
+    current = manualAumOverride ? parseMoney(currentRaw) : effectiveQty > 0 && nav > 0 ? Math.max(0, effectiveQty * nav - redemptionAmount) : Math.max(0, investedBefore + (gainAmount ?? (gainPct != null ? investedBefore * gainPct / 100 : 0)) - redemptionAmount),
+    currentBefore = current + redemptionAmount,
     invested = investedBefore,
-    gainAmount = val('isGainAmount') === '' && invested ? investmentPerformanceGain(current, invested, redemptionAmount) : parseMoney(val('isGainAmount')),
-    gainPct = val('isGainPct') === '' && invested ? investmentPerformancePct(current, invested, redemptionAmount) : parseMoney(val('isGainPct')),
-    annualReturnPct = val('isAnnualReturnPct') === '' ? null : parseMoney(val('isAnnualReturnPct')),
     snapshot = {
       id: uid(),
       clientId,
@@ -6469,12 +6584,14 @@ function saveInvestmentSnapshot() {
       isin,
       mergeKey,
       fundType,
-      date: navDate,
+      date: val('isDate') || navDate,
       purchaseDate: val('isPurchaseDate') || '',
       quantity,
       qty: quantity,
       subscribeValue,
       manualAumOverride,
+      calculationVersion: 2,
+      investmentSchedule: val('isInvestmentSchedule') || 'single',
       current,
       invested,
       currentBeforeRedemption: currentBefore,
@@ -6484,20 +6601,17 @@ function saveInvestmentSnapshot() {
       gainAmount,
       gainPct,
       annualReturnPct,
-      manualPerformanceOverride: !!byId('isManualPerformance')?.checked,
+      manualPerformanceOverride: gainAmount !== null || gainPct !== null || annualReturnPct !== null,
       scope: val('isSnapshotScope') || '',
       providerKey: val('isProviderKey') || '',
-      regularAmount: parseMoney(val('isRegularAmount')),
-      regularFrequency: val('isRegularFrequency'),
+      regularAmount: val('isInvestmentSchedule') === 'single' ? 0 : parseMoney(val('isRegularAmount')),
+      regularFrequency: val('isInvestmentSchedule') === 'single' ? 'Jednorázově' : val('isRegularFrequency'),
       source: val('isSource').trim(),
-      note: [val('isNote').trim(), redemptionAmount ? investmentRedemptionText({
-        redemptionAmount,
-        redemptionDate
-      }) : ''].filter(Boolean).join('\n'),
+      note: val('isNote').trim(),
       createdAt: today()
     };
   const key = investmentSnapshotKeyForSnapshot(snapshot),
-    oldIndex = (state.investmentSnapshots || []).findIndex(s => investmentSnapshotKeyForSnapshot(s) === key);
+    oldIndex = investmentSnapshotUpdateIndex(snapshot, byId('investmentSnapshotModal').dataset.snapshotId || '');
   if (oldIndex >= 0) snapshot.id = state.investmentSnapshots[oldIndex].id, state.investmentSnapshots[oldIndex] = {
     ...state.investmentSnapshots[oldIndex],
     ...snapshot,
@@ -6539,7 +6653,7 @@ function saveInvestmentSnapshot() {
   closeModal('investmentSnapshotModal');
   persist();
   renderAll();
-  saveToast(manualAumOverride ? 'Ruční AUM klienta uloženo ✓' : `Hodnota CP uložena pro ${num(affectedClients.size)} klientů ✓`);
+  saveToast(manualAumOverride ? 'Hodnota klienta uložena ✓' : nav > 0 ? `Investice uložena, hodnota CP dostupná pro ${num(affectedClients.size)} klientů ✓` : 'Investice uložena s dopočtem hodnoty ✓');
 }
 function edwardCsvField(row, label) {
   const wanted = norm(label);
@@ -6582,14 +6696,14 @@ function importEdwardAumRows(rows, reportDate = today()) {
   parsed.groups.forEach(g => {
     const probe = {clientId:g.client.id, scope:'provider-total', providerKey:'edward'},
       key = investmentSnapshotKeyForSnapshot(probe),
-      index = (state.investmentSnapshots || []).findIndex(s => investmentSnapshotKeyForSnapshot(s) === key),
+      index = investmentSnapshotUpdateIndex(probe),
       old = index >= 0 ? state.investmentSnapshots[index] : {},
       importedGainPct = g.invested ? g.gainAmount / g.invested * 100 : 0,
       importedAnnualPct = g.annualWeight ? g.annualWeighted / g.annualWeight : null,
       keepManual = !!old.manualPerformanceOverride,
       snapshot = {
         ...old, id: old.id || uid(), clientId:g.client.id, scope:'provider-total', providerKey:'edward',
-        company:'Edward', product:'Edward – celkové portfolio', fundType:'Investice', date:reportDate,
+        company:'Edward', product:'Edward – celkové portfolio', fundType:'Investice', date:reportDate, manualAumOverride:true,
         current:g.current, currentBeforeRedemption:g.current, invested:g.invested, investedBeforeRedemption:g.invested,
         gainAmount:keepManual ? old.gainAmount : g.gainAmount,
         gainPct:keepManual ? old.gainPct : importedGainPct,
@@ -6663,8 +6777,8 @@ function importClientMatch({birthId='', first='', last='', name='', birthDate=''
 }
 function upsertImportedInvestmentSnapshot(data) {
   state.investmentSnapshots = state.investmentSnapshots || [];
-  const key = investmentSnapshotKeyForSnapshot(data), index = state.investmentSnapshots.findIndex(s => investmentSnapshotKeyForSnapshot(s) === key), old = index >= 0 ? state.investmentSnapshots[index] : {}, keepManual = !!old.manualPerformanceOverride;
-  const snapshot = {...old,...data,id:old.id||uid(),gainAmount:keepManual?old.gainAmount:data.gainAmount,gainPct:keepManual?old.gainPct:data.gainPct,annualReturnPct:keepManual?old.annualReturnPct:(data.annualReturnPct??old.annualReturnPct??null),updatedAt:today()};
+  const key = investmentSnapshotKeyForSnapshot(data), index = investmentSnapshotUpdateIndex(data), old = index >= 0 ? state.investmentSnapshots[index] : {}, keepManual = !!old.manualPerformanceOverride;
+  const snapshot = {...old,...data,manualAumOverride:true,id:old.id||uid(),gainAmount:keepManual?old.gainAmount:data.gainAmount,gainPct:keepManual?old.gainPct:data.gainPct,annualReturnPct:keepManual?old.annualReturnPct:(data.annualReturnPct??old.annualReturnPct??null),updatedAt:today()};
   if (index >= 0) state.investmentSnapshots[index] = snapshot; else state.investmentSnapshots.push(snapshot);
   return snapshot;
 }
@@ -8897,7 +9011,7 @@ function investmentPosition_invPositionRows(f, clientId) {
       gain = investmentReportedGain(x),
       pct = investmentReportedPct(x),
       valueDate = fundValueDateText('investice', f.key, x.isin, x.snapshot?.date || x.source?.valueDate || x.source?.date || '');
-    return `<tr><td><b>${esc(x.product || x.kind || 'Investice')} #${i + 1}</b><br><span class="note">${esc([x.company, x.isin, x.typ || x.kind].filter(Boolean).join(' · '))}</span></td><td class="money">${money(put)}</td><td class="money">${money(cur)}<br><span class="note">k ${valueDate}</span></td><td class="money ${gain >= 0 ? 'green' : 'red'}">${money(gain)}<br><span>${pct.toFixed(1)} %</span></td><td>${esc(x.snapshot?.date || x.date || '')}</td><td>${esc(x.snapshot?.source || x.sourceType || 'CRM')}</td><td>${investmentPosition_invStatus(x)}</td><td>${investmentPosition_invRowAction(x, clientId)}</td></tr>`;
+    return `<tr><td><b>${esc(x.product || x.kind || 'Investice')} #${i + 1}</b><br><span class="chip">${esc(investmentScheduleLabel(x.snapshot || x.source || {}))}</span><br><span class="note">${esc([x.company, x.isin, x.typ || x.kind].filter(Boolean).join(' · '))}</span></td><td class="money">${money(put)}</td><td class="money">${money(cur)}<br><span class="note">k ${valueDate}</span></td><td class="money ${gain >= 0 ? 'green' : 'red'}">${money(gain)}<br><span>${pct.toFixed(1)} %</span></td><td>${esc(x.snapshot?.date || x.date || '')}</td><td>${esc(x.snapshot?.source || x.sourceType || 'CRM')}</td><td>${investmentPosition_invStatus(x)}</td><td>${investmentPosition_invRowAction(x, clientId)}</td></tr>`;
   }).join('') || '<tr><td colspan="8" class="note">Pod fondem není žádná pozice.</td></tr>'}</tbody></table></div>`;
 }
 function investmentPosition_invCard(f, clientId) {
@@ -10268,23 +10382,23 @@ function fundPerformance_classicPositionRows(f, clientId) {
       pct = investmentReportedPct(x),
       start = liquidity_investmentTaxStart(x),
       returnStart = investmentReturnStartDate(x),
-      valueDate = typeof fundValueDateText === 'function' ? fundValueDateText('investice', f.key, x.isin, x.snapshot?.date || x.source?.valueDate || x.source?.date || '') : x.snapshot?.date || x.date || '',
+      valueDate = liquidity_fmtDate(investmentItemValueDate(x)),
       reportedPa = investmentReportedAnnualPct(x),
-      pa = reportedPa == null ? fundPerformance_annualizedPct(put, cur, realized, returnStart, valueDate) : reportedPa,
+      pa = reportedPa == null ? (investmentHasRegularPayments(x) ? null : fundPerformance_annualizedPct(put, cur, realized, returnStart, valueDate)) : reportedPa,
       info = liquidity_liquidityInfo('investice', f.key, x.isin || f.isin, start);
-    return `<tr><td><b>${esc(x.product || x.kind || 'Investice')} #${i + 1}</b><br><span class="note">${esc([x.company, x.isin, x.typ || x.kind].filter(Boolean).join(' · '))}</span></td><td class="money">${money(put)}</td><td class="money">${money(cur)}<br><span class="date-highlight">k ${esc(valueDate || '-')}</span></td><td class="money ${gain >= 0 ? 'green' : 'red'}">${money(gain)}<br><span>${pct.toFixed(2)} %</span></td><td class="money ${pa === null || pa >= 0 ? 'green' : 'red'}">${pa === null ? '-' : pa.toFixed(2) + ' %'}</td><td>${liquidity_taxBadge(info)}<br><span class="note">${info ? `${num(info.rules.taxMonths)} měsíců od ${liquidity_fmtDate(start)}` : 'Doplň datum nákupu'}</span></td><td>${esc(valueDate || '-')}</td><td>${esc(x.snapshot?.source || x.sourceType || 'CRM')}</td><td>${typeof invStatus === 'function' ? invStatus(x) : ''}</td><td>${typeof invRowAction === 'function' ? invRowAction(x, clientId) : ''}</td></tr>`;
+    return `<tr><td><b>${esc(x.product || x.kind || 'Investice')} #${i + 1}</b><br><span class="chip">${esc(investmentScheduleLabel(x.snapshot || x.source || {}))}</span><br><span class="note">${esc([x.company, x.isin, x.typ || x.kind].filter(Boolean).join(' · '))}</span></td><td class="money">${money(put)}</td><td class="money">${money(cur)}<br><span class="date-highlight">k ${esc(valueDate || '-')}</span></td><td class="money ${gain >= 0 ? 'green' : 'red'}">${money(gain)}<br><span>${pct.toFixed(2)} %</span></td><td class="money ${pa === null || pa >= 0 ? 'green' : 'red'}">${pa === null ? '-' : pa.toFixed(2) + ' %'}</td><td>${liquidity_taxBadge(info)}<br><span class="note">${info ? `${num(info.rules.taxMonths)} měsíců od ${liquidity_fmtDate(start)}` : 'Doplň datum nákupu'}</span></td><td>${esc(valueDate || '-')}</td><td>${esc(x.snapshot?.source || x.sourceType || 'CRM')}</td><td>${typeof invStatus === 'function' ? invStatus(x) : ''}</td><td>${typeof invRowAction === 'function' ? invRowAction(x, clientId) : ''}</td></tr>`;
   }).join('') || '<tr><td colspan="10" class="note">Pod fondem není žádná pozice.</td></tr>'}</tbody></table></div>`;
 }
 function fundPerformance_classicCard(f, clientId) {
   const gain = Number.isFinite(+f.gain) ? +f.gain : investmentPerformanceGain(f.amount, f.invested, f.realized),
-    pct = f.invested ? gain / f.invested * 100 : 0,
+    pct = f.invested ? (f.items || []).reduce((sum,x) => sum + investmentReportedPct(x) * investmentInvestedAmount(x),0) / f.invested : 0,
     annualItems = (f.items || []).filter(x => investmentReportedAnnualPct(x) != null),
     annualWeight = annualItems.reduce((sum, x) => sum + (+x.amount || 0), 0),
     annualPct = annualWeight ? annualItems.reduce((sum, x) => sum + investmentReportedAnnualPct(x) * (+x.amount || 0), 0) / annualWeight : null,
     key = encodeURIComponent(String(f.key || '')),
     fv = state.fundValues?.[f.key] || {},
-    valueDateFallback = fv.date || f.items?.[0]?.snapshot?.date || f.items?.[0]?.date || '',
-    valueDate = typeof fundValueDateText === 'function' ? fundValueDateText('investice', f.key, f.isin, valueDateFallback) : valueDateFallback,
+    valueDates = [...new Set((f.items || []).map(investmentItemValueDate).filter(Boolean))],
+    valueDate = valueDates.length > 1 ? 'různá data – viz pozice' : liquidity_fmtDate(valueDates[0] || fv.date || ''),
     locked = isInvestmentFundLocked(f.key),
     comment = fundPerformance_fundComment('investice', f.key, f.isin),
     tax = liquidity_taxSummary((f.items || []).map(x => liquidity_liquidityInfo('investice', f.key, x.isin || f.isin, liquidity_investmentTaxStart(x))));
@@ -10461,11 +10575,12 @@ function fundPerformance_renderScenarioRange() {
 }
 function pensions_pIsPensionContract(s) {
   if (!s) return false;
-  if (typeof areaForContract === 'function' && areaForContract(s) === 'penze') return true;
-  return /\bdps\b|\bdip\b|penz/.test(pensions_pNorm([s.type, s.product, s.company, s.source].join(' ')));
+  return areaForContract(s) === 'penze';
 }
 function pensions_pIsPensionDeal(d) {
   if (!d) return false;
+  const linked = linkedContractForDeal(d);
+  if (linked && pensions_pIsActive(linked)) return areaForContract(linked) === 'penze';
   if (typeof areaForDeal === 'function' && areaForDeal(d) === 'penze') return true;
   return /\bdps\b|\bdip\b|penz/.test(pensions_pNorm([d.category, d.product, d.company].join(' ')));
 }
@@ -10639,7 +10754,7 @@ function clientOutput_xClientInvestments(c) {
       annualReturnPct: investmentReportedAnnualPct(x),
       snapshot: x.snapshot || null,
       date: x.date || x.snapshot?.date || '',
-      valueDate: clientOutput_xValueDate('investice', key, x.isin, x.date || ''),
+      valueDate: liquidity_fmtDate(investmentItemValueDate(x)),
       comment: clientOutput_xComment('investice', key, x.isin),
       rows: [x]
     };
@@ -10699,7 +10814,7 @@ function clientOutput_xTotals(items) {
     current,
     realized,
     gain: manualGain,
-    pct: invested ? manualGain / invested * 100 : 0,
+    pct: invested ? items.reduce((sum,x) => sum + (x.area === 'Investice' && x.gainPct != null ? +x.gainPct : clientOutput_xPerf(x.amount,x.invested,x.realized).pct) * clientOutput_xN(x.invested), 0) / invested : 0,
     annualReturnPct: annualWeight ? annualItems.reduce((s, x) => s + (+x.annualReturnPct) * clientOutput_xN(x.amount), 0) / annualWeight : null
   };
 }
@@ -10885,6 +11000,7 @@ function clientOutput_xRowInvested(r) {
   return direct || Math.abs(clientOutput_xN(clientOutput_xPick(r, ['Čistá investice', 'Cista investice', 'investment', 'invested', 'amount'])));
 }
 function clientOutput_xRowCurrentDirect(r) {
+  if (r?.snapshot) return investmentSnapshotLiveCurrent(r.snapshot);
   const manual = invManualValue(r);
   if (manual !== null) return manual;
   const direct = typeof invCurrentValue === 'function' ? clientOutput_xN(invCurrentValue(r)) : typeof invCurrent === 'function' ? clientOutput_xN(invCurrent(r)) : 0;
@@ -10907,15 +11023,15 @@ function clientOutput_xFundRows(f) {
     const invested = clientOutput_xRowInvested(r),
       direct = clientOutput_xRowCurrentDirect(r),
       share = totalInvested > 0 ? invested / totalInvested : 0,
-      current = invManualValue(r) !== null ? direct : direct > 0 ? direct : clientOutput_xN(f.amount) * share,
+      current = r?.snapshot || invManualValue(r) !== null ? direct : direct > 0 ? direct : clientOutput_xN(f.amount) * share,
       realized = typeof investmentRealizedAmount === 'function' ? clientOutput_xN(investmentRealizedAmount(r)) : clientOutput_xN(r?.realized || r?.redemptionAmount || 0),
       date = clientOutput_xRowPurchaseDate(r),
       taxStart = clientOutput_xRowTaxStart(r, f.area),
       taxInfo = liquidity_liquidityInfo(f.area === 'FKI' ? 'fki' : 'investice', f.key, f.isin, taxStart),
-      valueDate = clientOutput_xValueDate(f.area === 'FKI' ? 'fki' : 'investice', f.key, f.isin, f.valueDate || date),
-      perf = clientOutput_xPerf(current, invested, realized),
+      valueDate = f.area === 'Investice' && r.snapshot ? liquidity_fmtDate(investmentItemValueDate(r)) : clientOutput_xValueDate(f.area === 'FKI' ? 'fki' : 'investice', f.key, f.isin, f.valueDate || date),
+      perf = f.area === 'Investice' && r.snapshot ? {gain:investmentReportedGain(r),pct:investmentReportedPct(r)} : clientOutput_xPerf(current, invested, realized),
       reportedPa = typeof investmentReportedAnnualPct === 'function' ? investmentReportedAnnualPct(r) : null,
-      pa = reportedPa == null ? clientOutput_xAnnualized(invested, current, realized, date, valueDate || f.valueDate) : reportedPa;
+      pa = reportedPa == null ? (investmentHasRegularPayments(r) ? null : clientOutput_xAnnualized(invested, current, realized, date, valueDate || f.valueDate)) : reportedPa;
     return {
       r,
       i,
@@ -12115,7 +12231,7 @@ function liquidity_oldRenderInvestmentDetail(row) {
     last = snaps[0],
     funds = investmentPosition_invGroup(items);
   if (!c) return '<div class="investment-empty"><h2>Vyber klienta</h2><p>Vlevo klikni na klienta s běžnou investicí.</p></div>';
-  return `<div class="investment-detail-head"><div class="avatar">${esc(initials(c.name))}</div><div><div class="eyebrow">Investiční karta klienta</div><h2>${esc(clientName(c))}</h2><div class="chips"><span class="badge blue">${num(funds.length)} fondů</span><span class="chip">${row.providers.length ? esc(row.providers.join(' · ')) : 'bez společnosti'}</span>${last ? `<span class="badge green">ověřeno ${esc(last.date || '')}</span>` : '<span class="badge orange">čeká na aktualizaci</span>'}</div></div><div class="actions"><button class="btn slim" onclick="selectedClientId=${c.id};showView('clients');clientSection='portfolio';renderClients()">Klient</button><button class="btn slim" onclick="openInvestmentSnapshotModal(${c.id})">Upravit pozici</button><button class="btn slim primary" onclick="openInvestmentScenarioModal(${c.id},'Investice')">+ Nová investice</button></div></div><div class="investment-summary"><div class="metric"><span class="note">AUM / hodnota</span><b>${money(current)}</b></div><div class="metric"><span class="note">Vloženo</span><b>${money(invested)}</b></div><div class="metric"><span class="note">Rozdíl</span><b class="${gain >= 0 ? 'green' : 'red'}">${money(gain)}</b></div><div class="metric"><span class="note">Zhodnocení</span><b class="${gain >= 0 ? 'green' : 'red'}">${gainPct.toFixed(1)} %</b></div></div>${renderInvestmentAllocation(items, current)}<div class="mini-card"><div class="toolbar"><div><div class="eyebrow">Detail investičních fondů</div><h3>Fondy klienta, pozice a hodnoty</h3></div><button class="btn" onclick="openInvestmentFundModal()">Fondy</button></div><div class="fki-work-list">${funds.map(f => investmentPosition_invCard(f, c.id)).join('') || '<p class="note">Klient zatím nemá evidované investice.</p>'}</div></div>${snaps.length ? `<div class="mini-card" style="margin-top:12px"><h3>Poslední ruční aktualizace</h3><div class="table-wrap"><table class="compact-table"><thead><tr><th>Datum</th><th>Produkt</th><th>Zdroj</th><th>Vloženo</th><th>AUM</th><th>Výnos</th><th>Pravidelně</th></tr></thead><tbody>${snaps.map(s => `<tr><td>${esc(s.date || '')}</td><td><b>${esc(s.product || 'Investice')}</b><br><span class="note">${esc(s.company || '')}</span></td><td>${esc(s.source || '')}${s.redemptionAmount ? `<br><span class="badge orange">${esc(investmentRedemptionText(s))}</span>` : ''}</td><td class="money">${money(s.invested)}</td><td class="money">${money(s.current)}</td><td class="money">${money(s.gainAmount)}${s.gainPct ? `<br><span class="${(+s.gainPct || 0) >= 0 ? 'green' : 'red'}">${num(s.gainPct)} %</span>` : ''}</td><td>${s.regularAmount ? `${money(s.regularAmount)}<br><span class="note">${esc(s.regularFrequency || '')}</span>` : '<span class="note">nezadáno</span>'}</td></tr>`).join('')}</tbody></table></div></div>` : ''}`;
+  return `<div class="investment-detail-head"><div class="avatar">${esc(initials(c.name))}</div><div><div class="eyebrow">Investiční karta klienta</div><h2>${esc(clientName(c))}</h2><div class="chips"><span class="badge blue">${num(funds.length)} fondů</span><span class="chip">${row.providers.length ? esc(row.providers.join(' · ')) : 'bez společnosti'}</span>${last ? `<span class="badge green">ověřeno ${esc(last.date || '')}</span>` : '<span class="badge orange">čeká na aktualizaci</span>'}</div></div><div class="actions"><button class="btn slim" onclick="selectedClientId=${c.id};showView('clients');clientSection='portfolio';renderClients()">Klient</button><button class="btn slim" onclick="openInvestmentSnapshotModal(${c.id})">Upravit pozici</button><button class="btn slim primary" onclick="openInvestmentScenarioModal(${c.id},'Investice')">+ Nová investice</button></div></div><div class="investment-summary"><div class="metric"><span class="note">AUM / hodnota</span><b>${money(current)}</b></div><div class="metric"><span class="note">Vloženo</span><b>${money(invested)}</b></div><div class="metric"><span class="note">Rozdíl</span><b class="${gain >= 0 ? 'green' : 'red'}">${money(gain)}</b></div><div class="metric"><span class="note">Zhodnocení</span><b class="${gain >= 0 ? 'green' : 'red'}">${gainPct.toFixed(1)} %</b></div></div>${renderInvestmentAllocation(items, current)}<div class="mini-card"><div class="toolbar"><div><div class="eyebrow">Detail investičních fondů</div><h3>Fondy klienta, pozice a hodnoty</h3></div><button class="btn" onclick="openInvestmentFundModal()">Fondy</button></div><div class="fki-work-list">${funds.map(f => investmentPosition_invCard(f, c.id)).join('') || '<p class="note">Klient zatím nemá evidované investice.</p>'}</div></div>${snaps.length ? `<div class="mini-card" style="margin-top:12px"><h3>Poslední ruční aktualizace</h3><div class="table-wrap"><table class="compact-table"><thead><tr><th>Datum</th><th>Produkt</th><th>Zdroj</th><th>Vloženo</th><th>AUM</th><th>Výnos</th><th>Pravidelně</th></tr></thead><tbody>${snaps.map(s => `<tr><td>${esc(s.date || '')}</td><td><b>${esc(s.product || 'Investice')}</b><br><span class="note">${esc(s.company || '')}</span></td><td>${esc(s.source || '')}${s.redemptionAmount ? `<br><span class="badge orange">${esc(investmentRedemptionText(s))}</span>` : ''}</td><td class="money">${money(s.invested)}</td><td class="money">${money(investmentSnapshotLiveCurrent(s))}</td><td class="money">${money(investmentReportedGain(investmentSnapshotItem(s)))}${s.gainPct ? `<br><span class="${(+s.gainPct || 0) >= 0 ? 'green' : 'red'}">${num(s.gainPct)} %</span>` : ''}</td><td>${s.regularAmount ? `${money(s.regularAmount)}<br><span class="note">${esc(s.regularFrequency || '')}</span>` : '<span class="note">nezadáno</span>'}</td></tr>`).join('')}</tbody></table></div></div>` : ''}`;
 }
 function renderInvestmentFunds(funds) {
   if (funds.length && !funds.some(f => f.key === selectedInvestmentFundKey)) selectedInvestmentFundKey = null;
@@ -12769,7 +12885,7 @@ function renderInvestmentDetail(row) {
   const bar=clientProviderBar('investice',row.client.id,row.items),selected=clientProviderSelection('investice',row.client.id);
   const items=row.items.filter(x=>!selected||(x.company||'Bez společnosti')===selected);
   const invested=items.reduce((s,x)=>s+investmentInvestedAmount(x),0),gain=items.reduce((s,x)=>s+investmentReportedGain(x),0),annualItems=items.filter(x=>investmentReportedAnnualPct(x)!=null),annualWeight=annualItems.reduce((s,x)=>s+(+x.amount||0),0);
-  const filtered={...row,items,current:items.reduce((s,x)=>s+(+x.amount||0),0),invested,realized:items.reduce((s,x)=>s+investmentRealizedAmount(x),0),gain,gainPct:invested?gain/invested*100:0,annualReturnPct:annualWeight?annualItems.reduce((s,x)=>s+investmentReportedAnnualPct(x)*(+x.amount||0),0)/annualWeight:null};
+  const filtered={...row,items,current:items.reduce((s,x)=>s+(+x.amount||0),0),invested,realized:items.reduce((s,x)=>s+investmentRealizedAmount(x),0),gain,gainPct:invested?items.reduce((sum,x)=>sum+investmentReportedPct(x)*investmentInvestedAmount(x),0)/invested:0,annualReturnPct:annualWeight?annualItems.reduce((s,x)=>s+investmentReportedAnnualPct(x)*(+x.amount||0),0)/annualWeight:null};
   return bar+renderInvestmentDetailContent(filtered);
 }
 function renderFkClientDetail(row) {
@@ -14015,8 +14131,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.22-1';
-const VERSION_NOTE = 'FKI automaticky dopočítá počet CP z vkladu a upisovací ceny, aktuální hodnotu i výnos. Výpočet je vidět už ve formuláři a po úpravě jej nepřebíjí starší import.';
+const VERSION = '2026.10.22-2';
+const VERSION_NOTE = 'Klasické investice: pravidelné i jednorázové vklady, ruční hodnoty a automatický dopočet. Přesun smlouvy z DIP do investic respektuje zvolený typ.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';

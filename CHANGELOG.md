@@ -1,3 +1,14 @@
+## 2026.10.22-2
+- Opraveno ukládání u fondů s více historickými aktualizacemi: upravuje se otevřený záznam místo prvního nalezeného. Starší aktualizace tak nezastíní ručně změněnou částku. Datum klientského ocenění je samostatné od společné ceny CP. Reprodukční test Atrisu ověřuje skutečné tlačítko karty, historii a obnovení stránky.
+- Investiční smlouva nabízí přímo celkové vklady, aktuální hodnotu, výnos v Kč / %, roční údaj producenta a režim investování. Sdílí jeden uložený záznam s detailem investice. Pravidelná platba smlouvy, obchodní objem ani BJ se aktualizací majetku nemění.
+- Zařazení smlouvy respektuje zvolený typ, i když v názvu produktu nebo původním importu zůstalo DIP. Přesun do investic se projeví na kartě klienta, v investicích, penzích a reportech; historický navázaný obchod nevytvoří falešnou penzijní položku.
+- Klasické investice mají volbu jednorázová, pravidelná nebo kombinace obou. U pravidelné lze uvést výši a frekvenci vkladu, celkem vložená částka zůstává samostatným údajem.
+- Aktualizace klienta přímo nabízí vklady v Kč, aktuální hodnotu po odkupech, výnos v Kč, celkové procento a p.a./MWR. Vyplněné údaje mají přednost včetně nuly a záporného výnosu; prázdné výnosy se počítají průběžně.
+- Prázdná aktuální hodnota se dopočte z CP (případně z vkladu a nákupní ceny), jinak ze zadaného celkového výnosu. Bez podkladů zůstává rovna vkladům po odkupech, což formulář výslovně uvádí. Náhled odlišuje ruční a vypočtené hodnoty, automatické částky se nevydávají za ručně zadané.
+- Ruční hodnoty a výnosy se zachovávají po znovuotevření; stejné výsledky používají detail, souhrny a klientské reporty. Zadaná aktuální hodnota je již po odkupech, odkup se od ní neodečítá podruhé.
+- U pravidelných a kombinovaných vkladů se bez historie jednotlivých plateb nevytváří zavádějící p.a. z jediného počátečního data. Roční výnos / MWR producenta lze zadat ručně.
+- Ověřeno v izolovaném prohlížeči na syntetických datech včetně importu, změny NAV, nulových hodnot, odkupů, ukládání a oddělení klientů.
+
 ## 2026.10.22-1
 - FKI záznam automaticky počítá hodnotu z počtu CP a aktuální ceny. Když počet CP není zadaný, odvodí jej z čisté investice a upisovací ceny; pole aktuální hodnoty v Kč lze nechat prázdné.
 - Formulář ukazuje okamžitý výpočet a rozlišuje zadaný a dopočtený počet CP. Stejný výpočet se používá při uložení, na kartách klienta, v součtech a reportech.

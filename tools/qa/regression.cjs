@@ -255,7 +255,7 @@ try{
  assert.deepEqual(campaign.candidates,[1]);assert.deepEqual(campaign.saved.recipientIds,[1]);assert.equal(campaign.activity.type,'Smart emailing');assert(campaign.mailto.startsWith('mailto:advisor%40example.test?'));assert(campaign.mailto.includes('bcc=alfa%40example.test'));assert(campaign.history.includes('Test investiční kampaně'));results.push('Campaign selection, BCC handoff and client history');
  await page.screenshot({path:'/private/tmp/crm-unified-campaigns.png',fullPage:true});
  await page.evaluate(()=>openInvestmentSnapshotModal(1));
- assert(await page.locator('#investmentSnapshotModal').innerText().then(t=>t.includes('Datum investice klienta')&&t.includes('Aktuální hodnota CP')&&t.includes('Ruční AUM')));
+ assert(await page.locator('#investmentSnapshotModal').innerText().then(t=>t.includes('Datum investice klienta')&&t.includes('Aktuální hodnota CP')&&t.includes('Aktuální hodnota po odkupech (Kč)')&&t.includes('Způsob investování')));
  assert.equal(await page.locator('#isFundNavDate').getAttribute('type'),'date');
  await page.screenshot({path:'/private/tmp/crm-investment-position-modal.png',fullPage:true});
  await page.evaluate(()=>closeModal('investmentSnapshotModal'));

@@ -8,6 +8,9 @@ node tools/qa/google-sync.cjs
 python3 tools/qa/storage.py
 node tools/qa/regression.cjs
 node tools/qa/fki-nav.cjs
+node tools/qa/classic-valuation.cjs
+node tools/qa/contract-investment.cjs
+node tools/qa/atris-manual.cjs
 node tools/qa/weekly-goals.cjs
 node tools/qa/delegation.cjs
 ```
