@@ -18,6 +18,7 @@ node tools/qa/weekly-goals.cjs
 node tools/qa/focus-dashboard.cjs
 node tools/qa/daily-tasks.cjs
 node tools/qa/delegation.cjs
+node tools/qa/insurance-claims.cjs
 ```
 
 Prohlížečový test vyžaduje Playwright a Chrome/Chromium. runtime.cjs hledá instalovaný balík Playwright nebo sdílený běhový balík Codex. Na Macu používá Chrome z Applications; jiný prohlížeč lze zadat proměnnou CRM_QA_BROWSER. Test potřebuje přístup ke spuštění prohlížeče.
@@ -29,3 +30,5 @@ Regrese ukládá souhrn a náhledy do /private/tmp/crm-regression-results.json, 
 focus-dashboard.cjs ověřuje rozepsané cíle, dokončení sdílené aktivity, změny pořadí, přelom dne/týdne, výslovné rozhodování o nedokončených položkách, archiv vyhodnocení, roční cíle, export DPS/DIP a vypnutých sekcí, izolaci klientů, obnovu a slučování zálohy a mobilní šířku. Používá jen syntetická data.
 
 fund-profiles.cjs ověřuje přesné ISIN, aktuální i vlastní metadata, zachování ocenění a provizí, bezpečné odkazy a samostatné klientské reporty. pension-report.cjs ověřuje ukládání a historii DPS/DIP, příspěvky a výběry, nulu versus neznámou hodnotu a mobilní i tiskové zobrazení. Oba používají pouze syntetická data.
+
+insurance-claims.cjs ověřuje založení a úpravy pojistných událostí, historii, soubory, filtry, klientské vazby, nulu versus neuvedené plnění, obnovu JSON/Google, opakované sloučení a ochranu před ztrátou dat. Kontroluje i neúspěšné uložení a souběžné změny otevřeného záznamu. Snímky počítače a telefonu ukládá do /private/tmp/crm-claims-desktop.png, /private/tmp/crm-claims-mobile.png a /private/tmp/crm-claim-editor-mobile.png. Používá jen syntetická data a oddělený prohlížeč.

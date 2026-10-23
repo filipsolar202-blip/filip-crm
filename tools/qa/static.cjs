@@ -2,12 +2,17 @@ const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),asse
 const root=path.resolve(__dirname,'../..');
 const source=fs.readFileSync(path.join(root,'assets/js/crm.js'),'utf8');
 new vm.Script(source,{filename:'crm.js'});
-const names=[...source.matchAll(/^(?:async )?function (\w+)\(/gm)].map(m=>m[1]);
+const claimsSource=fs.readFileSync(path.join(root,'assets/js/insurance-claims.js'),'utf8');
+new vm.Script(claimsSource,{filename:'insurance-claims.js'});
+const names=[...(source+'\n'+claimsSource).matchAll(/^(?:async )?function (\w+)\(/gm)].map(m=>m[1]);
 assert.equal(names.length,new Set(names).size,'Application functions must have a single definition');
 assert(!/window\.\w+\s*=\s*function/.test(source),'No runtime patch layers');
+assert(!/window\.\w+\s*=\s*function/.test(claimsSource),'Claims module must not patch the runtime');
 const html=fs.readFileSync(path.join(root,'FILIP-CRM.html'),'utf8');
 for(const m of html.matchAll(/(?:src|href)="(assets\/[^"?]+)/g))assert(fs.existsSync(path.join(root,m[1])),m[1]);
 assert.equal([...html.matchAll(/src="assets\/js\/crm.js/g)].length,1);
+assert.equal([...html.matchAll(/src="assets\/js\/insurance-claims.js/g)].length,1);
+assert(html.indexOf('src="assets/js/insurance-claims.js') < html.indexOf('src="assets/js/crm.js'),'Claim renderers must exist before startup');
 let scripts=0;
 for(const f of fs.readdirSync(root).filter(f=>f.endsWith('.html'))){
  for(const m of fs.readFileSync(path.join(root,f),'utf8').matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)){

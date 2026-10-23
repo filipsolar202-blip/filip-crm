@@ -1,12 +1,14 @@
 # Architektura hlavního CRM
 
-Stav k verzi 2026.10.01-2. Starší ARCHITECTURE_AUDIT.md popisuje stav před tímto sjednocením.
+Stav k verzi 2026.10.23-2. Starší ARCHITECTURE_AUDIT.md popisuje stav před sjednocením aplikační logiky.
 
 ## Jedna aplikace
 
 FILIP-CRM.html obsahuje společnou navigaci, agendy a formuláře. Vzhled dodává assets/css/crm.css a chování assets/js/crm.js. Hlavní stránka neobsahuje dodatečné balíky, které by za běhu nahrazovaly implementace funkcí. Pojmenované aplikační funkce mají každá jedinou definici.
 
 Společný stav `state` používají klienti, smlouvy, obchody, investice, FKI, penze, aktivity, reporty a zálohy. Jedno spuštění připraví scénáře, vykreslí rozhraní a inicializuje diskové úložiště. Po jeho načtení se sjednotí výchozí údaje fondů a zobrazení se obnoví. `renderAll` je společný vstup pro překreslení.
+
+Pojistné události používají kolekci `state.insuranceClaims`. Modul `assets/js/insurance-claims.js` dodává vlastní přehled, obsah klientské záložky a dialog; načítá se před `crm.js`, nemění existující funkce a používá společné `persist`, `uid` a navigaci. Normalizace, slučování záloh, vazby na klienta/smlouvu a ochranné počty zůstávají v `crm.js`. Událost má stabilní `syncId`, datovanou historii a přílohy. Sloučení importu používá mapování identity klienta a smlouvy, nikoli shodu číselných ID napříč zálohami. Neúplné importované vazby zůstávají k ručnímu doplnění. Události ani jejich vyplacené částky nevstupují do produkce nebo AUM.
 
 Investice mimo správu jsou uloženy samostatně v `externalInvestments` a prognózy v `investmentForecasts`. Výpočty AUM, produkce a provizí tyto externí položky nečtou. Prognóza si ukládá vlastní snímek spravovaných i externích pozic a návrhu, aby šla později znovu otevřít beze změny historického výstupu.
 

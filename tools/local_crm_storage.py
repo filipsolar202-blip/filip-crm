@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import base64
+import hashlib
 import json
 import os
 import re
@@ -112,16 +113,20 @@ def decode_data_url(data_url):
     return mime, base64.b64decode(raw)
 
 
-def attachment_ref(contract_id, attachment):
+def attachment_ref(contract_id, attachment, collection="contracts"):
     att_id = safe_name(attachment.get("id") or now_stamp(), "priloha")
     name = safe_name(attachment.get("name") or "priloha")
-    return f"contracts/{safe_name(contract_id, 'bez-smlouvy')}/{att_id}_{name}"
+    return f"{collection}/{safe_name(contract_id, 'bez-zaznamu')}/{att_id}_{name}"
 
 
 def externalize_attachments(state):
     changed = 0
-    for contract in state.get("contracts", []) if isinstance(state, dict) else []:
-        contract_id = contract.get("id") or "bez-smlouvy"
+    records = [("contracts", row) for row in state.get("contracts", [])] if isinstance(state, dict) else []
+    records += [("insuranceClaims", row) for row in state.get("insuranceClaims", [])] if isinstance(state, dict) else []
+    for collection, contract in records:
+        if not isinstance(contract, dict):
+            continue
+        contract_id = contract.get("id") or "bez-zaznamu"
         attachments = contract.get("attachments")
         if not isinstance(attachments, list):
             continue
@@ -134,8 +139,17 @@ def externalize_attachments(state):
             mime, payload = decode_data_url(data_url)
             if not payload:
                 continue
-            ref = attachment.get("fileRef") or attachment_ref(contract_id, attachment)
-            target = ATTACHMENT_DIR / ref
+            if collection == "insuranceClaims":
+                owner = safe_name(contract.get("syncId") or contract_id, "udalost")
+                digest = hashlib.sha256(payload).hexdigest()[:20]
+                ref = f"insuranceClaims/{owner}/{digest}_{safe_name(attachment.get('name'), 'priloha')}"
+            else:
+                ref = attachment.get("fileRef") or attachment_ref(contract_id, attachment, collection)
+            target = (ATTACHMENT_DIR / ref).resolve()
+            if ATTACHMENT_DIR.resolve() not in target.parents:
+                raise ValueError("Neplatný odkaz na přílohu")
+            if collection == "insuranceClaims" and attachment.get("fileRef") == ref and target.is_file() and target.read_bytes() == payload:
+                continue
             target.parent.mkdir(parents=True, exist_ok=True)
             with target.open("wb") as f:
                 f.write(payload)
@@ -144,7 +158,9 @@ def externalize_attachments(state):
             attachment["type"] = attachment.get("type") or mime
             attachment["size"] = attachment.get("size") or len(payload)
             attachment["savedAt"] = datetime.now().isoformat(timespec="seconds")
-            attachment.pop("dataUrl", None)
+            # Claims must remain portable in JSON/Google backups, even on another device.
+            if collection != "insuranceClaims":
+                attachment.pop("dataUrl", None)
             changed += 1
     return changed
 
@@ -152,12 +168,14 @@ def externalize_attachments(state):
 def counts(state):
     state = state or {}
     contracts = state.get("contracts") or []
-    attachments = sum(len(c.get("attachments") or []) for c in contracts if isinstance(c, dict))
+    claims = state.get("insuranceClaims") or []
+    attachments = sum(len(c.get("attachments") or []) for c in contracts + claims if isinstance(c, dict))
     return {
         "clients": len(state.get("clients") or []),
         "contracts": len(contracts),
         "deals": len(state.get("deals") or []),
         "opportunities": len(state.get("opportunities") or []),
+        "insuranceClaims": len(claims),
         "notes": len(state.get("notes") or []),
         "attachments": attachments,
     }

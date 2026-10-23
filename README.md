@@ -1,10 +1,18 @@
 # FILIP CRM
 
-Lokální CRM pro klienty, smlouvy, obchody, investice, FKI, poznámky, reporty a zálohu.
+Lokální CRM pro klienty, smlouvy, obchody, pojistné události, investice, FKI, poznámky, reporty a zálohu.
 
-## Verze 2026.10.01-2
+## Verze 2026.10.23-2
 
-Hlavní CRM má jednu aplikační logiku a společný modrý glass vzhled. Investiční plán porovnává aktuální portfolio s nejvýše dvěma alternativami A a B. Odprodej lze rozdělit do více nových nákupů. Pro klienta lze stáhnout podrobný investiční návrh ve stylu původní kalkulačky nebo stručné srovnání variant. Přehled změn je v `CHANGELOG.md`, výsledky ověření v `QA-2026-09-16.md`.
+Hlavní CRM má jednu aplikační logiku a společný modrý glass vzhled. Investiční plán porovnává aktuální portfolio s nejvýše dvěma alternativami A a B. Odprodej lze rozdělit do více nových nákupů. Pro klienta lze stáhnout podrobný investiční návrh ve stylu původní kalkulačky nebo stručné srovnání variant. Přehled změn je v `CHANGELOG.md`, ověření aktuálního vydání v `QA-2026-10-23-2.md`.
+
+## Pojistné události
+
+Na kartě klienta klikni na **+ Pojistná událost**. Vyber oblast pojištění, případně existující smlouvu, a zapiš, co se stalo. Datum události, datum založení evidence a datum nahlášení pojišťovně mají samostatná pole. Lze doplnit číslo události, požadované plnění a další krok s termínem.
+
+V hlavním menu **Pojistné události** sleduj fáze **Nahlášeno → Kompletace → Odesláno pojišťovně → Posouzení → Vyřízeno**. V detailu lze přidávat datované poznámky, podklady, datum odeslání a uzavření, skutečně vyplacenou částku a výsledek. **Zamítnuto** a **Zrušeno** uchovají celý záznam. Vyřízené události najdeš filtrem ukončených nebo všech událostí; u klienta zůstávají ve vlastní záložce.
+
+Události jsou součástí společné JSON i Google zálohy včetně poznámek a příloh. Pojistné plnění se nezapočítává do obchodní produkce, provizí ani AUM.
 
 ## Náhrada stávající smlouvy
 
@@ -17,6 +25,8 @@ Datum obchodu je nezávislé na účinnosti. Obchod je evidovaný hned. Pokud je
 - `FILIP-CRM.html` — vstupní stránka a formuláře.
 - `assets/js/crm.js` — společná aplikační logika.
 - `assets/js/fund-profiles.js` — veřejné informace fondů podle přesného ISIN, s daty kontroly a oficiálními zdroji; neobsahuje klientská ocenění.
+- `assets/js/insurance-claims.js` — evidence pojistných událostí nad společným stavem a ukládáním CRM.
+- `assets/css/insurance-claims.css` — přehled a detail pojistných událostí.
 - `assets/css/crm.css` — společný vzhled včetně rozložení pro tablet.
 - `assets/vendor/` — lokální knihovny pro grafy a tabulky.
 - `index.html` — přesměrování na aktuální verzi.

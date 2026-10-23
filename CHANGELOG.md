@@ -1,3 +1,11 @@
+## 2026.10.23-2
+- Samostatné Pojistné události v hlavní navigaci, vlastní záložka klienta a rychlé založení přímo z jeho karty. Evidence pro životní pojištění, úrazy a děti, auta, majetek, odpovědnost a ostatní oblasti.
+- Pipeline Nahlášeno, Kompletace, Odesláno pojišťovně, Posouzení a Vyřízeno; samostatné ukončení zamítnutím nebo zrušením. Hledání a filtry podle oblasti, stavu a otevřených/ukončených událostí.
+- Samostatná data vzniku, evidence, nahlášení, odeslání a vyřízení; volitelné propojení se smlouvou, číslo události, popis, další krok, požadované a vyplacené plnění a výsledek. Prázdná částka se nezaměňuje za nulové plnění.
+- Datované poznámky, přílohy a historie změn zůstávají u klienta i po uzavření. Neúspěšné uložení ponechá rozepsaný formulář otevřený.
+- Události, přílohy a historie jsou součástí JSON, Google i diskové zálohy včetně ochrany před přepsáním neúplnou zálohou. Opakovaný import slučuje podle stabilní identity, zachovává historii a převádí vazby klientů a smluv. Klienta s událostmi nelze nechtěně smazat.
+- Vyplacené pojistné plnění je oddělené od obchodů, provizí a klientského AUM.
+
 ## 2026.10.23-1
 - Celý katalog prověřen podle přesných ISIN: 30 tříd FKI a 8 běžných fondů. Jednotné profily obsahují cíle, výkonnost s datem, velikost, poplatky, oceňování, horizont, riziko, správu a likviditu. Oficiální odkazy a datum kontroly jsou součástí samostatného HTML reportu.
 - Přehled Informace o fondech je dostupný v FKI i Investice → Fondy, včetně fondů bez klientů. Veřejný katalog je oddělený od klientských hodnot, cen CP, provizí a zámků. Vlastní upravené texty se zachovávají a označují.

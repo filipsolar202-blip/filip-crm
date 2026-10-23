@@ -18,6 +18,7 @@ function renderActiveView() {
       campaigns: [['Kampaně', renderCampaigns]],
       opportunities: [['Obchodní případy', renderOpportunities]],
       pipeline: [['Pipeline', renderOpportunities]],
+      insuranceClaims: [['Pojistné události', renderInsuranceClaims]],
       caseDetail: [['Detail obchodního případu', renderCaseDetail]],
       contracts: [['Smlouvy', renderContracts]],
       investments: [['Investice', renderInvestments]],
@@ -71,6 +72,7 @@ function def() {
     managementPayouts: [],
     notes: [],
     opportunities: [],
+    insuranceClaims: [],
     commissionImports: [],
     analysisEntries: [],
     campaigns: [],
@@ -140,6 +142,58 @@ function normalizeActivityHistory(activities) {
     a.completedAt = a.completedAt || a.date || a.createdAt || '';
   });
 }
+// Claims are a separate service agenda: never derive contracts, deals or AUM from them.
+function insuranceClaimFallbackSyncId(claim) {
+  return 'claim:legacy:' + encodeURIComponent(JSON.stringify([claim.id ?? '', claim.clientId ?? '', claim.createdAt || claim.recordedDate || '', claim.title || '', claim.incidentDate || '']));
+}
+function normalizeInsuranceClaimRecords(s) {
+  const seenIds = new Set();
+  const nextAfterRows = (max, rows) => rows.reduce((n, x) => Number.isSafeInteger(+x?.id) ? Math.max(n, +x.id + 1) : n, max);
+  let next = Object.values(s).filter(Array.isArray).reduce(nextAfterRows, +s.nextId || 1);
+  s.insuranceClaims = (s.insuranceClaims || []).filter(x => x && typeof x === 'object' && !Array.isArray(x));
+  next = s.insuranceClaims.reduce((max, claim) => ['history','attachments'].reduce((n, key) => nextAfterRows(n, Array.isArray(claim[key]) ? claim[key] : []), max), next);
+  s.insuranceClaims.forEach(claim => {
+    if (!claim.syncId) claim.syncId = insuranceClaimFallbackSyncId(claim);
+    if (!Number.isSafeInteger(+claim.id) || +claim.id < 1 || seenIds.has(String(claim.id))) claim.id = next++;
+    seenIds.add(String(claim.id));
+    claim.history = (Array.isArray(claim.history) ? claim.history : []).filter(x => x && typeof x === 'object' && !Array.isArray(x));
+    claim.attachments = (Array.isArray(claim.attachments) ? claim.attachments : []).filter(x => x && typeof x === 'object' && !Array.isArray(x));
+  });
+  s.nextId = Math.max(+s.nextId || 1, next);
+}
+function insuranceClaimMergeEntries(older, newer, kind) {
+  const result = [], usedIds = new Set();
+  const contentKey = entry => {
+    if (kind === 'attachment') return JSON.stringify([entry.name || '', entry.type || '', entry.size || 0, entry.dataUrl || entry.fileRef || '']);
+    return JSON.stringify([entry.at || '', entry.date || '', entry.status || '', entry.text || '']);
+  };
+  [...(older || []), ...(newer || [])].forEach(entry => {
+    const key = contentKey(entry);
+    const existing = result.find(x => contentKey(x) === key || (kind === 'attachment' && entry.id && x.id === entry.id && x.name === entry.name && +x.size === +entry.size && (!x.dataUrl || !entry.dataUrl || x.dataUrl === entry.dataUrl) && (!x.fileRef || !entry.fileRef || x.fileRef === entry.fileRef)));
+    if (existing) {
+      Object.assign(existing, entry, {id:existing.id || entry.id}, kind === 'attachment' ? {dataUrl:entry.dataUrl || existing.dataUrl, fileRef:entry.fileRef || existing.fileRef} : {});
+      return;
+    }
+    const copy = {...entry};
+    if (copy.id && usedIds.has(String(copy.id))) {
+      const base = String(copy.id); let n = 2;
+      while (usedIds.has(base + ':import:' + n)) n++;
+      copy.id = base + ':import:' + n;
+    }
+    if (copy.id) usedIds.add(String(copy.id));
+    result.push(copy);
+  });
+  if (kind === 'history') result.sort((a, b) => String(a.at || a.date || '').localeCompare(String(b.at || b.date || '')));
+  return result;
+}
+function mergeInsuranceClaimRecord(existing, incoming) {
+  const timestamp = x => Date.parse(x.updatedAt || x.createdAt || x.recordedDate || '') || 0;
+  const newer = timestamp(incoming) > timestamp(existing) ? incoming : existing;
+  const older = newer === incoming ? existing : incoming;
+  return {...older, ...newer, id:existing.id, syncId:existing.syncId,
+    history:insuranceClaimMergeEntries(older.history, newer.history, 'history'),
+    attachments:insuranceClaimMergeEntries(older.attachments, newer.attachments, 'attachment')};
+}
 function normalizeState(s) {
   const base = def();
   s = {
@@ -149,7 +203,8 @@ function normalizeState(s) {
   delete s.mailHeaders;
   delete s.aiInbox;
   try { localStorage.removeItem('filip_crm_ai_active_job'); } catch (e) {}
-  ['clients', 'contracts', 'deals', 'activities', 'referrals', 'referrerPayouts', 'managementPartners', 'managementPayouts', 'notes', 'opportunities', 'investmentRecords', 'investmentSnapshots', 'commissionImports', 'analysisEntries', 'campaigns', 'externalInvestments', 'investmentForecasts', 'weeklyGoals', 'weeklyReviews', 'dailyPriorities', 'focusDrafts', 'focusSnapshots', 'delegationProcesses'].forEach(k => s[k] = Array.isArray(s[k]) ? s[k] : []);
+  ['clients', 'contracts', 'deals', 'activities', 'referrals', 'referrerPayouts', 'managementPartners', 'managementPayouts', 'notes', 'opportunities', 'insuranceClaims', 'investmentRecords', 'investmentSnapshots', 'commissionImports', 'analysisEntries', 'campaigns', 'externalInvestments', 'investmentForecasts', 'weeklyGoals', 'weeklyReviews', 'dailyPriorities', 'focusDrafts', 'focusSnapshots', 'delegationProcesses'].forEach(k => s[k] = Array.isArray(s[k]) ? s[k] : []);
+  normalizeInsuranceClaimRecords(s);
   normalizeInternalCommissions(s);
   normalizeActivityHistory(s.activities);
   if (!s.managementPartners.length) s.managementPartners = base.managementPartners;
@@ -164,7 +219,7 @@ function normalizeState(s) {
   Object.values(s.plans).forEach(p => normalizePlan(p, s.settings.bjCoef));
   dedupeInvestmentRecordsInState(s);
   dedupeInvestmentSnapshotsInState(s);
-  let maxId = Math.max(0, ...['clients', 'contracts', 'deals', 'activities', 'referrals', 'referrerPayouts', 'managementPayouts', 'notes', 'opportunities', 'commissionImports', 'investmentSnapshots', 'analysisEntries', 'campaigns', 'externalInvestments', 'investmentForecasts', 'weeklyGoals', 'weeklyReviews', 'dailyPriorities', 'focusDrafts', 'focusSnapshots', 'delegationProcesses'].flatMap(k => s[k].map(x => +x.id || 0)));
+  let maxId = Math.max(0, ...['clients', 'contracts', 'deals', 'activities', 'referrals', 'referrerPayouts', 'managementPayouts', 'notes', 'opportunities', 'insuranceClaims', 'commissionImports', 'investmentSnapshots', 'analysisEntries', 'campaigns', 'externalInvestments', 'investmentForecasts', 'weeklyGoals', 'weeklyReviews', 'dailyPriorities', 'focusDrafts', 'focusSnapshots', 'delegationProcesses'].flatMap(k => s[k].map(x => +x.id || 0)));
   if (!s.nextId || s.nextId <= maxId) s.nextId = maxId + 1;
   return s;
 }
@@ -330,14 +385,14 @@ function diskBackupSize(bytes) {
   return num(n) + ' B';
 }
 function diskBackupLabel(b) {
-  return `${b.updatedAt || ''} · ${diskBackupSize(b.size)} · ${num(b.counts?.clients || 0)} klientů · ${num(b.counts?.contracts || 0)} smluv · ${num(b.counts?.deals || 0)} obchodů`;
+  return `${b.updatedAt || ''} · ${diskBackupSize(b.size)} · ${num(b.counts?.clients || 0)} klientů · ${num(b.counts?.contracts || 0)} smluv · ${num(b.counts?.deals || 0)} obchodů · ${num(b.counts?.insuranceClaims || 0)} pojistných událostí`;
 }
 function diskFileUrl(ref) {
   return DISK_STORAGE_URL + '/file?ref=' + encodeURIComponent(ref || '');
 }
 function diskStateWeight(source) {
-  const keys=['clients','contracts','deals','opportunities','notes','activities','investmentRecords','investmentSnapshots','analysisEntries','delegationProcesses'];
-  return keys.reduce((sum,key)=>sum+(Array.isArray(source?.[key])?source[key].length:0),0);
+  const keys=['clients','contracts','deals','opportunities','insuranceClaims','notes','activities','investmentRecords','investmentSnapshots','analysisEntries','delegationProcesses'];
+  return keys.reduce((sum,key)=>sum+(Array.isArray(source?.[key])?source[key].length:0),0) + (source?.insuranceClaims || []).reduce((sum, claim) => sum + (claim.history?.length || 0) + (claim.attachments?.length || 0), 0);
 }
 function queueDiskSave(reason = 'autosave') {
   if (!diskLoadDone) return;
@@ -2244,6 +2299,7 @@ function mergeLinkCounts(id) {
     opps: clientOpportunities(id).length,
     notes: clientNotes(id).length,
     acts: clientActivities(id).length,
+    claims: (state.insuranceClaims || []).filter(x => String(x.clientId) === String(id)).length,
     snapshots: (state.investmentSnapshots || []).filter(x => String(x.clientId) === String(id)).length,
     fki: investmentRecordsForClient(id).length
   };
@@ -2349,6 +2405,9 @@ function dedupeMasterContracts(masterId) {
       return true;
     }
     absorbRecordFields(seen[k], s);
+    (state.insuranceClaims || []).forEach(claim => {
+      if (String(claim.contractId || '') === String(s.id)) claim.contractId = seen[k].id;
+    });
     seen[k].log = seen[k].log || [];
     seen[k].log.push({
       d: today(),
@@ -2374,7 +2433,7 @@ function mergeClientsFromModal() {
   master.aliases = [...new Set([...String(master.aliases || '').split(',').map(x => x.trim()), ...originalNames].filter(x => x && norm(x) !== norm(master.name)))].join(', ');
   const loserIds = clients.map(c => c.id).filter(id => id !== masterId),
     loserSet = new Set(loserIds.map(String));
-  ['contracts', 'deals', 'opportunities', 'activities', 'notes', 'investmentSnapshots', 'analysisEntries'].forEach(arr => (state[arr] || []).forEach(x => {
+  ['contracts', 'deals', 'opportunities', 'insuranceClaims', 'activities', 'notes', 'investmentSnapshots', 'analysisEntries'].forEach(arr => (state[arr] || []).forEach(x => {
     if (loserSet.has(String(x.clientId))) x.clientId = masterId;
   }));
   (state.investmentRecords || []).forEach(r => {
@@ -3696,6 +3755,7 @@ function clientNextAction(clientId) {
   return rows.sort((a,b) => a.date.localeCompare(b.date))[0] || null;
 }
 function clientSectionAction(c) {
+  if (clientSection === 'insuranceClaims') return `<button class="btn primary" onclick="openInsuranceClaim(${Number(c.id)})">+ Pojistná událost</button>`;
   if (clientSection === 'wealth') return `<button class="btn primary" onclick="wealthExportPreview(${c.id})">Export majetku</button>`;
   if (clientSection === 'portfolio') return `<button class="btn primary" onclick="openInvestmentScenarioModal(${c.id},'Investice')">+ Investice</button>`;
   if (clientSection === 'opportunities') return `<button class="btn primary" onclick="openOpportunityModal(${c.id})">+ Obchodní případ</button>`;
@@ -3722,18 +3782,19 @@ function renderClientDetail() {
   const age = clientAgeFromBirthId(c.birthId), invSummary = clientInvestmentSummary(c.id), pensionSummary = clientPensionSummary(c.id),
     last = clientLastContact(c), lastDays = clientDaysSince(last), next = clientNextAction(c.id), activeOpps = opps.filter(isOpenOpportunity),
     totalAum = invSummary.total + pensionSummary.total;
-  el.innerHTML = `<div class="client-back-row"><button class="client-back-button" onclick="openClientDirectory()">← Zpět na seznam klientů</button><div class="client-primary-actions">${clientSectionAction(c)}<button class="btn" onclick="openNoteModal(${c.id})">+ Poznámka</button><button class="btn" onclick="openClientModal(${c.id})">Upravit klienta</button></div></div><div class="client-hero"><div class="avatar">${esc(initials(c.name))}</div><div class="detail-title"><div class="eyebrow">Karta klienta · ${managementBadge(c)}</div><h2>${esc(clientName(c))}${age !== null ? `<span class="client-age">· ${num(age)} let</span>` : ''}</h2><div class="chips"><span class="badge ${lastDays === null || lastDays > 180 ? 'orange' : 'green'}">${last ? `Poslední kontakt ${dateObj(last).toLocaleDateString('cs-CZ')} · před ${num(lastDays)} dny` : 'Kontakt zatím neevidován'}</span>${c.birthId ? `<span class="chip">RČ/IČO: ${esc(c.birthId)}</span>` : ''}${clientSourceSummary(c)}<span class="chip">Rozsah: ${esc(c.cooperationScope || 'Neuvedeno')}</span></div></div>${contactGrid(c)}</div><div class="client-summary-strip"><div class="client-summary-tile"><small>Aktivní případy</small><b>${num(activeOpps.length)}</b><span>${activeOpps[0] ? esc(activeOpps[0].product || activeOpps[0].category) : 'nic není v řešení'}</span></div><div class="client-summary-tile"><small>Portfolio a penze</small><b>${money(totalAum)}</b><span>${num(invSummary.items.length + pensionSummary.items.length)} evidovaných pozic</span></div><div class="client-summary-tile"><small>Smlouvy</small><b>${num(contracts.length)}</b><span>${num(deals.length)} uzavřených obchodů</span></div><div class="client-summary-tile"><small>Další krok</small><b>${next ? dateObj(next.date).toLocaleDateString('cs-CZ') : 'Není'}</b><span>${next ? esc([next.title,next.text].filter(Boolean).join(' · ')) : 'naplánujte další kontakt'}</span></div></div><div class="subnav"></div>`;
+  el.innerHTML = `<div class="client-back-row"><button class="client-back-button" onclick="openClientDirectory()">← Zpět na seznam klientů</button><div class="client-primary-actions">${clientSectionAction(c)}${clientSection !== 'insuranceClaims' ? `<button class="btn" onclick="openInsuranceClaim(${Number(c.id)})">+ Pojistná událost</button>` : ''}<button class="btn" onclick="openNoteModal(${c.id})">+ Poznámka</button><button class="btn" onclick="openClientModal(${c.id})">Upravit klienta</button></div></div><div class="client-hero"><div class="avatar">${esc(initials(c.name))}</div><div class="detail-title"><div class="eyebrow">Karta klienta · ${managementBadge(c)}</div><h2>${esc(clientName(c))}${age !== null ? `<span class="client-age">· ${num(age)} let</span>` : ''}</h2><div class="chips"><span class="badge ${lastDays === null || lastDays > 180 ? 'orange' : 'green'}">${last ? `Poslední kontakt ${dateObj(last).toLocaleDateString('cs-CZ')} · před ${num(lastDays)} dny` : 'Kontakt zatím neevidován'}</span>${c.birthId ? `<span class="chip">RČ/IČO: ${esc(c.birthId)}</span>` : ''}${clientSourceSummary(c)}<span class="chip">Rozsah: ${esc(c.cooperationScope || 'Neuvedeno')}</span></div></div>${contactGrid(c)}</div><div class="client-summary-strip"><div class="client-summary-tile"><small>Aktivní případy</small><b>${num(activeOpps.length)}</b><span>${activeOpps[0] ? esc(activeOpps[0].product || activeOpps[0].category) : 'nic není v řešení'}</span></div><div class="client-summary-tile"><small>Portfolio a penze</small><b>${money(totalAum)}</b><span>${num(invSummary.items.length + pensionSummary.items.length)} evidovaných pozic</span></div><div class="client-summary-tile"><small>Smlouvy</small><b>${num(contracts.length)}</b><span>${num(deals.length)} uzavřených obchodů</span></div><div class="client-summary-tile"><small>Další krok</small><b>${next ? dateObj(next.date).toLocaleDateString('cs-CZ') : 'Není'}</b><span>${next ? esc([next.title,next.text].filter(Boolean).join(' · ')) : 'naplánujte další kontakt'}</span></div></div><div class="subnav"></div>`;
   const labels = {
     overview: 'Přehled',
     portfolio: 'Portfolio',
     wealth: 'Majetek a plán',
     opportunities: 'Obchodní případy',
+    insuranceClaims: 'Pojistné události',
     contracts: 'Smlouvy',
     history: 'Timeline'
   };
   const more = {family:'Rodina',recommendations:'Doporučení',notes:'Poznámky',deals:'Obchody'}, moreActive = Object.keys(more).includes(clientSection);
   el.querySelector('.subnav').innerHTML = Object.entries(labels).map(([k, l]) => `<button class="subtab ${clientSection === k ? 'active' : ''}" onclick="clientSection='${k}';renderClientDetail()">${l}</button>`).join('') + `<details class="client-more-menu"><summary class="subtab ${moreActive ? 'active' : ''}">Více ▾</summary><div class="client-more-panel">${Object.entries(more).map(([k,l])=>`<button onclick="clientSection='${k}';this.closest('details').open=false;renderClientDetail()">${l}</button>`).join('')}<button onclick="openClientReportModal(${c.id})">Report pro klienta</button></div></details>`;
-  el.insertAdjacentHTML('beforeend', clientSection === 'overview' ? clientOverview(c, contracts, deals, acts, year) : clientSection === 'wealth' ? clientWealthHtml(c) : clientSection === 'family' ? clientFamilyHtml(c) : clientSection === 'portfolio' ? clientPortfolio(c, contracts, deals) : clientSection === 'opportunities' ? opportunitiesMini(opps) + closedCasesHtml(state.opportunities.filter(o=>String(o.clientId)===String(c.id)&&!isOpenOpportunity(o))) : clientSection === 'contracts' ? contractsMini(contracts) : clientSection === 'deals' ? dealsMini(deals, year) : clientSection === 'recommendations' ? recommendationsMini(c) : clientSection === 'notes' ? notesMini(notes) : historyMini(c, acts, contracts, deals));
+  el.insertAdjacentHTML('beforeend', clientSection === 'overview' ? clientOverview(c, contracts, deals, acts, year) : clientSection === 'wealth' ? clientWealthHtml(c) : clientSection === 'family' ? clientFamilyHtml(c) : clientSection === 'portfolio' ? clientPortfolio(c, contracts, deals) : clientSection === 'opportunities' ? opportunitiesMini(opps) + closedCasesHtml(state.opportunities.filter(o=>String(o.clientId)===String(c.id)&&!isOpenOpportunity(o))) : clientSection === 'insuranceClaims' ? clientInsuranceClaimsHtml(c.id) : clientSection === 'contracts' ? contractsMini(contracts) : clientSection === 'deals' ? dealsMini(deals, year) : clientSection === 'recommendations' ? recommendationsMini(c) : clientSection === 'notes' ? notesMini(notes) : historyMini(c, acts, contracts, deals));
   if (clientSection === 'overview') el.insertAdjacentHTML('beforeend', clientFamilyHtml(c) + clientReferralOverview(c));
 }
 function clientInvestmentSummary(clientId) {
@@ -5750,6 +5811,7 @@ function saveClient() {
 function deleteClient() {
   const c = findClient(editingClientId);
   if (!c) return;
+  if ((state.insuranceClaims || []).some(x => String(x.clientId) === String(c.id))) return alert('Klienta nelze smazat, protože má evidované pojistné události. Jejich historie musí zůstat u klienta. Pokud jde o duplicitní kartu, použij sloučení klientů.');
   if (!confirm('Smazat klienta včetně smluv, obchodů, obchodních případů, poznámek a aktivit?')) return;
   state.clients = state.clients.filter(x => x.id !== c.id);
   state.contracts = state.contracts.filter(x => x.clientId !== c.id);
@@ -6105,6 +6167,7 @@ function markContractDone() {
 function fkiSync_before_deleteContract() {
   if (!editingContractId) return;
   const s = state.contracts.find(x => x.id === editingContractId);
+  if (s && (state.insuranceClaims || []).some(x => String(x.contractId || '') === String(s.id))) return alert('Smlouvu nelze smazat, protože je navázaná na pojistnou událost. Nejprve u události uprav nebo zruš propojení se smlouvou; historie události zůstane zachovaná.');
   if (!s || !confirm('Smazat smlouvu?')) return;
   state.contracts = state.contracts.filter(x => x.id !== editingContractId);
   addActivity(s.clientId, 'Smlouva', 'Smazána smlouva ' + (s.product || s.type), true);
@@ -7579,10 +7642,12 @@ function mergeIncomingStateCore(incoming) {
     Object.entries(incoming.settings.commissionLegacyArchive).forEach(([key,rows])=>{const existing=archive[key]||(archive[key]=[]);rows.forEach(x=>{if(!existing.some(y=>JSON.stringify(y)===JSON.stringify(x)))existing.push(JSON.parse(JSON.stringify(x)));});});
   }
   dedupeInvestmentRecordsInState(state);
-  const map = new Map(),
+  const map = new Map(), contractMap = new Map(),
     count = {
       clients: 0,
       contracts: 0,
+      insuranceClaims: 0,
+      insuranceClaimsUpdated: 0,
       deals: 0,
       opportunities: 0,
       notes: 0,
@@ -7624,18 +7689,49 @@ function mergeIncomingStateCore(incoming) {
       clientId
     };
     const key = contractMatchKey(next);
-    if (key && state.contracts.some(s => contractMatchKey(s) === key)) {
+    const existing = key && state.contracts.find(s => contractMatchKey(s) === key);
+    if (existing) {
+      contractMap.set(String(is.id), existing.id);
       count.skipped++;
       return;
     }
-    state.contracts.push({
+    const contract = {
       ...next,
       id: uid(),
       log: Array.isArray(is.log) ? is.log : [],
       createdAt: is.createdAt || today(),
       importedAt: today()
-    });
+    };
+    state.contracts.push(contract);
+    contractMap.set(String(is.id), contract.id);
     count.contracts++;
+  });
+  incoming.insuranceClaims.forEach(source => {
+    const clientId = mappedClient(source.clientId);
+    const sourceContract = incoming.contracts.find(x => String(x.id) === String(source.contractId));
+    const mappedContract = state.contracts.find(x => String(x.id) === String(contractMap.get(String(source.contractId))));
+    const contractId = clientId && sourceContract && mappedContract && String(sourceContract.clientId) === String(source.clientId) && String(mappedContract.clientId) === String(clientId) ? mappedContract.id : null;
+    const next = {...source, clientId, contractId,
+      history:(source.history || []).map(x => ({...x})), attachments:(source.attachments || []).map(x => ({...x}))};
+    if (!clientId || (source.contractId && !contractId)) next.importReference = {
+      ...(source.importReference || {}), sourceClientId:source.clientId, sourceContractId:source.contractId || null,
+      clientKey:clientId ? String(clientId) : JSON.stringify([incoming.createdAt || '', source.clientId ?? '', source.importReference?.clientKey || ''])
+    };
+    // A foreign numeric ID or reused sync ID must never move a claim to another client.
+    const sameOwner = x => String(x.clientId ?? '') === String(clientId ?? '') && (clientId || x.importReference?.clientKey === next.importReference?.clientKey);
+    let existing = state.insuranceClaims.find(x => x.syncId === next.syncId && sameOwner(x));
+    if (!existing && state.insuranceClaims.some(x => x.syncId === next.syncId)) {
+      next.importedSyncId = source.syncId;
+      next.syncId = source.syncId + ':owner:' + encodeURIComponent(clientId ? String(clientId) : next.importReference.clientKey);
+      existing = state.insuranceClaims.find(x => x.syncId === next.syncId && sameOwner(x));
+    }
+    if (existing) {
+      Object.assign(existing, mergeInsuranceClaimRecord(existing, next));
+      count.insuranceClaimsUpdated++;
+    } else {
+      state.insuranceClaims.push({...next, id:uid(), importedAt:today()});
+      count.insuranceClaims++;
+    }
   });
   incoming.deals.forEach(idl => {
     const clientId = isInternalCommission(idl)?null:mappedClient(idl.clientId);
@@ -7829,6 +7925,7 @@ function loadGoogleBackup() {
 }
 function backupCountValue(s, key) {
   if (key === 'investments') return (s.investmentRecords || []).length;
+  if (key === 'claimHistory' || key === 'claimAttachments') return (s.insuranceClaims || []).reduce((n, claim) => n + (claim[key === 'claimHistory' ? 'history' : 'attachments']?.length || 0), 0);
   return Array.isArray(s[key]) ? s[key].length : 0;
 }
 function backupCountDrops(smaller, bigger) {
@@ -11871,7 +11968,7 @@ function mergeIncomingState(incoming) {
 }
 function stateCountsText(s = state) {
   s = normalizeState(s);
-  return `${num((s.clients || []).length)} klientů · ${num((s.contracts || []).length)} smluv · ${num((s.deals || []).length)} obchodů · ${num((s.opportunities || []).length)} obchodních případů · ${num((s.notes || []).length)} poznámek · ${num((s.analysisEntries || []).length)} analytických aktivit · ${num((s.weeklyGoals || []).length)} týdenních cílů · ${num((s.weeklyReviews || []).length)} uzavřených týdnů · ${num((s.delegationProcesses || []).length)} činností k delegování · ${num((s.investmentRecords || []).length)} investičních záznamů · ${num((s.investmentSnapshots || []).length)} aktualizací investic · ${num((s.externalInvestments || []).length)} investic mimo správu · ${num((s.investmentForecasts || []).length)} prognóz · ${num((s.activities || []).length)} aktivit · ${num((s.commissionImports || []).length)} provizních importů · ${num((s.referrerPayouts || []).length)} výplat tipařům`;
+  return `${num((s.clients || []).length)} klientů · ${num((s.contracts || []).length)} smluv · ${num((s.deals || []).length)} obchodů · ${num((s.opportunities || []).length)} obchodních případů · ${num((s.insuranceClaims || []).length)} pojistných událostí · ${num((s.notes || []).length)} poznámek · ${num((s.analysisEntries || []).length)} analytických aktivit · ${num((s.weeklyGoals || []).length)} týdenních cílů · ${num((s.weeklyReviews || []).length)} uzavřených týdnů · ${num((s.delegationProcesses || []).length)} činností k delegování · ${num((s.investmentRecords || []).length)} investičních záznamů · ${num((s.investmentSnapshots || []).length)} aktualizací investic · ${num((s.externalInvestments || []).length)} investic mimo správu · ${num((s.investmentForecasts || []).length)} prognóz · ${num((s.activities || []).length)} aktivit · ${num((s.commissionImports || []).length)} provizních importů · ${num((s.referrerPayouts || []).length)} výplat tipařům`;
 }
 function criticalBackupCounts(s = state) {
   s = normalizeState(s);
@@ -11880,6 +11977,9 @@ function criticalBackupCounts(s = state) {
     contracts: s.contracts.length,
     deals: s.deals.length,
     opportunities: s.opportunities.length,
+    insuranceClaims: s.insuranceClaims.length,
+    claimHistory: s.insuranceClaims.reduce((n, x) => n + x.history.length, 0),
+    claimAttachments: s.insuranceClaims.reduce((n, x) => n + x.attachments.length, 0),
     notes: s.notes.length,
     investments: s.investmentRecords.length,
     investmentSnapshots: s.investmentSnapshots.length,
@@ -14610,8 +14710,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.23-1';
-const VERSION_NOTE = 'Ověřené profily všech fondů podle ISIN, modernější klientský report a penzijní hodnoty s historií.';
+const VERSION = '2026.10.23-2';
+const VERSION_NOTE = 'Pojistné události u klienta i ve vlastní pipeline, podklady, historie řešení a vyplacené plnění včetně záloh.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
@@ -14713,6 +14813,9 @@ const BACKUP_COUNT_LABELS = {
   contracts: 'smluv',
   deals: 'obchodů',
   opportunities: 'obchodních případů',
+  insuranceClaims: 'pojistných událostí',
+  claimHistory: 'záznamů historie pojistných událostí',
+  claimAttachments: 'podkladů pojistných událostí',
   notes: 'poznámek',
   activities: 'aktivit',
   analysisEntries: 'analytických aktivit',
@@ -14731,7 +14834,7 @@ const BACKUP_COUNT_LABELS = {
   delegationProcesses: 'činností k delegování',
   wealthRecords: 'majetkových podkladů'
 };
-const BACKUP_PROTECTED_KEYS = ['clients', 'contracts', 'deals', 'opportunities', 'notes', 'activities', 'analysisEntries', 'campaigns', 'investments', 'investmentSnapshots', 'externalInvestments', 'investmentForecasts', 'commissionImports', 'referrerPayouts', 'referrals', 'weeklyGoals', 'weeklyReviews', 'dailyPriorities', 'focusSnapshots', 'delegationProcesses', 'wealthRecords'];
+const BACKUP_PROTECTED_KEYS = ['clients', 'contracts', 'deals', 'opportunities', 'insuranceClaims', 'claimHistory', 'claimAttachments', 'notes', 'activities', 'analysisEntries', 'campaigns', 'investments', 'investmentSnapshots', 'externalInvestments', 'investmentForecasts', 'commissionImports', 'referrerPayouts', 'referrals', 'weeklyGoals', 'weeklyReviews', 'dailyPriorities', 'focusSnapshots', 'delegationProcesses', 'wealthRecords'];
 let scenario_editableScope = '';
 let fkiEditor_editingFkRecordKey = '',
   fkiEditor_editingFkClientId = null;
