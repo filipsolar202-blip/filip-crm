@@ -69,7 +69,10 @@ try{
  assert.equal(reinvestmentReport.newMoney,0);assert.equal(reinvestmentReport.reinvested,60000);assert.equal(reinvestmentReport.starting,100000);
  assert.equal(reinvestmentReport.change,'Původní fond → Cílový fond');assert.equal(reinvestmentReport.kind,'transfer');
  assert(reinvestmentReport.impact.includes('Dopad na celé portfolio')&&reinvestmentReport.impact.includes('Nové peníze')&&reinvestmentReport.impact.includes('0 Kč'));
- assert(reinvestmentReport.profile.includes('Výstupní poplatek')&&reinvestmentReport.profile.includes('CZ0008477593')===false&&reinvestmentReport.profile.includes('Oficiální informace fondu'));
+ assert(reinvestmentReport.profile.includes('Výstupní poplatek')&&reinvestmentReport.profile.includes('CZ0008477593'));
+ assert(reinvestmentReport.profile.includes('https://www.jtis.cz/fond/LDY')&&reinvestmentReport.profile.includes('https://www.jtis.cz/download/1/2/9/4/2/LDYKID.pdf'));
+ assert.match(reinvestmentReport.profile,/Zdroje zkontrolovány 23\.\s*10\.\s*2026/);
+ assert.match(reinvestmentReport.profile,/k 21\.\s*10\.\s*2026/);
  results.push('Reinvestment names source and target funds, preserves portfolio value and is excluded from new money');
  const producerImports=await page.evaluate(()=>{
    const client={id:99011,name:'Ing. Testovací Jan - Praha',birthId:'800101/1234'};state.clients.push(client);state.investmentSnapshots=state.investmentSnapshots||[];state.investmentRecords=state.investmentRecords||[];state.contracts.push({id:99012,clientId:client.id,category:'Investice',company:'Vigo Public',product:'OPF',volume:700,date:'2025-01-01'});
@@ -136,11 +139,12 @@ try{
    const estimate=clientOutput_xRedemptionEstimate(fund,future.positions[0]);
    const delayed=clientOutput_xRedemptionEstimate(fund,{...future.positions[0],payout:'2030-01-31'});
    const html=clientOutput_xRedemptionHtml(fund,rows);
+   const verifiedProfile=fundProfile_default('CZ0008053691'),verifiedHtml=clientOutput_xRedemptionHtml({area:'FKI',isin:'CZ0008053691'},rows),verifiedNode=document.createElement('div');verifiedNode.innerHTML=verifiedHtml;
    const chart=clientOutput_xHistoryChart([{...fund,rows:[{sourceType:'deal',date:'2023-01-10',purchaseDate:'2023-01-10',invested:100000,current:110000}]}]);
    delete state.fundValues[key].settlementMonths;
    const missing=clientOutput_xRedemptionPlan(fund,rows,'2026-09-28');
    delete state.fundValues[key];
-   return{future,matured,missing,html,estimate,delayed,chart};
+   return{future,matured,missing,html,estimate,delayed,chart,verifiedText:verifiedNode.textContent,verifiedFee:verifiedProfile.exitFee,verifiedLiquidity:verifiedProfile.liquidity};
  });
  assert.equal(redemptionReport.future.positions[0].taxReady,'2027-02-28');
  assert.equal(redemptionReport.future.positions[0].redemption,'2027-03-31');
@@ -149,12 +153,16 @@ try{
  assert.equal(redemptionReport.matured.positions[0].redemption,'2026-09-30');
  assert.equal(redemptionReport.matured.positions[0].payout,'2026-11-30');
  assert(redemptionReport.missing.positions.every(x=>!x.payout));
- assert(redemptionReport.html.includes('Kdy můžete mít prostředky zpět'));
+ assert(redemptionReport.html.includes('Odkup a dostupnost prostředků'));
+ assert(redemptionReport.html.includes('Termín ani částku výplaty nelze spolehlivě určit'));
+ assert(redemptionReport.verifiedText.includes(redemptionReport.verifiedFee)&&redemptionReport.verifiedText.includes(redemptionReport.verifiedLiquidity));
+ assert(redemptionReport.verifiedText.includes('nejsou daňovým časovým testem'));
+ assert(!/peníze můžete mít do|Odhad hodnoty odkupu|vypořádání do 0 měsíců/.test(redemptionReport.html+redemptionReport.verifiedText));
  assert(Math.abs(redemptionReport.estimate.amount-54000)<10);
  assert.equal(redemptionReport.estimate.amount,redemptionReport.delayed.amount);
- assert(!redemptionReport.html.includes('<table'));assert(redemptionReport.html.includes('Odhad hodnoty odkupu'));
+ assert(!redemptionReport.html.includes('<table'));
  assert(redemptionReport.chart.includes('10. 1. 2023'));assert(redemptionReport.chart.includes('nikoli skutečná průběžná ocenění'));
- results.push('Report redemption dates include 36-month test, next future window, settlement and missing settings');
+ results.push('Redemption calculator retains date arithmetic; report shows verified class terms and makes no payout promise for an unidentified class');
 
  const connectedChart=await page.evaluate(()=>{
  const funds=[{area:'Investice',amount:166627,rows:[{sourceType:'deal',purchaseDate:'2023-09-20',invested:130000,current:166627}]},{area:'Investice',amount:146487,rows:[{sourceType:'deal',purchaseDate:'2023-09-20',invested:120000,current:146487}]}];
@@ -175,17 +183,17 @@ try{
    const model={start:earlier,now,end:liquidity_addMonths(new Date(now),108).getTime(),funds:[{name:'Fond A',current:166627,rate:8,color:'#0b3558',positions:[{date:earlier,invested:130000,current:166627}]},{name:'Fond B',current:146487,rate:4,color:'#2aa7b8',positions:[{date:earlier,invested:120000,current:146487}]}]};
    const base=portfolioTimelineValue(model,now),future=portfolioTimelineValue(model,model.end),past=portfolioTimelineValue(model,earlier);
    const funds=model.funds.map((f,i)=>({area:'Investice',key:'qa-'+i,product:f.name,company:'Společnost '+i,amount:f.current,invested:f.positions[0].invested,valueDate:today(),rows:[{sourceType:'deal',date:'2023-09-20',purchaseDate:'2023-09-20',current:f.current,invested:f.positions[0].invested}]}));
-   const html='<!doctype html><html><head><style>'+clientOutput_xCss()+portfolioTimelineCss()+'</style></head><body><div class="wrap">'+portfolioTimelineHtml(funds)+'</div><script>'+portfolioTimelineValue.toString()+'\n'+portfolioTimelineSelect.toString()+'</'+'script></body></html>';
+   const html='<!doctype html><html><head><style>'+clientOutput_xCss()+portfolioTimelineCss()+'</style></head><body><div class="wrap">'+portfolioTimelineHtml(funds)+'</div><script>'+portfolioTimelineValue.toString()+'\n'+portfolioDonutSvg.toString()+'\n'+portfolioTimelineSelect.toString()+'</'+'script></body></html>';
    return {base,future,past,html};
  });
  assert.equal(interactive.base.total,313114);assert.equal(interactive.past.total,250000);assert(interactive.future.total>interactive.base.total);
  assert(interactive.future.values[0]/interactive.future.total>interactive.base.values[0]/interactive.base.total);
  const offline=await context.newPage();await offline.setContent(interactive.html);
- const initialDonut=await offline.locator('.timeline-donut').getAttribute('style');
+ const initialDonut=await offline.locator('.timeline-ring').innerHTML();
  await offline.locator('input[type=range]').evaluate(el=>{el.value=el.max;el.dispatchEvent(new Event('input',{bubbles:true}));});
- assert.equal(await offline.locator('.timeline-status').innerText(),'Prognóza');assert.notEqual(await offline.locator('.timeline-donut').getAttribute('style'),initialDonut);
- assert.equal(await offline.locator('.timeline-total').innerText(),await offline.locator('.timeline-value').innerText());
- const svgBox=await offline.locator('svg').boundingBox();await offline.mouse.move(svgBox.x+svgBox.width*.75,svgBox.y+svgBox.height*.5);
+ assert.equal(await offline.locator('.timeline-status').innerText(),'Prognóza');assert.notEqual(await offline.locator('.timeline-ring').innerHTML(),initialDonut);assert.equal(await offline.locator('.allocation-slice').count(),2);
+ assert.equal(await offline.locator('.timeline-total').getAttribute('title'),await offline.locator('.timeline-value').innerText());
+ const svgBox=await offline.locator('svg').first().boundingBox();await offline.mouse.move(svgBox.x+svgBox.width*.75,svgBox.y+svgBox.height*.5);
  assert.equal(await offline.locator('.timeline-status').innerText(),'Prognóza');
  await offline.screenshot({path:'/private/tmp/crm-interactive-timeline.png',fullPage:true});
  await offline.locator('.timeline-reset').click();assert.equal(await offline.locator('.timeline-value').innerText(),'313 114 Kč');
@@ -277,7 +285,7 @@ try{
   const pending=page.waitForEvent('download');await page.evaluate(action);const download=await pending;assert(download.suggestedFilename().endsWith('.html'));
   const report=fs.readFileSync(await download.path(),'utf8');assert(report.includes('Testovací klient Alfa'));assert(!report.includes('NaN'));assert(!report.includes('undefined'));
   if(name==='scenario'){assert(report.includes('Skladba nového nákupu'));assert(report.includes('Model vývoje portfolia'));assert(report.includes('Navržené fondy'));assert(report.includes('Test FKI fond'));}
-  const reportPage=await context.newPage();await reportPage.setContent(report);await reportPage.waitForTimeout(150);assert((await reportPage.locator('body').innerText()).length>100);if(name==='client'){assert(await reportPage.locator('.report-fund-overview').count());assert.equal(await reportPage.locator('.report-transactions').first().getAttribute('open'),null);await reportPage.locator('.report-transactions summary').first().click();assert(await reportPage.locator('.fund-transactions').first().isVisible());await reportPage.locator('.report-transactions summary').first().click();await reportPage.locator('.portfolio-timeline input').evaluate(el=>{el.value=el.max;el.dispatchEvent(new Event('input',{bubbles:true}));});await reportPage.evaluate(()=>window.dispatchEvent(new Event('beforeprint')));assert.equal(await reportPage.locator('.timeline-date').innerText(),new Date().toLocaleDateString('cs-CZ'));assert(await reportPage.locator('.fund-transactions').first().isVisible());await reportPage.evaluate(()=>window.dispatchEvent(new Event('afterprint')));assert.equal(await reportPage.locator('.timeline-status').innerText(),'Prognóza');}if(name==='client')await reportPage.locator('.report-fund-detail').first().screenshot({path:'/private/tmp/crm-compact-fund.png'});if(name==='client'||name==='fki'){assert(report.includes('Kdy můžete mít prostředky zpět'));await reportPage.locator('.report-redemption').first().screenshot({path:'/private/tmp/crm-redemption-'+name+'.png'});}if(name==='scenario')await reportPage.screenshot({path:'/private/tmp/crm-investment-purchase-report.png',fullPage:true});const pdf=await reportPage.pdf({format:'A4',printBackground:true,...(name==='client'?{path:'/private/tmp/crm-client-layout.pdf'}:{})});assert(pdf.length>10000);await reportPage.close();
+  const reportPage=await context.newPage();await reportPage.setContent(report);await reportPage.waitForTimeout(150);assert((await reportPage.locator('body').innerText()).length>100);if(name==='client'){assert(await reportPage.locator('.report-fund-overview').count());assert.equal(await reportPage.locator('.report-transactions').first().getAttribute('open'),null);await reportPage.locator('.report-transactions summary').first().click();assert(await reportPage.locator('.fund-transactions').first().isVisible());await reportPage.locator('.report-transactions summary').first().click();await reportPage.locator('.portfolio-timeline input').evaluate(el=>{el.value=el.max;el.dispatchEvent(new Event('input',{bubbles:true}));});await reportPage.evaluate(()=>window.dispatchEvent(new Event('beforeprint')));assert.equal(await reportPage.locator('.timeline-date').innerText(),new Date().toLocaleDateString('cs-CZ'));assert(await reportPage.locator('.fund-transactions').first().isVisible());await reportPage.evaluate(()=>window.dispatchEvent(new Event('afterprint')));assert.equal(await reportPage.locator('.timeline-status').innerText(),'Prognóza');}if(name==='client')await reportPage.locator('.report-fund-detail').first().screenshot({path:'/private/tmp/crm-compact-fund.png'});if(name==='client'||name==='fki'){assert(report.includes('Odkup a dostupnost prostředků'));await reportPage.locator('.report-redemption').first().screenshot({path:'/private/tmp/crm-redemption-'+name+'.png'});}if(name==='scenario')await reportPage.screenshot({path:'/private/tmp/crm-investment-purchase-report.png',fullPage:true});const pdf=await reportPage.pdf({format:'A4',printBackground:true,...(name==='client'?{path:'/private/tmp/crm-client-layout.pdf'}:{})});assert(pdf.length>10000);await reportPage.close();
   results.push(name+' HTML download opens independently');
  }
  await page.evaluate(()=>{document.querySelectorAll('.modal.show').forEach(x=>x.classList.remove('show'));showView('referrers');openQuickActivity(1,'phone');setVal('qaDate','2026-09-16');setVal('qaFollowType','Schůzka');setVal('qaFollowDate','2026-09-23');saveQuickClientActivity()});

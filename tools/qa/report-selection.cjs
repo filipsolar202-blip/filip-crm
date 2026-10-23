@@ -32,11 +32,11 @@ const root=path.resolve(__dirname,'../..');
  await report.locator('#reportSelection summary').click();
  await report.locator('[data-pick-group=fki]').uncheck();assert.match(await report.locator('[data-summary-group=total] [data-value=current]').innerText(),/640\s*000/);assert.equal(await report.locator('.report-area-fki').isVisible(),false);assert.match(await report.locator('.timeline-value').innerText(),/100\s*000/);
  await report.locator('[data-pick-group=classic]').uncheck();assert.equal(await report.locator('.portfolio-timeline').isVisible(),false);assert.match(await report.locator('[data-summary-group=total] [data-value=current]').innerText(),/540\s*000/);
- await report.locator('[data-pick-item=pension-contract-12]').uncheck();assert.match(await report.locator('[data-summary-group=total] [data-value=current]').innerText(),/^0 Kč$/);assert.equal(await report.locator('tr[data-report-item=pension-contract-12]').isVisible(),false);
+ await report.locator('[data-pick-item=pension-contract-12]').uncheck();assert.match(await report.locator('[data-summary-group=total] [data-value=current]').innerText(),/^0 Kč$/);assert.equal(await report.locator('[data-report-item=pension-contract-12]').isVisible(),false);
  await report.locator('[data-pick-group=fki]').check();assert.equal(await report.locator('.portfolio-timeline').isVisible(),true);assert.match(await report.locator('.timeline-value').innerText(),/200\s*000/);
  await report.locator('[data-pick-section=insurance]').uncheck();assert.equal(await report.locator('[data-report-section=insurance]').isVisible(),false);
  await report.locator('[data-pick-section=charts]').uncheck();assert.equal(await report.locator('.portfolio-timeline').isVisible(),false);await report.locator('[data-pick-section=charts]').check();
- await report.evaluate(()=>window.dispatchEvent(new Event('beforeprint')));assert.equal(await report.locator('tr[data-report-item=pension-contract-12]').isVisible(),false);await report.evaluate(()=>window.dispatchEvent(new Event('afterprint')));
+ await report.evaluate(()=>window.dispatchEvent(new Event('beforeprint')));assert.equal(await report.locator('[data-report-item=pension-contract-12]').isVisible(),false);await report.evaluate(()=>window.dispatchEvent(new Event('afterprint')));
  await report.locator('[data-pick-group=classic]').check();await report.locator('[data-pick-group=pensions]').check();await report.locator('#reportSelection summary').click();await report.screenshot({path:'/private/tmp/crm-report-updated.png',fullPage:true});
  await report.setViewportSize({width:390,height:844});assert.ok(await report.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
  // Desktop cards really are side by side and graphs precede activities.

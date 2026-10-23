@@ -16,6 +16,7 @@ Datum obchodu je nezávislé na účinnosti. Obchod je evidovaný hned. Pokud je
 
 - `FILIP-CRM.html` — vstupní stránka a formuláře.
 - `assets/js/crm.js` — společná aplikační logika.
+- `assets/js/fund-profiles.js` — veřejné informace fondů podle přesného ISIN, s daty kontroly a oficiálními zdroji; neobsahuje klientská ocenění.
 - `assets/css/crm.css` — společný vzhled včetně rozložení pro tablet.
 - `assets/vendor/` — lokální knihovny pro grafy a tabulky.
 - `index.html` — přesměrování na aktuální verzi.

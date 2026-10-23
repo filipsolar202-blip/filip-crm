@@ -1,3 +1,12 @@
+## 2026.10.23-1
+- Celý katalog prověřen podle přesných ISIN: 30 tříd FKI a 8 běžných fondů. Jednotné profily obsahují cíle, výkonnost s datem, velikost, poplatky, oceňování, horizont, riziko, správu a likviditu. Oficiální odkazy a datum kontroly jsou součástí samostatného HTML reportu.
+- Přehled Informace o fondech je dostupný v FKI i Investice → Fondy, včetně fondů bez klientů. Veřejný katalog je oddělený od klientských hodnot, cen CP, provizí a zámků. Vlastní upravené texty se zachovávají a označují.
+- Opraveny chybné popisy KOOR, PFFL a fondů Direct/VIGO. Zachycena transformace ČSNF a pozastavení odkupů VENDEAVOUR. Rozpory oficiálních dokumentů u Penty RE, FČKD, OPC a JRD jsou viditelně uvedeny; chybějící výkonnost jiné třídy se nedoplňuje odhadem.
+- Záznam Silverline bez ISIN zůstává označený k doplnění; není automaticky sloučen s podobně pojmenovanou třídou. Obálky DIP/Edward, dluhopisy a stavební spoření nejsou vydávány za jednotlivé fondové třídy.
+- DPS/DIP mají samostatnou rychlou aktualizaci vlastních vkladů, aktuální hodnoty, strategie, měsíčního příspěvku, příspěvků státu/zaměstnavatele a výběrů. Každá změna zachovává historii na stávající smlouvě nebo obchodu. Rozlišen skutečný orientační výnos a rozdíl proti vlastním vkladům, pokud další příspěvky nejsou známé.
+- Penzijní karty v klientském reportu mají stejný vzhled jako investice; nezobrazují čísla smluv. Jsou součástí celkového majetku, zůstávají mimo investiční graf výkonnosti a respektují výběr položek.
+- Kruhový graf portfolia má oddělené zaoblené segmenty, součet uprostřed, ovládání klávesnicí a přenosný SVG výstup bez síťové závislosti. Opraveno rozložení pro mobil a tisk i označení aktuálního dne při přechodu letního času.
+
 ## 2026.10.22-4
 - Denní priority i týdenní cíle jsou na počítači ve třech kompaktních kartách vedle sebe. Delší poznámka je v detailu, produkční grafy jsou opět viditelné hned pod cíli a aktivity pod grafy. Historie a rozpracované cíle zůstávají zachované.
 - HTML report obsahuje přepínače sekcí, kategorií i jednotlivých fondů a penzijních účtů. Součty, přehledy, detaily a grafy reagují společně, bez připojení; tisk respektuje výběr. Investice a FKI lze z exportu vyřadit samostatně.
