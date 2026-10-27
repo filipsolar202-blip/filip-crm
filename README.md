@@ -2,11 +2,15 @@
 
 Lokální CRM pro klienty, smlouvy, obchody, pojistné události, investice, FKI, poznámky, reporty a zálohu.
 
-## Verze 2026.10.27-2
+## Verze 2026.10.27-3
+
+U nového nákupu v Investicích i FKI jsou dvě výslovné možnosti: **Uložit prognózu** uchová návrh bez obchodů a změny AUM; **Založit obchodní případy** vytvoří z aktivní varianty jeden případ na každý fond ve fázi Nabídka. Případy se řeší samostatně v klientské kartě a Pipeline. Po sjednání se každý fond připíše do portfolia; dokup zachová dosavadní hodnotu a výnos.
+
+Uložený návrh najdeš na kartě klienta v **Portfolio → Prognózy portfolia → Převést na obchodní případy**. Otevře se poslední vybraná varianta A/B, kterou lze před převodem zkontrolovat. Opakovaný převod nevytváří další stejné případy a nemění jejich rozpracovaný nebo ukončený stav. Úpravy již založeného případu se provádějí přímo v něm; nový samostatný nákup začni novým návrhem. Měsíční investici lze zadat i bez počátečního vkladu. Plánovaný měsíční příspěvek ani budoucí dokup nejsou automaticky vložené peníze.
 
 Dashboard má pevné pořadí: **Dnešní 3 priority → Tento týden 3 cíle → Grafy → Statistiky, grafy a kontrola dat → Úkoly a připomínky**. Změny dat, filtrů ani rozbalení přehledů pořadí nemění. Nedokončené priority jsou součástí poslední sekce; rychlé odkazy zůstávají v denní kartě.
 
-Hlavní CRM má jednu aplikační logiku a společný modrý glass vzhled. Investiční plán porovnává aktuální portfolio s nejvýše dvěma alternativami A a B. Odprodej lze rozdělit do více nových nákupů. Pro klienta lze stáhnout podrobný investiční návrh ve stylu původní kalkulačky nebo stručné srovnání variant. Přehled změn je v `CHANGELOG.md`, ověření aktuálního vydání v `QA-2026-10-27-1.md`.
+Hlavní CRM má jednu aplikační logiku a společný modrý glass vzhled. Investiční plán porovnává aktuální portfolio s nejvýše dvěma alternativami A a B. Odprodej lze rozdělit do více nových nákupů. Pro klienta lze stáhnout podrobný investiční návrh ve stylu původní kalkulačky nebo stručné srovnání variant. Přehled změn je v `CHANGELOG.md`, ověření aktuálního vydání v `QA-2026-10-27-3.md`.
 
 V klientském HTML reportu jsou podrobnosti a popis fondu pod tlačítkem **Bližší info o fondu**. Název, společnost, ISIN, ocenění a hodnoty investice jsou viditelné hned; transakce se rozbalují zvlášť. Klientský detail odkazuje jen na oficiální stránku fondu. V interním přehledu informací o fondech zůstávají všechny ověřovací podklady. Fondy se v CRM i reportech řadí podle společnosti a potom podle názvu. Pro nové rozložení vytvoř report znovu — již stažené HTML soubory se automaticky nemění.
 

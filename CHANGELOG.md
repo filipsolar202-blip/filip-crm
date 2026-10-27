@@ -1,3 +1,10 @@
+## 2026.10.27-3
+- Nové investice a FKI mají samostatná tlačítka „Uložit prognózu“ a „Založit obchodní případy“. Prognóza nemění obchodní evidenci ani AUM; aktivní varianta vytvoří samostatný případ každého fondu ve fázi Nabídka.
+- Uloženou prognózu lze otevřít a převést na případy. Zachová se vybraná varianta i původní záznam; stabilní vazby brání opakovanému založení stejných případů a obnovování sjednaných nebo zrušených případů.
+- Sjednání zachovává fond, ISIN a pravidelný vklad. Dokup přičte skutečnou částku k existující investici bez ztráty dosavadního ocenění; FKI pozice se při překreslení znovu nepřepisují. Měsíční plán lze zadat bez jednorázového vkladu a sám nezvyšuje AUM.
+- Prognózy a jejich návaznosti se bezpečně slučují ze záloh i při změně číselných ID. Sloučení klientů zachovává prognózy a externí investice.
+- Selhání ukládání návrhu ponechá formulář otevřený a vrátí předchozí evidenci. Pevné pořadí dashboardu zůstává zachované.
+
 ## 2026.10.27-2
 - Dashboard má pět pevných sekcí v pořadí: dnešní 3 priority, tento týden 3 cíle, produkční grafy, statistiky/grafy/kontrola dat, úkoly a připomínky. Pořadí je shodně ukotvené v HTML i pojmenovaných oblastech CSS mřížky.
 - Statistiky jsou před úkoly. Nedokončené priority patří do posledního bloku úkolů; rychlé odkazy jsou uvnitř denní sekce, takže stránka začíná denními prioritami.

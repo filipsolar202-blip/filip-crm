@@ -1,0 +1,112 @@
+// Isolated synthetic records only: proposal origin links survive backup/client merges.
+const fs = require('node:fs');
+const path = require('node:path');
+const assert = require('node:assert/strict');
+const {chromium, launchOptions} = require('./runtime.cjs');
+const fixture = require('./fixture.cjs');
+const root = path.resolve(__dirname, '../..');
+
+(async () => {
+  const browser = await chromium.launch(launchOptions);
+  try {
+    const context = await browser.newContext();
+    await context.route('**/*', route => {
+      const url = new URL(route.request().url()), file = path.join(root, decodeURIComponent(url.pathname));
+      if (url.hostname === 'crm.test' && fs.existsSync(file) && fs.statSync(file).isFile()) return route.fulfill({body:fs.readFileSync(file), contentType:file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':'text/html'});
+      return route.abort();
+    });
+    await context.addInitScript(data => { if (location.hostname === 'crm.test') localStorage.setItem('filip_crm_main_v1', JSON.stringify(data)); }, fixture);
+    const page = await context.newPage(), errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    page.on('dialog', d => d.accept());
+    await page.goto('https://crm.test/FILIP-CRM.html');
+    await page.waitForFunction(() => typeof mergeIncomingState === 'function');
+    const result = await page.evaluate(() => {
+      const make = () => normalizeState({clients:[], contracts:[], deals:[], opportunities:[], investmentRecords:[], investmentSnapshots:[], investmentForecasts:[], nextId:2000});
+      state = make();
+      state.clients = [{id:1,name:'Alpha Test',birthId:'8001011234'}, {id:7,name:'Other Test',birthId:'8101011234'}];
+      const deal = (id, key) => ({id, clientId:7, scenarioLinkKey:key, sourceForecastSyncId:'forecast-qa', sourceVariantId:key.split('|')[1], sourceProposalRowId:key.split('|')[2], date:'2026-10-27',category:'FKI',company:'QA správce',product:'QA fond',amount:100000,bj:0,investmentPositionSyncedAt:'2026-10-27T10:00:00.000Z'});
+      const opportunity = (id, key) => ({id,clientId:7,scenarioLinkKey:key,status:'Nabídka',statusDate:'2026-10-27',category:'FKI',company:'QA správce',product:'QA fond',amount:100000,bj:0});
+      state.deals = [deal(501,'other|A|r1')];
+      state.opportunities = [{...opportunity(901,'forecast-qa|A|r2'),clientId:1,status:'Zrušeno'}];
+      const incoming = make(); incoming.createdAt = '2026-10-01T00:00:00.000Z';
+      incoming.clients = [{id:7,name:'Alpha Test',birthId:'8001011234'}];
+      incoming.deals = [deal(501,'forecast-qa|A|r1'),deal(502,'forecast-qa|B|r1')];
+      incoming.opportunities = [opportunity(31,'forecast-qa|A|r2'),opportunity(32,'forecast-qa|B|r2'),opportunity(33,'forecast-qa|A|r1')];
+      const snapshot = (id, key, sourceDealId) => ({id,clientId:7,company:'QA správce',product:'QA fond',isin:'CZ9000000017',date:'2026-10-27',current:100000,invested:100000,sourceScenarioLinkKey:key,sourceDealId});
+      incoming.investmentSnapshots = [snapshot(601,'forecast-qa|A|r1',501),snapshot(602,'forecast-qa|B|r1',502),{...snapshot(603,'orphan|A|r1',999),clientId:999}];
+      incoming.investmentRecords = [{Investor:'Alpha Test',ClientID:'7',Fond:'QA fond','Investiční společnost':'QA správce','Typ produktu':'FKI','Čistá investice':100000,'Aktuální hodnota investice':150000,'Datum připsání platby':'2026-10-27','Typ transakce':'Platba',_source:'crm-fki-deal',_crmSourceType:'deal',_crmSourceId:501,_crmDealId:501,_crmScenarioLinkKey:'forecast-qa|A|r1'}];
+      incoming.investmentForecasts = [{id:888,syncId:'forecast-qa',clientId:7,name:'Návrh A/B',createdAt:'2026-10-25T10:00:00.000Z',updatedAt:'2026-10-27T10:00:00.000Z',activeVariantId:'B',years:10,variants:[{id:'A',rows:[{proposalRowId:'r2',opportunityId:31,dealId:501}]},{id:'B',rows:[{proposalRowId:'r2',opportunityId:32,dealId:502}]}],proposalRows:[{proposalRowId:'r2',opportunityId:32}],managedRows:[],externalRows:[]},{id:999,syncId:'orphan-forecast',clientId:999,name:'Nesmí se navázat podle cizího ID'}];
+      const first = mergeIncomingState(JSON.parse(JSON.stringify(incoming)));
+      const forecast = state.investmentForecasts[0], importedDeals = state.deals.filter(d => d.clientId === 1), importedSnapshots = state.investmentSnapshots.filter(s => s.clientId === 1);
+      const beforeRepeat = JSON.stringify([state.deals,state.opportunities,state.investmentSnapshots,state.investmentRecords,state.investmentForecasts]);
+      const second = mergeIncomingState(JSON.parse(JSON.stringify(incoming)));
+      const repeated = beforeRepeat === JSON.stringify([state.deals,state.opportunities,state.investmentSnapshots,state.investmentRecords,state.investmentForecasts]);
+      const cancelled = state.opportunities.find(o => o.scenarioLinkKey === 'forecast-qa|A|r2');
+      const linkedRows = forecast.variants.map(v => ({id:v.id,proposalRowId:v.rows[0].proposalRowId,opportunityOwner:state.opportunities.find(o=>o.id===v.rows[0].opportunityId)?.clientId,dealOwner:state.deals.find(d=>d.id===v.rows[0].dealId)?.clientId}));
+      incoming.investmentForecasts[0].name = 'Novější návrh'; incoming.investmentForecasts[0].updatedAt = '2026-10-28T10:00:00.000Z';
+      const newer = mergeIncomingState(JSON.parse(JSON.stringify(incoming)));
+      const newName = state.investmentForecasts[0].name;
+      incoming.investmentForecasts[0].name = 'Starší návrh'; incoming.investmentForecasts[0].updatedAt = '2026-10-26T10:00:00.000Z';
+      mergeIncomingState(JSON.parse(JSON.stringify(incoming)));
+      const distinct = {sameDeal: sameDeal(deal(5,'f|A|r'),deal(6,'f|B|r')),sameCase:sameOpenOpportunity(opportunity(5,'f|A|r'),opportunity(6,'f|B|r')),linkedVsLegacy:sameDeal(deal(5,'f|A|r'),deal(6,''))};
+      const jsonRestored = normalizeState(JSON.parse(JSON.stringify(state)));
+      return {firstForecasts:first.investmentForecasts,repeatForecasts:second.investmentForecasts,repeated,forecastCount:state.investmentForecasts.length,activeVariantId:forecast.activeVariantId,linkedRows,dealCount:importedDeals.length,dealIds:importedDeals.map(d=>d.id),snapshotDealIds:importedSnapshots.map(s=>s.sourceDealId),snapshotCount:importedSnapshots.length,cancelledStatus:cancelled.status,signedCaseResurrected:state.opportunities.some(o=>o.scenarioLinkKey==='forecast-qa|A|r1'),fkiSource:state.investmentRecords[0]._crmSourceId,fkiClient:state.investmentRecords[0].ClientID,fkiValue:state.investmentRecords[0]['Aktuální hodnota investice'],newerCount:newer.investmentForecastsUpdated,newName,afterOlder:state.investmentForecasts[0].name,distinct,restoredCount:jsonRestored.investmentSnapshots.length,restoredSync:jsonRestored.investmentForecasts[0].syncId};
+    });
+    assert.equal(result.firstForecasts,1); assert.equal(result.repeatForecasts,0); assert.equal(result.repeated,true);
+    assert.equal(result.forecastCount,1); assert.equal(result.activeVariantId,'B');
+    assert.deepEqual(result.linkedRows,[{id:'A',proposalRowId:'r2',opportunityOwner:1,dealOwner:1},{id:'B',proposalRowId:'r2',opportunityOwner:1,dealOwner:1}]);
+    assert.equal(result.dealCount,2); assert.equal(result.snapshotCount,2); assert.deepEqual(result.snapshotDealIds,result.dealIds);
+    assert.equal(result.cancelledStatus,'Zrušeno'); assert.equal(result.signedCaseResurrected,false);
+    assert.equal(result.fkiSource,result.dealIds[0]); assert.equal(result.fkiClient,'1'); assert.equal(result.fkiValue,150000);
+    assert.equal(result.newerCount,1); assert.equal(result.newName,'Novější návrh'); assert.equal(result.afterOlder,'Novější návrh');
+    assert.deepEqual(result.distinct,{sameDeal:false,sameCase:false,linkedVsLegacy:false});
+    assert.equal(result.restoredCount,2); assert.equal(result.restoredSync,'forecast-qa');
+    const mergedOwner = await page.evaluate(() => {
+      state.investmentRecords=[];state.deals=[];state.opportunities=[];state.investmentSnapshots=[];
+      state.externalInvestments=[{id:1900,clientId:7,product:'Mimo správu',current:10}];
+      state.investmentForecasts=[{id:1901,clientId:7,syncId:'owner-merge-test',name:'Přesun klienta',variants:[]}];
+      openClientMergeModal([1,7]);setVal('mergeMaster',1);mergeClientsFromModal();
+      return [state.externalInvestments[0].clientId,state.investmentForecasts[0].clientId,state.clients.some(c=>c.id===7)];
+    });
+    assert.deepEqual(mergedOwner,[1,1,false]);
+    const legacy = await page.evaluate(() => {
+      const make = () => normalizeState({clients:[],contracts:[],deals:[],opportunities:[],investmentForecasts:[],investmentRecords:[],investmentSnapshots:[],createdAt:'2026-10-01T00:00:00.000Z'});
+      const client = {id:7,name:'Legacy Alpha Test',birthId:'8001011234'};
+      const row = {area:'Investice',company:'QA správce',product:'QA legacy fond',key:'Investice|qa-legacy',isin:'QALEGACY0001',amount:100000,monthly:0,rate:5,opportunityId:31};
+      const forecast = {id:888,clientId:7,name:'Legacy návrh',createdAt:'2026-10-20T12:00:00.000Z',years:10,proposalRows:[row],managedRows:[],externalRows:[]};
+      state = make();state.clients=[client];state.investmentForecasts=[structuredClone(forecast)];state=normalizeState(state);
+      const originalBackup=structuredClone(state);
+      const first=mergeIncomingState(structuredClone(originalBackup));
+      const localSync=state.investmentForecasts[0].syncId;
+      // Backup timestamps must not change the identity of an old forecast.
+      originalBackup.createdAt='2026-10-28T00:00:00.000Z';
+      const second=mergeIncomingState(originalBackup);
+      const duplicateCount=state.investmentForecasts.length;
+      state=make();state.clients=[{...client,id:1},{id:99,name:'Unrelated Test',birthId:'8101011234'}];
+      const incoming=make();incoming.clients=[client,{id:8,name:'Other owner Test',birthId:'8201011234'}];
+      const signed={id:501,clientId:7,fromOpportunityId:31,date:'2026-10-25',category:'Investice',company:row.company,product:row.product,fundKey:row.key,isin:row.isin,amount:100000};
+      incoming.deals=[signed,{...signed,id:502,clientId:8,fromOpportunityId:32},{...signed,id:503,fromOpportunityId:33,isin:'QAOTHER00001'}];
+      incoming.investmentForecasts=[structuredClone(forecast),{...structuredClone(forecast),id:889,name:'Foreign references',proposalRows:[{...row,opportunityId:32},{...row,opportunityId:33}]}];
+      incoming.investmentRecords=[{Investor:'Missing owner Test',ClientID:'99',Fond:'Orphan fund','Investiční společnost':'QA správce','Typ produktu':'FKI','Čistá investice':100000,'Aktuální hodnota investice':100000,_crmScenarioLinkKey:'orphan|A|r1',_crmSourceType:'deal',_crmSourceId:999}];
+      const importedCount=mergeIncomingState(incoming),imported=state.investmentForecasts.find(f=>f.name==='Legacy návrh'),foreign=state.investmentForecasts.find(f=>f.name==='Foreign references');
+      const mappedDeal=state.deals.find(d=>d.clientId===1&&d.isin===row.isin),mappedPointer=imported.proposalRows[0].dealId;
+      openSavedInvestmentForecast(imported.id,'proposal');
+      const before=state.opportunities.length;saveInvestmentScenario('proposal');
+      const newCases=state.opportunities.length-before;
+      const stored=state.investmentForecasts.find(f=>f.id===imported.id);
+      openSavedInvestmentForecast(stored.id,'proposal');saveInvestmentScenario('proposal');
+      const repeatedCases=state.opportunities.length-before;
+      openSavedInvestmentForecast(stored.id,'proposal');scenario_addVariant();
+      const clonedDealPointer=investmentScenario.rows[0].dealId||null;
+      saveInvestmentScenario('proposal');
+      return {firstAdded:first.investmentForecasts,secondAdded:second.investmentForecasts,duplicateCount,localSync,expectedSync:investmentForecastSyncId(forecast),mappedPointer,mappedDealId:mappedDeal.id,newCases,repeatedCases,clonedDealPointer,clonedCases:state.opportunities.length-before,foreignPointers:foreign.proposalRows.map(r=>r.dealId||null),orphanImports:importedCount.investments,wrongOwnerRecords:investmentRecordsForClient(99).length};
+    });
+    assert.equal(legacy.firstAdded,0);assert.equal(legacy.secondAdded,0);assert.equal(legacy.duplicateCount,1);assert.equal(legacy.localSync,legacy.expectedSync);
+    assert.equal(legacy.mappedPointer,legacy.mappedDealId);assert.equal(legacy.newCases,0);assert.equal(legacy.repeatedCases,0);
+    assert.equal(legacy.clonedDealPointer,null);assert.equal(legacy.clonedCases,1);
+    assert.deepEqual(legacy.foreignPointers,[null,null]);assert.equal(legacy.orphanImports,0);assert.equal(legacy.wrongOwnerRecords,0);
+    assert.deepEqual(errors,[]);
+    console.log('PASS: forecast UUID/active variant merge, client-safe remapped case/deal links, independent variant rows, repeat import, newer/older versions, terminal protection, signed snapshot/FKI links, JSON restore, client merge, legacy identity/signed references and orphan FKI protection.');
+  } finally { await browser.close(); }
+})().catch(error => { console.error(error); process.exitCode=1; });

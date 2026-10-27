@@ -719,6 +719,7 @@ function opportunityFundIdentity(o) {
 }
 function sameOpenOpportunity(a, b) {
   if (String(a?.clientId) !== String(b?.clientId)) return false;
+  if (a?.scenarioLinkKey || b?.scenarioLinkKey) return !!a?.scenarioLinkKey && a.scenarioLinkKey === b?.scenarioLinkKey;
   if (norm(a?.category) !== norm(b?.category)) return false;
   if (norm(a?.company) !== norm(b?.company)) return false;
   if (isInvestmentOpportunity(a) || isInvestmentOpportunity(b)) return opportunityFundIdentity(a) === opportunityFundIdentity(b);
@@ -1099,19 +1100,30 @@ function clientInvestmentItems(clientId) {
     clientId: d.clientId,
     company: d.company,
     product: d.product || d.category,
+    isin: d.fundIsin || d.isin || '',
+    typ: d.fundType || '',
+    regularAmount: d.regularAmount || d.monthly || 0,
+    regularFrequency: d.regularFrequency || '',
     amount: dealVolume(d),
     date: d.date,
     source: d,
     sourceType: 'deal',
     sourceId: d.id
   }));
-  const usedAreas = new Set([...recordAreas, ...deals.map(investmentAreaOfItem)]);
-  const contracts = clientContracts(clientId).filter(s => allowed.includes(areaForContract(s)) && !usedAreas.has(areaForContract(s))).map(s => ({
+  const contracts = clientContracts(clientId).filter(s => {
+    const area = areaForContract(s), isin = norm(s.fundIsin || s.isin || '');
+    if (!allowed.includes(area)) return false;
+    const representedByRecord = records.some(x => investmentAreaOfItem(x) === area && (isin ? norm(x.isin) === isin : norm(x.company) === norm(s.company) && norm(x.product) === norm(s.product || s.type)));
+    const representedByDeal = deals.some(x => String(x.source?.contractId || x.source?.fromContractId || '') === String(s.id) || (s.fromDealId && String(x.sourceId) === String(s.fromDealId)));
+    return !representedByRecord && !representedByDeal;
+  }).map(s => ({
     kind: areaForContract(s) === 'fki' ? 'FKI' : 'Smlouva',
     area: areaForContract(s),
     clientId: s.clientId,
     company: s.company,
     product: s.product || s.type,
+    isin: s.fundIsin || s.isin || '',
+    typ: s.fundType || '',
     amount: parseMoney(s.amount),
     date: s.anniv,
     source: s,
@@ -1302,7 +1314,8 @@ function invPositionKey(r) {
 }
 function invRecordKey(r) {
   const identity = invClientIdentity(r);
-  return [identity, invPositionKey(r), invEmissionDate(r), invPaymentDate(r), invTx(r), Math.round(invDeposit(r) * 100), Math.round(invQty(r) * 1000000), Math.round(invSubscribeValue(r) * 1000000)].join('|');
+  const key = [identity, invPositionKey(r), invEmissionDate(r), invPaymentDate(r), invTx(r), Math.round(invDeposit(r) * 100), Math.round(invQty(r) * 1000000), Math.round(invSubscribeValue(r) * 1000000)].join('|');
+  return r?._crmScenarioLinkKey ? key + '|scenario|' + r._crmScenarioLinkKey : key;
 }
 function invRecordScore(r) {
   return Object.values(r || {}).filter(v => v !== null && v !== undefined && String(v).trim() !== '').length + (invCurrent(r) > 0 ? 2 : 0);
@@ -1353,7 +1366,7 @@ function dedupeInvestmentSnapshotsInState(s) {
   const map = new Map(),
     out = [];
   (s.investmentSnapshots || []).forEach(x => {
-    const key = [snapshotDedupeKeyRaw(x), x.date || '', Math.round((+x.current || 0) * 100), Math.round((+x.invested || 0) * 100)].join('|');
+    const key = x.sourceScenarioLinkKey ? [String(x.clientId || ''), 'scenario', x.sourceScenarioLinkKey].join('|') : [snapshotDedupeKeyRaw(x), x.date || '', Math.round((+x.current || 0) * 100), Math.round((+x.invested || 0) * 100)].join('|');
     if (key && map.has(key)) {
       const i = map.get(key);
       out[i] = {
@@ -2433,7 +2446,7 @@ function mergeClientsFromModal() {
   master.aliases = [...new Set([...String(master.aliases || '').split(',').map(x => x.trim()), ...originalNames].filter(x => x && norm(x) !== norm(master.name)))].join(', ');
   const loserIds = clients.map(c => c.id).filter(id => id !== masterId),
     loserSet = new Set(loserIds.map(String));
-  ['contracts', 'deals', 'opportunities', 'insuranceClaims', 'activities', 'notes', 'investmentSnapshots', 'analysisEntries'].forEach(arr => (state[arr] || []).forEach(x => {
+  ['contracts', 'deals', 'opportunities', 'insuranceClaims', 'activities', 'notes', 'investmentSnapshots', 'analysisEntries', 'investmentForecasts', 'externalInvestments'].forEach(arr => (state[arr] || []).forEach(x => {
     if (loserSet.has(String(x.clientId))) x.clientId = masterId;
   }));
   (state.investmentRecords || []).forEach(r => {
@@ -3892,7 +3905,7 @@ function clientForecastPanel(c) {
     managed = clientInvestmentSummary(c.id).total,
     outside = externalInvestmentTotal(c.id),
     extRows = external.map(x => `<div class="forecast-position-row external-investment-row"><div><b>${esc(x.product)}</b><small>${esc([x.company, x.asset, x.liquidity].filter(Boolean).join(' · ') || 'mimo správu')}</small></div><div class="money"><small>Vloženo</small>${money(x.invested)}</div><div class="money"><small>Aktuálně</small><b>${money(x.current)}</b></div><div class="money"><small>Měsíčně</small>${money(x.monthly)}</div><div class="actions"><button class="btn slim" onclick="openExternalInvestmentModal(${c.id},${x.id})">Upravit</button></div></div>`).join('') || '<p class="note">Zatím nejsou uložené žádné investice mimo vaši správu.</p>',
-    forecastRows = forecasts.map(x => { const variants=x.variants || [], best=variants.length ? Math.max(...variants.map(v=>scenario_n(v.projection?.final))) : scenario_n(x.projection?.final); return `<div class="forecast-card"><div><b>${esc(x.name || 'Prognóza portfolia')}</b><small>${esc((x.createdAt || '').slice(0,10))} · horizont ${num(x.years || 10)} let · ${num(variants.length || 1)} ${variants.length === 1 ? 'varianta' : 'varianty'}</small></div><div class="money"><small>Současné portfolio</small><b>${money(x.projection?.current || 0)}</b></div><div class="money"><small>Nejvyšší modelová hodnota</small><b>${money(best)}</b></div><div class="actions"><button class="btn slim" onclick="openSavedInvestmentForecast(${x.id})">Otevřít</button><button class="btn slim" onclick="downloadSavedInvestmentForecast(${x.id})">Jedna stránka</button></div></div>`; }).join('') || '<p class="note">Zatím není uložena žádná prognóza.</p>';
+    forecastRows = forecasts.map(x => { const variants=x.variants || [], best=variants.length ? Math.max(...variants.map(v=>scenario_n(v.projection?.final))) : scenario_n(x.projection?.final); return `<div class="forecast-card"><div><b>${esc(x.name || 'Prognóza portfolia')}</b><small>${esc((x.createdAt || '').slice(0,10))} · horizont ${num(x.years || 10)} let · ${num(variants.length || 1)} ${variants.length === 1 ? 'varianta' : 'varianty'}</small></div><div class="money"><small>Současné portfolio</small><b>${money(x.projection?.current || 0)}</b></div><div class="money"><small>Nejvyšší modelová hodnota</small><b>${money(best)}</b></div><div class="actions"><button class="btn slim" onclick="openSavedInvestmentForecast(${x.id})">Otevřít</button><button class="btn slim primary" onclick="openSavedInvestmentForecast(${x.id},'proposal')">Převést na obchodní případy</button><button class="btn slim" onclick="downloadSavedInvestmentForecast(${x.id})">Jedna stránka</button></div></div>`; }).join('') || '<p class="note">Zatím není uložena žádná prognóza.</p>';
   return `<div class="forecast-client-panel"><div class="mini-card"><div class="forecast-client-head"><div><div class="eyebrow">Celkový investiční majetek</div><h3>Ve správě a mimo správu</h3></div><div class="actions"><button class="btn slim" onclick="openExternalInvestmentModal(${c.id})">+ Mimo správu</button><button class="btn slim primary" onclick="openInvestmentScenarioModal(${c.id},'Investice')">+ Prognóza</button></div></div><div class="investment-summary" style="margin:12px 0"><div class="metric"><span class="note">AUM v mé správě</span><b>${money(managed)}</b></div><div class="metric"><span class="note">Mimo mou správu</span><b>${money(outside)}</b></div><div class="metric"><span class="note">Majetek pro prognózu</span><b>${money(managed + outside)}</b></div></div><div class="forecast-position-list">${extRows}</div></div><div class="mini-card"><div class="forecast-client-head"><div><div class="eyebrow">Uložené varianty</div><h3>Prognózy portfolia</h3></div></div><div class="forecast-list">${forecastRows}</div></div></div>`;
 }
 function clientOverview(c, contracts, deals, acts, year) {
@@ -4335,6 +4348,7 @@ function investmentSnapshotUpdateIndex(snapshot, selectedId = '') {
   return latest ? rows.indexOf(latest) : -1;
 }
 function investmentSnapshotMergeKey(s) {
+  if (s?.sourceScenarioLinkKey) return [String(s.clientId || ''), 'scenario', s.sourceScenarioLinkKey].join('|');
   return [investmentSnapshotKeyForSnapshot(s), s.date, Math.round((+s.current || 0) * 100), Math.round((+s.invested || 0) * 100)].join('|');
 }
 function investmentItemKey(x) {
@@ -6221,6 +6235,7 @@ function dealFundCommissionRows(category = val('dCategory')) {
   }).sort(compareFundsByCompanyName);
 }
 function fillDealFundSelect(selectedKey = val('dFundKey')) {
+  selectedKey = String(selectedKey || '').replace(/^(FKI|Investice)\|/, '');
   const box = byId('dFundCommissionBox'), el = byId('dFundKey'), area = val('dCategory');
   if (!box || !el) return;
   const visible = area === 'FKI' || area === 'Investice';
@@ -6232,7 +6247,8 @@ function fillDealFundSelect(selectedKey = val('dFundKey')) {
   if (!visible) return;
   const rows = dealFundCommissionRows(area);
   el.innerHTML = '<option value="">Vyber fond…</option>' + rows.map(r => `<option value="${esc(r.key)}">${esc([r.company,r.product,r.isin].filter(Boolean).join(' · '))}</option>`).join('');
-  if (selectedKey && rows.some(r => r.key === selectedKey)) el.value = selectedKey;
+  if (selectedKey && !rows.some(r => r.key === selectedKey)) el.insertAdjacentHTML('beforeend', `<option value="${esc(selectedKey)}">${esc([val('dCompany'),val('dProduct'),val('dFundIsin')].filter(Boolean).join(' · ') || 'Fond z obchodního případu')}</option>`);
+  if (selectedKey) el.value = selectedKey;
 }
 function syncDealFundCommission() {
   const row = dealFundCommissionRows().find(r => r.key === val('dFundKey'));
@@ -6408,13 +6424,67 @@ function openRecurringCommissionModal(id=null) {
   setVal('rcCompany',d?.company||'');setVal('rcNote',d?.product||'');setVal('rcDate',d?.date||today());setVal('rcAmount',d?dealActualCommission(d):'');setVal('rcPaid',d?dealPaid(d)?'yes':'no':'yes');
   openModal('recurringCommissionModal');
 }
+function linkedDealForOpportunity(o) {
+  return (state.deals || []).find(d => String(d.clientId) === String(o.clientId) && ((o.dealId && String(d.id) === String(o.dealId))
+    || (o.id && String(d.fromOpportunityId || '') === String(o.id))
+    || (o.scenarioLinkKey && d.scenarioLinkKey === o.scenarioLinkKey))) || null;
+}
+function investmentCaseMetadata(source = {}) {
+  const result = {};
+  ['scenarioLinkKey','sourceForecastSyncId','sourceVariantId','sourceProposalRowId','scenarioKey','proposalKey','fundKey','fundIsin','isin','fundType','regularAmount','regularFrequency','monthly','investmentSchedule','entryCommissionPct','trailPct','commissionSource','managementPartnerId','ownerType','ownerCommissionPct','source','note'].forEach(key => {
+    if (source[key] !== undefined) result[key] = source[key];
+  });
+  return result;
+}
+function syncSignedInvestmentPosition(d) {
+  if (!d || d.investmentPositionSyncedAt || !(d.scenarioLinkKey || d.proposalKey || d.source === 'investmentScenario')) return false;
+  const area = areaForDeal(d);
+  if (!['investice','fki'].includes(area)) return false;
+  state.investmentSnapshots = state.investmentSnapshots || [];
+  const amount = Math.max(0, dealVolume(d));
+  if (area === 'investice' && amount > 0) {
+    const probe = {clientId:d.clientId, company:d.company, product:d.product, isin:d.fundIsin || d.isin || '', fundType:d.fundType || 'Investice'},
+      key = investmentSnapshotKeyForSnapshot(probe), snapshots = latestInvestmentSnapshots(d.clientId);
+    let previous = snapshots.find(s => investmentSnapshotKeyForSnapshot(s) === key)
+      || snapshots.find(s => s.scope === 'provider-total' && investmentProviderIdentity(s) === investmentProviderIdentity(probe));
+    if (!previous) {
+      const priorItems = clientInvestmentItems(d.clientId).filter(x => investmentAreaOfItem(x) === 'investice' && investmentItemKey(x) === key
+        && !(x.sourceType === 'deal' && String(x.sourceId) === String(d.id))
+        && !(x.sourceType === 'contract' && String(x.source?.fromDealId || '') === String(d.id))),
+        prior = mergeClassicInvestmentItems(priorItems)[0];
+      if (prior) previous = {...probe, date:d.date || today(), current:+prior.amount || 0, invested:investmentInvestedAmount(prior),
+        redemptionAmount:investmentRealizedAmount(prior), regularAmount:prior.source?.regularAmount || prior.regularAmount || 0,
+        regularFrequency:prior.source?.regularFrequency || prior.regularFrequency || '', investmentSchedule:investmentSchedule(prior.source || prior)};
+    }
+    if (previous && !(state.investmentSnapshots || []).some(s => String(s.clientId) === String(d.clientId) && (String(s.sourceDealId || '') === String(d.id) || (d.scenarioLinkKey && s.sourceScenarioLinkKey === d.scenarioLinkKey)))) {
+      const current = investmentSnapshotLiveCurrent(previous),
+        basis = +(previous.investedBeforeRedemption ?? previous.invested) || 0,
+        realized = +previous.redemptionAmount || 0,
+        gain = previous.gainAmount != null && previous.gainAmount !== '' ? +previous.gainAmount : previous.gainPct != null && previous.gainPct !== '' ? basis * +previous.gainPct / 100 : current + realized - basis,
+        regularAmount = parseMoney(d.regularAmount ?? d.monthly ?? 0) || parseMoney(previous.regularAmount),
+        next = {...previous, ...(previous.scope === 'provider-total' ? {clientId:d.clientId} : probe), id:uid(), date:[previous.date || '', d.date || today()].sort().at(-1),
+          current:current + amount, invested:(+previous.invested || 0) + amount, investedBeforeRedemption:basis + amount,
+          gainAmount:gain, gainPct:basis + amount > 0 ? gain / (basis + amount) * 100 : 0, annualReturnPct:null,
+          manualAumOverride:true, regularAmount,
+          regularFrequency:d.regularFrequency || previous.regularFrequency || '', investmentSchedule:regularAmount > 0 ? 'mixed' : 'single',
+          source:'Dokup z uzavřeného obchodního případu', sourceDealId:d.id, sourceScenarioLinkKey:d.scenarioLinkKey || '',
+          sourceForecastSyncId:d.sourceForecastSyncId || '', sourceVariantId:d.sourceVariantId || '', sourceProposalRowId:d.sourceProposalRowId || '',
+          createdAt:new Date().toISOString(), updatedAt:new Date().toISOString()};
+      delete next.quantity; delete next.qty; delete next.subscribeValue;
+      state.investmentSnapshots.push(next);
+    }
+  }
+  d.investmentPositionSyncedAt = new Date().toISOString();
+  d.investmentPositionSyncedAmount = amount;
+  return true;
+}
 function openDealFromOpportunity(o) {
   pendingContractToDealId=null;
   pendingOpportunityToDealId = o.id;
   fillClientSelect('dClient', o.clientId || selectedClientId);
   byId('dCategory').innerHTML = CATEGORIES.map(c => `<option>${c}</option>`).join('');
   fillDealStatusSelect();
-  editingDealId = o.dealId && state.deals.some(d => String(d.id) === String(o.dealId)) ? o.dealId : null;
+  editingDealId = linkedDealForOpportunity(o)?.id || null;
   const category = opportunityCategoryToDeal(o.category, o.product),
     d = editingDealId ? state.deals.find(x => String(x.id) === String(editingDealId)) : {
       clientId: o.clientId,
@@ -6440,7 +6510,7 @@ function openDealFromOpportunity(o) {
   setVal('dProduct', d.product || o.product || '');
   setVal('dAmount', d.amount || o.amount || '');
   setVal('dFundKey', d.fundKey || o.fundKey || '');
-  setVal('dFundIsin', d.fundIsin || o.fundIsin || '');
+  setVal('dFundIsin', d.fundIsin || d.isin || o.fundIsin || o.isin || '');
   setVal('dEntryCommissionPct', d.entryCommissionPct ?? o.entryCommissionPct ?? '');
   setVal('dTrailPct', d.trailPct ?? o.trailPct ?? '');
   setVal('dCommissionSource', d.commissionSource || o.commissionSource || '');
@@ -7013,6 +7083,13 @@ function upsertContractFromDeal(d,forceNew=false) {
     source: sourceForType(val('dContractType') || contractTypeFromDeal(d.category, d.product)),
     company: d.company,
     product: d.product,
+    fundKey: d.fundKey || s.fundKey || '',
+    isin: d.fundIsin || d.isin || s.isin || '',
+    fundIsin: d.fundIsin || d.isin || s.fundIsin || '',
+    fundType: d.fundType || s.fundType || '',
+    regularAmount: d.regularAmount ?? d.monthly ?? s.regularAmount ?? 0,
+    regularFrequency: d.regularFrequency || s.regularFrequency || '',
+    investmentSchedule: d.investmentSchedule || s.investmentSchedule || 'single',
     number,
     anniv: val('dContractAnniv'),
     amount: val('dContractAmount').trim() || dealContractAmountText(d),
@@ -7116,7 +7193,8 @@ function fkiSync_before_saveDeal() {
   toggleDealContractFields();
   const looksEmpty = !parseMoney(val('dAmount')) && !parseMoney(val('dBj')) && !parseMoney(val('dActualCommission'));
   if (!editingDealId && !pendingOpportunityToDealId && !pendingContractToDealId && looksEmpty && val('dCreateContract') === 'no' && !confirm('Tento obchod nemá objem, BJ ani provizi a nemá se propsat do smluv. Nevypadá jako uzavřený obchod. Opravdu ho chceš uložit do obchodů?')) return;
-  const existingDeal = editingDealId ? state.deals.find(x => x.id === editingDealId) : null,
+  const sourceOpportunity = pendingOpportunityToDealId ? state.opportunities.find(x => String(x.id) === String(pendingOpportunityToDealId)) : null,
+    existingDeal = editingDealId ? state.deals.find(x => String(x.id) === String(editingDealId)) : sourceOpportunity ? linkedDealForOpportunity(sourceOpportunity) : null,
     ignoreContractId = replacementSource?.id || existingDeal?.contractId || pendingContractToDealId || null;
   const priorContract=existingDeal?linkedContractForDeal(existingDeal):null;
   if(existingDeal?.pendingContract&&!replacementSource)return alert('U naplánované náhrady vyberte původní smlouvu.');
@@ -7136,10 +7214,10 @@ function fkiSync_before_saveDeal() {
     };
     state.deals.push(d);
   }
-  const wasNew = !editingDealId,
+  const wasNew = !existingDeal,
     owner = val('dOwner').trim(),
     ownerType = owner ? val('dOwnerType') : '';
-  Object.assign(d, {
+  Object.assign(d, sourceOpportunity ? investmentCaseMetadata(sourceOpportunity) : {}, {
     clientId,
     managementPartnerId: val('dManagementPartner') || clientManagementId(clientId),
     category: val('dCategory'),
@@ -7160,6 +7238,7 @@ function fkiSync_before_saveDeal() {
     actualCommission: val('dActualCommission').trim() === '' ? '' : parseMoney(val('dActualCommission')),
     commissionPaid: val('dCommissionPaid') === 'yes'
   });
+  if (['Investice','FKI'].includes(d.category)) d.isin = d.fundIsin || '';
   if (pendingOpportunityToDealId) {
     d.fromOpportunityId = pendingOpportunityToDealId;
     const o = state.opportunities.find(x => String(x.id) === String(pendingOpportunityToDealId));
@@ -7205,6 +7284,7 @@ function fkiSync_before_saveDeal() {
   if(replacementSource){d.contractId=replacementSource.id;d.replacementEffectiveDate=replacementDate;d.replacementSignedDate=d.date;d.replacedContractSnapshot=JSON.parse(JSON.stringify(replacementSource));}
   const linked = upsertContractFromDeal(d,(wasNew&&!pendingContractToDealId)||!!replacementSource);
   if(replacementSource&&linked)finishContractReplacement(d,linked);
+  syncSignedInvestmentPosition(d);
 
   if (linked && confirmedContractDup.length) markDuplicateVerified('contract', [linked, ...confirmedContractDup]);
   dedupeInvestmentRecordsInState(state);
@@ -7215,6 +7295,7 @@ function fkiSync_before_saveDeal() {
   closeModal('dealModal');
   renderAll();
   saveToast('Obchod uložen');
+  return d;
 }
 function fkiSync_before_deleteDeal() {
   if (!editingDealId) return;
@@ -7442,12 +7523,14 @@ function quickSignOpportunity() {
   saveOpportunity();
 }
 function convertOpportunityToDeal(o) {
-  if (o.dealId && state.deals.some(d => d.id === o.dealId)) {
-    state.opportunities = state.opportunities.filter(x => x.id !== o.id);
-    return;
+  const existing = linkedDealForOpportunity(o);
+  if (existing) {
+    state.opportunities = state.opportunities.filter(x => String(x.id) !== String(o.id));
+    return existing;
   }
   const category = opportunityCategoryToDeal(o.category, o.product);
   const d = {
+    ...investmentCaseMetadata(o),
     id: uid(),
     clientId: o.clientId,
     category,
@@ -7465,6 +7548,8 @@ function convertOpportunityToDeal(o) {
     createContract: o.createContract !== false,
     contractNumber: o.contractNumber
   };
+  d.fundIsin = o.fundIsin || o.isin || '';
+  d.isin = d.fundIsin;
   state.deals.push(d);
   if (o.createContract !== false) {
     const type = contractTypeFromDeal(category, o.product),
@@ -7477,6 +7562,14 @@ function convertOpportunityToDeal(o) {
         source: sourceForType(type),
         company: o.company,
         product: o.product,
+        fundKey: d.fundKey || '',
+        isin: d.fundIsin || '',
+        fundIsin: d.fundIsin || '',
+        fundType: d.fundType || '',
+        regularAmount: d.regularAmount || d.monthly || 0,
+        regularFrequency: d.regularFrequency || '',
+        investmentSchedule: d.investmentSchedule || 'single',
+        fromDealId: d.id,
         number: o.contractNumber || '',
         anniv: o.contractAnniv || nextAnnualDateString(d.date),
         amount: dealContractAmountText(d),
@@ -7495,8 +7588,10 @@ function convertOpportunityToDeal(o) {
   }
   o.dealId = d.id;
   o.convertedAt = today();
+  syncSignedInvestmentPosition(d);
   addActivity(o.clientId, 'Obchod', 'Obchodní případ dokončen a propsán: ' + (o.product || o.category) + ' · ' + num(o.bj) + ' BJ', true);
-  state.opportunities = state.opportunities.filter(x => x.id !== o.id);
+  state.opportunities = state.opportunities.filter(x => String(x.id) !== String(o.id));
+  return d;
 }
 function deleteOpportunity() {
   if (!editingOpportunityId) return;
@@ -7645,6 +7740,7 @@ function setBackupPreview(html) {
 }
 function sameDeal(a, b) {
   if(isInternalCommission(a)||isInternalCommission(b))return isInternalCommission(a)&&isInternalCommission(b)&&(a.recurringCommissionKey&&b.recurringCommissionKey?a.recurringCommissionKey===b.recurringCommissionKey:a.date===b.date&&norm(a.company)===norm(b.company)&&norm(a.product)===norm(b.product)&&dealActualCommission(a)===dealActualCommission(b));
+  if (a?.scenarioLinkKey || b?.scenarioLinkKey) return String(a?.clientId) === String(b?.clientId) && !!a?.scenarioLinkKey && a.scenarioLinkKey === b?.scenarioLinkKey;
   return String(a.clientId) === String(b.clientId) && a.date === b.date && norm(a.category) === norm(b.category) && norm(a.company) === norm(b.company) && norm(a.product) === norm(b.product) && dealVolume(a) === dealVolume(b) && dealBJ(a) === dealBJ(b);
 }
 function findMatchingClient(c) {
@@ -7662,7 +7758,7 @@ function mergeIncomingStateCore(incoming) {
     Object.entries(incoming.settings.commissionLegacyArchive).forEach(([key,rows])=>{const existing=archive[key]||(archive[key]=[]);rows.forEach(x=>{if(!existing.some(y=>JSON.stringify(y)===JSON.stringify(x)))existing.push(JSON.parse(JSON.stringify(x)));});});
   }
   dedupeInvestmentRecordsInState(state);
-  const map = new Map(), contractMap = new Map(),
+  const map = new Map(), contractMap = new Map(), dealMap = new Map(), opportunityMap = new Map(),
     count = {
       clients: 0,
       contracts: 0,
@@ -7670,6 +7766,8 @@ function mergeIncomingStateCore(incoming) {
       insuranceClaimsUpdated: 0,
       deals: 0,
       opportunities: 0,
+      investmentForecasts: 0,
+      investmentForecastsUpdated: 0,
       notes: 0,
       investments: 0,
       activities: 0,
@@ -7700,6 +7798,11 @@ function mergeIncomingStateCore(incoming) {
   });
   function mappedClient(id) {
     return map.get(String(id)) || null;
+  }
+  function mappedRecordId(kind, id, clientId) {
+    const ids = kind === 'contracts' ? contractMap : kind === 'deals' ? dealMap : opportunityMap;
+    const local = state[kind].find(x => String(x.id) === String(ids.get(String(id))) && String(x.clientId) === String(clientId));
+    return local?.id || null;
   }
   incoming.contracts.forEach(is => {
     const clientId = mappedClient(is.clientId);
@@ -7760,34 +7863,84 @@ function mergeIncomingStateCore(incoming) {
       ...idl,
       clientId
     };
-    if (state.deals.some(d => sameDeal(d, next))) {
+    const existing = state.deals.find(d => sameDeal(d, next));
+    if (existing) {
+      dealMap.set(String(idl.id), existing.id);
       count.skipped++;
       return;
     }
-    state.deals.push({
+    const deal = {
       ...next,
       id: uid(),
       createdAt: idl.createdAt || today(),
       importedAt: today()
-    });
+    };
+    if (next.scenarioLinkKey) {
+      deal.contractId = mappedRecordId('contracts', idl.contractId, clientId);
+      deal.fromContractId = mappedRecordId('contracts', idl.fromContractId, clientId);
+      deal.fromOpportunityId = null;
+    }
+    state.deals.push(deal);
+    dealMap.set(String(idl.id), deal.id);
     count.deals++;
   });
   incoming.opportunities.forEach(io => {
     const clientId = mappedClient(io.clientId);
     if (!clientId) return;
-    const exists = state.opportunities.some(o => String(o.clientId) === String(clientId) && o.status === io.status && o.statusDate === io.statusDate && norm(o.product) === norm(io.product) && (+o.bj || 0) === (+io.bj || 0));
-    if (exists) {
+    // A signed scenario row must not be reintroduced as an open case by an older backup.
+    if (io.scenarioLinkKey && state.deals.some(d => String(d.clientId) === String(clientId) && d.scenarioLinkKey === io.scenarioLinkKey)) { count.skipped++; return; }
+    const existing = state.opportunities.find(o => String(o.clientId) === String(clientId) && (io.scenarioLinkKey || o.scenarioLinkKey ? !!io.scenarioLinkKey && io.scenarioLinkKey === o.scenarioLinkKey : o.status === io.status && o.statusDate === io.statusDate && norm(o.product) === norm(io.product) && (+o.bj || 0) === (+io.bj || 0)));
+    if (existing) {
+      opportunityMap.set(String(io.id), existing.id);
       count.skipped++;
       return;
     }
-    state.opportunities.push({
+    const opportunity = {
       ...io,
       id: uid(),
       clientId,
       createdAt: io.createdAt || today(),
       importedAt: today()
-    });
+    };
+    if (io.scenarioLinkKey) opportunity.dealId = mappedRecordId('deals', io.dealId, clientId);
+    state.opportunities.push(opportunity);
+    opportunityMap.set(String(io.id), opportunity.id);
     count.opportunities++;
+  });
+  incoming.deals.filter(d => d.scenarioLinkKey).forEach(source => {
+    const local = state.deals.find(d => String(d.id) === String(dealMap.get(String(source.id))));
+    if (local && !local.fromOpportunityId) local.fromOpportunityId = mappedRecordId('opportunities', source.fromOpportunityId, local.clientId);
+  });
+  incoming.investmentForecasts.forEach(source => {
+    const clientId = mappedClient(source.clientId);
+    if (!clientId) { count.skipped++; return; }
+    const next = JSON.parse(JSON.stringify(source));
+    next.clientId = clientId;
+    next.syncId = investmentForecastSyncId(source);
+    const remapRow = row => {
+      if (!row || typeof row !== 'object') return;
+      // Signed legacy cases no longer exist in opportunities; preserve the verified deal link before remapping IDs.
+      if (row.opportunityId != null && row.dealId == null) {
+        const fund = opportunityFundIdentity({category:row.area, company:row.company, product:row.product, fundKey:row.key, isin:row.isin});
+        const deal = incoming.deals.find(d => String(d.clientId) === String(source.clientId) && String(d.fromOpportunityId) === String(row.opportunityId) && opportunityFundIdentity(d) === fund);
+        if (deal) row.dealId = deal.id;
+      }
+      if (row.opportunityId != null) row.opportunityId = mappedRecordId('opportunities', row.opportunityId, clientId);
+      if (row.dealId != null) row.dealId = mappedRecordId('deals', row.dealId, clientId);
+      if (row.sourceDealId != null) row.sourceDealId = mappedRecordId('deals', row.sourceDealId, clientId);
+    };
+    [...(next.proposalRows || []), ...(next.managedRows || []), ...(next.externalRows || []), ...(next.variants || []).flatMap(v => v.rows || [])].forEach(remapRow);
+    const existing = state.investmentForecasts.find(f => String(f.clientId) === String(clientId) && investmentForecastSyncId(f) === next.syncId);
+    if (existing) {
+      existing.syncId = next.syncId;
+      if ((Date.parse(next.updatedAt || next.createdAt) || 0) > (Date.parse(existing.updatedAt || existing.createdAt) || 0)) {
+        Object.assign(existing, next, {id:existing.id, importedAt:today()});
+        count.investmentForecastsUpdated++;
+      } else count.skipped++;
+    } else {
+      state.investmentForecasts.push({...next, id:uid(), importedAt:today()});
+      count.investmentForecasts++;
+    }
   });
   incoming.notes.forEach(n => {
     const clientId = n.clientId ? mappedClient(n.clientId) : null;
@@ -7806,13 +7959,26 @@ function mergeIncomingStateCore(incoming) {
     count.notes++;
   });
   (incoming.investmentRecords || []).forEach(ir => {
-    const key = invRecordKey(ir);
+    const next = {...ir};
+    if (ir._crmScenarioLinkKey) {
+      const source = ir._crmSourceType === 'contract' ? incoming.contracts.find(x => String(x.id) === String(ir._crmSourceId)) : incoming.deals.find(x => String(x.id) === String(ir._crmSourceId));
+      const clientId = source ? mappedClient(source.clientId) : mappedClient(ir.clientId || invClientId(ir));
+      if (!clientId) { count.skipped++; return; }
+      const kind = ir._crmSourceType === 'contract' ? 'contracts' : 'deals';
+      next._crmSourceId = mappedRecordId(kind, ir._crmSourceId, clientId) || '';
+      next._crmDealId = mappedRecordId('deals', ir._crmDealId, clientId) || '';
+      next._crmContractId = mappedRecordId('contracts', ir._crmContractId, clientId) || '';
+      if (!next._crmSourceId) { next._crmSourceType = ''; next._source = 'imported-fki'; }
+      if (clientId && !String(invClientId(ir)).startsWith('RC_')) next.ClientID = String(clientId);
+      if (ir.clientId != null) next.clientId = clientId;
+    }
+    const key = invRecordKey(next);
     if (key && state.investmentRecords.some(r => invRecordKey(r) === key)) {
       count.skipped++;
       return;
     }
     state.investmentRecords.push({
-      ...ir,
+      ...next,
       _importedAt: today()
     });
     count.investments++;
@@ -7913,6 +8079,7 @@ function mergeIncomingStateCore(incoming) {
     }
   });
   relinkAllStrongIdentities();
+  Object.defineProperty(count, '_mergeIds', {value:{clients:map, contracts:contractMap, deals:dealMap, opportunities:opportunityMap}, enumerable:false});
   return count;
 }
 function previewGoogleBackup() {
@@ -8476,8 +8643,8 @@ function scenario_noteNumber(note, re) {
   return m ? scenario_n(m[1] || m[2]) : 0;
 }
 function scenario_bestFundForOpportunity(o, area) {
-  const rows = scenario_catalog().filter(x => x.area === area);
-  return rows.find(x => x.isin && scenario_match(x.isin, o.isin)) || rows.find(x => scenario_match(x.product, o.product) && scenario_match(x.company, o.company)) || rows.find(x => scenario_match(x.product, o.product) || scenario_match(x.company, o.company)) || null;
+  const rows = scenario_catalog().filter(x => x.area === area), isin = norm(o.isin || o.fundIsin || ''), key = o.scenarioKey || o.fundKey;
+  return rows.find(x => isin && norm(x.isin || '') === isin) || rows.find(x => key && x.key === key) || rows.find(x => norm(x.product) === norm(o.product) && norm(x.company) === norm(o.company)) || null;
 }
 function scenario_scenarioRowFromOpportunity(o) {
   const a = opportunityArea(o) === 'fki' || o.category === 'FKI' ? 'FKI' : 'Investice',
@@ -8493,6 +8660,8 @@ function scenario_scenarioRowFromOpportunity(o) {
         typ: o.fundType || ''
       }),
       amount: scenario_n(o.amount),
+      monthly: scenario_n(o.regularAmount),
+      proposalRowId: o.sourceProposalRowId || '',
       rate: scenario_noteNumber(note, /výnos\s+([0-9]+[,.]?[0-9]*)/i) || scenario_noteNumber(note, /zhodnocení\s+([0-9]+[,.]?[0-9]*)/i) || 5,
       topupYear: scenario_noteNumber(note, /dokup\s+([0-9]+)\.\s*rok/i),
       topupAmount: scenario_noteNumber(note, /dokup\s+[0-9]+.\s*rok\s+([0-9\s,.]+)/i),
@@ -8572,7 +8741,7 @@ function scenario_renderEditableSelectedFunds() {
       a[k] = (a[k] || 0) + scenario_n(x.amount);
       return a;
     }, {});
-  box.innerHTML = `<div class="toolbar"><div><h3>Navržené investice</h3><div class="note">Horizont ${num(years)} let · jednorázově ${money(total)} · modelová hodnota ${money(future)} · Investice ${money(areaSum.Investice || 0)} · FKI ${money(areaSum.FKI || 0)}${loaded ? ` · ${num(loaded)} načteno z otevřených obchodních případů` : ''}</div></div></div>${rows.length ? `<div class="table-wrap"><table class="compact-table scenario-edit-table"><thead><tr><th>Fond</th><th>Vklad</th><th>Měsíčně</th><th>Výnos p.a.</th><th>Dokup rok</th><th>Dokup</th><th>Propad rok</th><th>Propad %</th><th>Modelová hodnota</th><th></th></tr></thead><tbody>${rows.map((x, i) => `<tr><td class="fund-cell"><select data-scenario-row="${i}" data-k="key">${scenario_fundOptions(x.area || scenario_scenarioAreaLabel(), x.key)}</select><span class="note"><span class="badge ${x.area === 'FKI' ? 'purple' : 'blue'}">${esc(x.area || scenario_scenarioAreaLabel())}</span> ${esc(x.company || '')} ${x.source ? `<span class="source-pill">${esc(x.source)}</span>` : ''}</span></td><td class="money-cell"><input data-scenario-row="${i}" data-k="amount" type="number" min="0" value="${esc(scenario_n(x.amount))}"></td><td class="money-cell"><input data-scenario-row="${i}" data-k="monthly" type="number" min="0" value="${esc(scenario_n(x.monthly))}"></td><td class="rate-cell"><input data-scenario-row="${i}" data-k="rate" type="number" step="0.1" value="${esc(scenario_n(x.rate))}"></td><td class="year-cell"><select data-scenario-row="${i}" data-k="topupYear">${scenario_yearOptions(x.topupYear)}</select></td><td class="money-cell"><input data-scenario-row="${i}" data-k="topupAmount" type="number" min="0" value="${esc(scenario_n(x.topupAmount))}"></td><td class="year-cell"><select data-scenario-row="${i}" data-k="dropYear">${scenario_yearOptions(x.dropYear)}</select></td><td class="rate-cell"><input data-scenario-row="${i}" data-k="dropPct" type="number" min="0" max="100" step="0.1" value="${esc(scenario_n(x.dropPct))}"></td><td class="money money-cell"><b>${money(scenario_scenarioRowValue(x, years))}</b></td><td><button class="icon-btn" title="Odebrat" data-scenario-remove="${i}">×</button></td></tr>`).join('')}</tbody></table></div><div class="scenario-edit-summary">Uložení prognózy nic nepropíše do AUM ani provizí. Obchodní případy vzniknou pouze při zvoleném režimu Prognóza + obchodní případy.</div>` : '<p class="note">Vyber fond a přidej nový jednorázový nebo pravidelný nákup. Samotná prognóza nevytvoří obchod.</p>'}`;
+  box.innerHTML = `<div class="toolbar"><div><h3>Navržené investice</h3><div class="note">Horizont ${num(years)} let · jednorázově ${money(total)} · modelová hodnota ${money(future)} · Investice ${money(areaSum.Investice || 0)} · FKI ${money(areaSum.FKI || 0)}${loaded ? ` · ${num(loaded)} načteno z otevřených obchodních případů` : ''}</div></div></div>${rows.length ? `<div class="table-wrap"><table class="compact-table scenario-edit-table"><thead><tr><th>Fond</th><th>Vklad</th><th>Měsíčně</th><th>Výnos p.a.</th><th>Dokup rok</th><th>Dokup</th><th>Propad rok</th><th>Propad %</th><th>Modelová hodnota</th><th></th></tr></thead><tbody>${rows.map((x, i) => `<tr><td class="fund-cell"><select data-scenario-row="${i}" data-k="key">${scenario_fundOptions(x.area || scenario_scenarioAreaLabel(), x.key)}</select><span class="note"><span class="badge ${x.area === 'FKI' ? 'purple' : 'blue'}">${esc(x.area || scenario_scenarioAreaLabel())}</span> ${esc(x.company || '')} ${x.source ? `<span class="source-pill">${esc(x.source)}</span>` : ''}</span></td><td class="money-cell"><input data-scenario-row="${i}" data-k="amount" type="number" min="0" value="${esc(scenario_n(x.amount))}"></td><td class="money-cell"><input data-scenario-row="${i}" data-k="monthly" type="number" min="0" value="${esc(scenario_n(x.monthly))}"></td><td class="rate-cell"><input data-scenario-row="${i}" data-k="rate" type="number" step="0.1" value="${esc(scenario_n(x.rate))}"></td><td class="year-cell"><select data-scenario-row="${i}" data-k="topupYear">${scenario_yearOptions(x.topupYear)}</select></td><td class="money-cell"><input data-scenario-row="${i}" data-k="topupAmount" type="number" min="0" value="${esc(scenario_n(x.topupAmount))}"></td><td class="year-cell"><select data-scenario-row="${i}" data-k="dropYear">${scenario_yearOptions(x.dropYear)}</select></td><td class="rate-cell"><input data-scenario-row="${i}" data-k="dropPct" type="number" min="0" max="100" step="0.1" value="${esc(scenario_n(x.dropPct))}"></td><td class="money money-cell"><b>${money(scenario_scenarioRowValue(x, years))}</b></td><td><button class="icon-btn" title="Odebrat" data-scenario-remove="${i}">×</button></td></tr>`).join('')}</tbody></table></div><div class="scenario-edit-summary">Zvol Uložit prognózu, nebo Založit obchodní případy. Pro aktivní variantu vznikne jeden případ na každý fond; do portfolia se nákup připíše až po sjednání.</div>` : '<p class="note">Vyber fond a přidej nový jednorázový nebo pravidelný nákup. Samotná prognóza nevytvoří obchod.</p>'}`;
 }
 function resetScenarioExternalRows() {
   const c = scenario_selected();
@@ -8631,14 +8800,14 @@ function scenario_transferRows(model = investmentScenario) {
     if (d.action !== 'transfer' || !d.targetKey || amount <= 0) return [];
     const target = catalog.find(x => x.key === d.targetKey);
     if (!target) return [];
-    return [scenario_applyApprovedRate({...target, amount, monthly:0, funding:'transfer', transferFrom:position.product, source:'Přesun z ' + (position.product || 'původní investice')})];
+    return [scenario_applyApprovedRate({...target, amount, monthly:0, funding:'transfer', proposalRowId:'transfer:' + position.positionId, transferFrom:position.product, source:'Přesun z ' + (position.product || 'původní investice')})];
   });
 }
 function scenario_variantLabel(index) {
   return `Alternativa ${String.fromCharCode(65 + Math.min(index, 25))}`;
 }
 function scenario_variantSnapshot(name, id) {
-  return {id:id || uid(), name:name || scenario_variantLabel((investmentScenario.variants || []).length), rows:(investmentScenario.rows || []).map(x => ({...x})), dispositions:JSON.parse(JSON.stringify(investmentScenario.dispositions || {}))};
+  return {id:id || scenario_newLinkId(), name:name || scenario_variantLabel((investmentScenario.variants || []).length), rows:(investmentScenario.rows || []).map(x => ({...x})), dispositions:JSON.parse(JSON.stringify(investmentScenario.dispositions || {}))};
 }
 function scenario_ensureVariants(force = false) {
   investmentScenario.variants = investmentScenario.variants || [];
@@ -8669,6 +8838,7 @@ function scenario_addVariant() {
   scenario_syncActiveVariant();
   if (investmentScenario.variants.length >= 2) return alert('K aktuálnímu portfoliu lze vytvořit nejvýše dvě navrhované alternativy A a B.');
   const v = scenario_variantSnapshot(scenario_variantLabel(investmentScenario.variants.length));
+  v.rows.forEach(row => { delete row.opportunityId; delete row.dealId; delete row.sourceDealId; row.proposalRowId = scenario_newLinkId(); });
   investmentScenario.variants.push(v);
   investmentScenario.activeVariantId = v.id;
   investmentScenario.rows = v.rows.map(x => ({...x}));
@@ -8960,11 +9130,41 @@ function scenario_renderAdvanced() {
 function scenario_scenarioSaveMode() {
   return ['forecast','proposal','signed'].includes(val('scenarioSaveMode')) ? val('scenarioSaveMode') : 'forecast';
 }
+function investmentForecastSyncId(record) {
+  return record.syncId || 'legacy-forecast:' + encodeURIComponent(JSON.stringify([record.id ?? '', record.createdAt || '', record.name || '']));
+}
+function scenario_newLinkId() {
+  return typeof crypto?.randomUUID === 'function' ? crypto.randomUUID() : Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+}
+function scenario_ensureLinks() {
+  investmentScenario.syncId = investmentScenario.syncId || scenario_newLinkId();
+  scenario_ensureVariants();
+  (investmentScenario.rows || []).forEach(row => { row.proposalRowId = row.proposalRowId || scenario_newLinkId(); });
+  scenario_syncActiveVariant();
+  investmentScenario.variants.forEach(variant => (variant.rows || []).forEach(row => { row.proposalRowId = row.proposalRowId || scenario_newLinkId(); }));
+}
+function scenario_origin(r) {
+  r.proposalRowId = r.proposalRowId || scenario_newLinkId();
+  const sourceForecastSyncId = investmentScenario.syncId, sourceVariantId = String(investmentScenario.activeVariantId), sourceProposalRowId = r.proposalRowId;
+  return {sourceForecastSyncId, sourceVariantId, sourceProposalRowId, scenarioLinkKey:[sourceForecastSyncId, sourceVariantId, sourceProposalRowId].join('|')};
+}
+function scenario_linkedRecord(c, r) {
+  const origin = scenario_origin(r), sameClient = x => String(x.clientId) === String(c.id);
+  const deal = (state.deals || []).find(x => sameClient(x) && x.scenarioLinkKey === origin.scenarioLinkKey);
+  const opportunity = (state.opportunities || []).find(x => sameClient(x) && x.scenarioLinkKey === origin.scenarioLinkKey);
+  if (deal || opportunity) return {deal, opportunity};
+  // Old saved proposals may only contain a numeric case reference; verify ownership and fund.
+  if (!r.opportunityId && !r.dealId) return {};
+  const sameFund = x => opportunityFundIdentity(x) === opportunityFundIdentity({category:r.area,company:r.company,product:r.product,fundKey:r.key,isin:r.isin});
+  const legacyDeal = (state.deals || []).find(x => sameClient(x) && sameFund(x) && ((r.dealId && String(x.id) === String(r.dealId)) || (r.opportunityId && String(x.fromOpportunityId) === String(r.opportunityId))));
+  const legacyCase = (state.opportunities || []).find(x => sameClient(x) && String(x.id) === String(r.opportunityId) && !x.scenarioLinkKey && sameFund(x));
+  return {deal:legacyDeal, opportunity:legacyCase};
+}
 function scenario_scenarioProposalKey(r) {
   return [r.area, r.company, r.product, r.isin || r.key, r.typ].filter(Boolean).join('|');
 }
 function scenario_scenarioRowNote(r, summary, horizon, title = 'Investiční návrh') {
-  return [`${title} · ${r.area} · očekávaný výnos ${num(r.rate)} % p.a. · horizont ${num(horizon)} let`, r.monthly ? `Pravidelně: ${money(r.monthly)} měsíčně` : '', r.topupYear ? `Dokup ${r.topupYear}. rok: ${money(r.topupAmount)}` : '', r.dropYear ? `Propad ${r.dropYear}. rok: ${num(r.dropPct)} %` : '', summary].filter(Boolean).join('\n');
+  return [`${title} · ${r.area} · očekávaný výnos ${num(r.rate)} % p.a. · horizont ${num(horizon)} let`, r.monthly ? `Pravidelně: ${money(r.monthly)} měsíčně` : '', r.funding === 'transfer' || r.funding === 'reinvest' ? `Reinvestice${r.transferFrom ? ': ' + r.transferFrom : ''}. Odkup původní investice eviduj samostatně.` : '', r.topupYear ? `Dokup ${r.topupYear}. rok: ${money(r.topupAmount)}` : '', r.dropYear ? `Propad ${r.dropYear}. rok: ${num(r.dropPct)} %` : '', summary].filter(Boolean).join('\n');
 }
 function scenario_scenarioOpportunityDraft(c, r, summary, horizon) {
   const proposalKey = scenario_scenarioProposalKey(r), area = r.area === 'FKI' ? 'fki' : 'investice',
@@ -8977,9 +9177,13 @@ function scenario_scenarioOpportunityDraft(c, r, summary, horizon) {
     company: r.company,
     product: r.product,
     amount: scenario_n(r.amount),
-    fundKey: r.key || '',
+    fundKey: String(r.key || '').replace(/^(FKI|Investice)\|/, ''),
     scenarioKey: r.key || '',
     proposalKey,
+    ...scenario_origin(r),
+    regularAmount: scenario_n(r.monthly),
+    regularFrequency: scenario_n(r.monthly) ? 'Měsíčně' : '',
+    investmentSchedule: scenario_n(r.monthly) ? (scenario_n(r.amount) ? 'mixed' : 'regular') : 'single',
     isin: r.isin || '',
     fundIsin: r.isin || '',
     fundType: r.typ || '',
@@ -8999,82 +9203,18 @@ function scenario_scenarioOpportunityDraft(c, r, summary, horizon) {
     updatedAt: today()
   };
 }
-function scenario_removeScenarioOpportunity(r, draft) {
-  let target = (state.opportunities || []).find(o => String(o.id) === String(r.opportunityId));
-  if (!target) target = (state.opportunities || []).find(o => sameOpenOpportunity(o, draft));
-  if (!target) return 0;
-  state.opportunities = state.opportunities.filter(o => String(o.id) !== String(target.id));
-  return 1;
-}
-function scenario_addScenarioSnapshot(c, r, date) {
-  if (r.area === 'FKI') return;
-  state.investmentSnapshots = state.investmentSnapshots || [];
-  const snap = {
-    id: uid(),
-    clientId: c.id,
-    company: r.company || '',
-    product: r.product || 'Investice',
-    isin: r.isin || '',
-    mergeKey: r.key || '',
-    fundType: r.typ || 'Investice',
-    date,
-    current: scenario_n(r.amount),
-    invested: scenario_n(r.amount),
-    gainAmount: 0,
-    gainPct: 0,
-    regularAmount: 0,
-    regularFrequency: '',
-    source: 'Sjednáno z nové investice',
-    note: 'Počáteční hodnota po propsání nové investice.',
-    createdAt: today()
-  };
-  const key = investmentSnapshotKeyForSnapshot(snap),
-    oldIndex = state.investmentSnapshots.findIndex(s => investmentSnapshotKeyForSnapshot(s) === key);
-  if (oldIndex >= 0) state.investmentSnapshots[oldIndex] = {
-    ...state.investmentSnapshots[oldIndex],
-    ...snap,
-    id: state.investmentSnapshots[oldIndex].id,
-    updatedAt: today()
-  };else state.investmentSnapshots.push(snap);
-}
 function scenario_addScenarioDeal(c, r, summary, horizon, date) {
-  state.deals = state.deals || [];
-  const area = r.area === 'FKI' ? 'fki' : 'investice',
-    profile = fundProfile_value(area, r.key || '', r.isin || '');
-  const d = {
-    id: uid(),
-    clientId: c.id,
-    category: r.area === 'FKI' ? 'FKI' : 'Investice',
-    date: date || today(),
-    company: r.company || '',
-    product: r.product || r.area || 'Investice',
-    amount: scenario_n(r.amount),
-    bj: 0,
-    owner: '',
-    ownerType: '',
-    ownerCommissionPct: 0,
-    ownerPaid: false,
-    actualCommission: 0,
-    commissionPaid: false,
-    createContract: r.area === 'FKI',
-    contractNumber: '',
-    fundKey: r.key || '',
-    scenarioKey: r.key || '',
-    proposalKey: scenario_scenarioProposalKey(r),
-    isin: r.isin || '',
-    fundIsin: r.isin || '',
-    fundType: r.typ || '',
-    entryCommissionPct: profile.entryCommissionPct ?? '',
-    trailPct: profile.trailPct ?? '',
-    commissionSource: profile.commissionScheduleSource || '',
-    note: scenario_scenarioRowNote(r, summary, horizon, 'Investice sjednána'),
-    createdAt: today(),
-    signedAt: date || today(),
-    source: 'investmentScenario'
-  };
+  const linked = scenario_linkedRecord(c, r);
+  if (linked.deal) return linked.deal;
+  if (linked.opportunity) return null; // Existing cases must be completed through their own workflow.
+  const draft = scenario_scenarioOpportunityDraft(c, r, summary, horizon);
+  const d = {id:uid(), ...draft, date:date || today(), signedAt:date || today(), createdAt:today(),
+    ownerCommissionPct:0, ownerPaid:false, commissionPaid:false, source:'investmentScenario',
+    note:scenario_scenarioRowNote(r, summary, horizon, 'Investice sjednána')};
+  delete d.status;
+  delete d.statusDate;
   state.deals.push(d);
-  scenario_addScenarioSnapshot(c, r, date);
-  scenario_removeScenarioOpportunity(r, scenario_scenarioOpportunityDraft(c, r, summary, horizon));
+  syncSignedInvestmentPosition(d);
   return d;
 }
 function fkiEditor_fkEnc(v) {
@@ -9255,12 +9395,15 @@ function deleteFkiClientFund(clientId, encodedKey) {
 function fkiSync_sameMoney(a, b) {
   return Math.abs((+a || 0) - (+b || 0)) < 1;
 }
-function fkiSync_crmFkiMaster(company, product, isin = '') {
+function fkiSync_crmFkiMaster(company, product, isin = '', fundKey = '') {
   const companyKey = norm(company),
     productKey = norm(product),
     isinKey = norm(isin);
   const entries = Object.entries(state.fundValues || {}).filter(([, v]) => v?.area !== 'investice');
-  let found = entries.find(([, v]) => isinKey && norm(v.isin) === isinKey);
+  const directKey = String(fundKey || '').replace(/^FKI\|/, '');
+  let found = entries.find(([key, v]) => directKey && key === directKey && (!isinKey || norm(v.isin) === isinKey));
+  if (!found) found = entries.find(([, v]) => isinKey && norm(v.isin) === isinKey);
+  if (!found && isinKey) return {};
   if (!found) found = entries.find(([, v]) => norm(v.company) === companyKey && norm(cleanInvFundName(v.fond || v.product, v.company)) === norm(cleanInvFundName(product, company)));
   if (!found) found = entries.find(([, v]) => norm(cleanInvFundName(v.fond || v.product, v.company)).includes(productKey) || productKey.includes(norm(cleanInvFundName(v.fond || v.product, v.company))));
   return found ? {
@@ -9273,7 +9416,7 @@ function fkiSync_crmFkiRecordSeed(clientId, source, sourceType) {
     amount = sourceType === 'contract' ? parseMoney(source.amount) : dealVolume(source),
     company = source.company || '',
     product = source.product || source.type || 'FKI',
-    master = fkiSync_crmFkiMaster(company, product, source.isin || source.fundIsin || ''),
+    master = fkiSync_crmFkiMaster(company, product, source.fundIsin || source.isin || '', source.fundKey || source.scenarioKey || ''),
     date = source.date || source.dealDate || source.anniv || today(),
     nav = +(master.nav || source.nav || 0),
     qty = nav && amount ? amount / nav : 0,
@@ -9297,7 +9440,11 @@ function fkiSync_crmFkiRecordSeed(clientId, source, sourceType) {
     'Typ CP': master.typ || source.fundType || 'Investiční akcie',
     'Počet vydaných CP': qty || 0,
     'Upisovací hodnota': nav || 0,
-    'Pravidelná částka': 0,
+    'Pravidelná částka': parseMoney(source.regularAmount ?? source.monthly ?? 0),
+    'Pravidelná investice': parseMoney(source.regularAmount ?? source.monthly ?? 0) > 0 ? source.regularFrequency || 'Měsíčně' : 'Jednorázové',
+    regularAmount: parseMoney(source.regularAmount ?? source.monthly ?? 0),
+    regularFrequency: source.regularFrequency || '',
+    investmentSchedule: source.investmentSchedule || 'single',
     'Datum narození': '',
     'Stav scénáře': '',
     _source: sourceType === 'contract' ? 'crm-fki-contract' : 'crm-fki-deal',
@@ -9305,23 +9452,22 @@ function fkiSync_crmFkiRecordSeed(clientId, source, sourceType) {
     _crmSourceId: source.id,
     _crmDealId: sourceType === 'deal' ? source.id : source.fromDealId || '',
     _crmContractId: sourceType === 'contract' ? source.id : source.contractId || '',
+    _crmScenarioLinkKey: source.scenarioLinkKey || '',
     _updatedAt: today()
   };
 }
 function fkiSync_hasFkiRecordForSource(seed, sourceType, sourceId) {
-  return (state.investmentRecords || []).some(r => String(r._crmSourceType || '') === sourceType && String(r._crmSourceId || '') === String(sourceId)) || (state.investmentRecords || []).some(r => isFkiReportRecord(r) && clientMatchesName({
+  return (state.investmentRecords || []).some(r => String(r._crmSourceType || '') === sourceType && String(r._crmSourceId || '') === String(sourceId)) || (!seed._crmScenarioLinkKey && (state.investmentRecords || []).some(r => isFkiReportRecord(r) && clientMatchesName({
     name: seed.Investor,
     birthId: seed['RČ']
-  }, invInvestor(r)) && invPositionKey(r) === invPositionKey(seed) && fkiSync_sameMoney(invDeposit(r), invDeposit(seed)));
+  }, invInvestor(r)) && invPositionKey(r) === invPositionKey(seed) && fkiSync_sameMoney(invDeposit(r), invDeposit(seed))));
 }
 function fkiSync_upsertCrmFkiSeed(seed) {
-  const idx = (state.investmentRecords || []).findIndex(r => String(r._crmSourceType || '') === String(seed._crmSourceType) && String(r._crmSourceId || '') === String(seed._crmSourceId));
+  const idx = (state.investmentRecords || []).findIndex(r => (seed._crmScenarioLinkKey && r._crmScenarioLinkKey === seed._crmScenarioLinkKey && invClientIdentity(r) === invClientIdentity(seed)) || (String(r._crmSourceType || '') === String(seed._crmSourceType) && String(r._crmSourceId || '') === String(seed._crmSourceId)));
   if (idx >= 0) {
-    state.investmentRecords[idx] = {
-      ...state.investmentRecords[idx],
-      ...seed
-    };
-    return 1;
+    // A signed deal seeds a position once. Its purchase price, quantity, dates and
+    // later manual valuations belong to that position, not the current fund NAV.
+    return 0;
   }
   if (fkiSync_hasFkiRecordForSource(seed, seed._crmSourceType, seed._crmSourceId)) return 0;
   state.investmentRecords.push(seed);
@@ -11950,7 +12096,7 @@ function mergeIncomingStateWithSnapshots(incoming) {
     skipped = 0;
   (incomingState.investmentSnapshots || []).forEach(s => {
     const sourceClient = incomingState.clients.find(c => String(c.id) === String(s.clientId)),
-      localClient = sourceClient ? findMatchingClient(sourceClient) : findClient(s.clientId);
+      localClient = sourceClient ? findClient(count._mergeIds.clients.get(String(sourceClient.id))) : null;
     if (!localClient) {
       skipped++;
       return;
@@ -11958,8 +12104,16 @@ function mergeIncomingStateWithSnapshots(incoming) {
     const next = {
         ...s,
         clientId: localClient.id
-      },
-      key = investmentSnapshotMergeKey(next);
+      };
+    if (s.sourceDealId != null || s.sourceScenarioLinkKey) {
+      const sourceDeal = state.deals.find(d => String(d.clientId) === String(localClient.id) && (s.sourceScenarioLinkKey ? d.scenarioLinkKey === s.sourceScenarioLinkKey : String(d.id) === String(count._mergeIds.deals.get(String(s.sourceDealId)))));
+      next.sourceDealId = sourceDeal?.id || null;
+    }
+    if (s.sourceContractId != null) {
+      const contract = state.contracts.find(x => String(x.clientId) === String(localClient.id) && String(x.id) === String(count._mergeIds.contracts.get(String(s.sourceContractId))));
+      next.sourceContractId = contract?.id || null;
+    }
+    const key = investmentSnapshotMergeKey(next);
     if (existing.has(key)) {
       skipped++;
       return;
@@ -12192,8 +12346,10 @@ function fundPerformance_oldRenderScenario() {
     investmentScenario.dispositions = {};
     investmentScenario.variants = [];
     investmentScenario.activeVariantId = '';
-    scenario_loadClientOpenProposalRows(true);
-  } else scenario_loadClientOpenProposalRows(false);
+    delete investmentScenario.forecastId;
+    delete investmentScenario.syncId;
+    delete investmentScenario.managedRowsOverride;
+  }
   scenario_ensureVariants();
   scenario_normalizeScenarioRows();
   if (typeof scenario_originalRender === 'function') scenario_originalRender();
@@ -12206,7 +12362,7 @@ function fundPerformance_oldAddScenario() {
   const it = scenario_item(),
     a = scenario_n(val('scenarioAmount'));
   if (!it) return alert('Vyber fond.');
-  if (a <= 0) return alert('Vyplň částku nové investice.');
+  if (a <= 0 && scenario_n(val('scenarioMonthly')) <= 0) return alert('Vyplň jednorázovou investici nebo měsíční vklad.');
   const y = Math.max(1, scenario_n(val('scenarioYears')) || 10),
     ty = scenario_n(val('scenarioTopupYear')),
     dy = scenario_n(val('scenarioDropYear'));
@@ -12233,179 +12389,142 @@ function removeInvestmentScenarioFund(i) {
   renderInvestmentScenario();
 }
 function updateInvestmentScenarioSaveMode() {
-  const mode = scenario_scenarioSaveMode(),
-    signed = mode === 'signed',
-    date = byId('scenarioSignedDate'),
-    btn = byId('scenarioSaveBtn');
+  const signed = scenario_scenarioSaveMode() === 'signed', date = byId('scenarioSignedDate'), btn = byId('scenarioSaveBtn');
   if (date) {
     date.disabled = !signed;
     if (signed && !date.value) date.value = today();
-    date.parentElement.style.opacity = signed ? '1' : '.58';
+    date.parentElement.hidden = !signed;
+    date.parentElement.style.display = signed ? '' : 'none';
   }
-  if (btn) btn.textContent = signed ? 'Uložit aktivní variantu jako sjednáno' : mode === 'proposal' ? 'Uložit aktivní variantu a obchodní případy' : 'Uložit všechny varianty';
+  if (btn) btn.textContent = signed ? 'Uložit jako sjednané investice' : 'Založit obchodní případy';
 }
 function openInvestmentScenarioModal(clientId = null, area = 'Investice') {
   if (typeof scenario_originalOpen === 'function') scenario_originalOpen(clientId, area);
-  setVal('scenarioSaveMode', 'forecast');
-  setVal('scenarioForecastName', 'Prognóza ' + today());
+  setVal('scenarioSaveMode', 'proposal');
+  setVal('scenarioForecastName', 'Investiční návrh ' + today());
   setVal('scenarioSignedDate', today());
   resetScenarioExternalRows();
+  scenario_ensure();
+  scenario_ensureVariants();
+  renderInvestmentScenario();
   updateInvestmentScenarioSaveMode();
-  setTimeout(() => {
-    scenario_ensure();
-    scenario_loadClientOpenProposalRows(true);
-    scenario_ensureVariants(true);
-    loadInvestmentScenarioFundDefaults();
-    renderInvestmentScenario();
-    updateInvestmentScenarioSaveMode();
-  }, 0);
 }
 function fillInvestmentScenarioFunds() {
   if (typeof scenario_originalFill === 'function') scenario_originalFill();
-  setTimeout(() => {
-    scenario_ensure();
-    loadInvestmentScenarioFundDefaults();
-    renderInvestmentScenario();
-  }, 0);
+  scenario_ensure();
+  if (scenario_item()) loadInvestmentScenarioFundDefaults();
+  renderInvestmentScenario();
 }
 function investmentForecastRecord(c, p, status = 'forecast') {
-  scenario_syncActiveVariant();
-  const managedRows = (investmentScenario.managedRowsOverride || scenarioManagedRows(c.id)).map(x => ({...x})),
+  scenario_ensureLinks();
+  const previous = (state.investmentForecasts || []).find(x => String(x.id) === String(investmentScenario.forecastId) && String(x.clientId) === String(c.id)),
+    managedRows = (investmentScenario.managedRowsOverride || scenarioManagedRows(c.id)).map(x => ({...x})),
     externalRows = (investmentScenario.externalRows || []).map(x => ({...x})),
     variants = (investmentScenario.variants || []).map(v => {
       const model = {years:p.years,rows:(v.rows || []).map(x => ({...x})), dispositions:JSON.parse(JSON.stringify(v.dispositions || {})), managedRowsOverride:managedRows, externalRows};
       return {id:v.id,name:v.name || 'Varianta',rows:model.rows,dispositions:model.dispositions,projection:JSON.parse(JSON.stringify(scenario_projection(model)))};
     }),
-    active = variants.find(v => String(v.id) === String(investmentScenario.activeVariantId)) || variants[0],
+    active = variants.find(v => String(v.id) === String(investmentScenario.activeVariantId)),
     baselineProjection = JSON.parse(JSON.stringify(scenario_projection({years:p.years,rows:[],dispositions:{},managedRowsOverride:managedRows,externalRows})));
   return {
-    id: uid(),
-    clientId: c.id,
-    name: val('scenarioForecastName').trim() || `Prognóza ${today()}`,
-    createdAt: new Date().toISOString(),
-    years: p.years,
-    status,
-    type: 'comparison',
-    managedRows,
-    externalRows,
-    proposalRows: (active?.rows || investmentScenario.rows || []).map(x => ({...x})),
-    dispositions: JSON.parse(JSON.stringify(active?.dispositions || investmentScenario.dispositions || {})),
-    projection: JSON.parse(JSON.stringify(active?.projection || p)),
-    baselineProjection,
-    variants
+    id:previous?.id || uid(), syncId:investmentScenario.syncId, clientId:c.id,
+    name:val('scenarioForecastName').trim() || `Investiční návrh ${today()}`,
+    createdAt:previous?.createdAt || new Date().toISOString(), updatedAt:new Date().toISOString(),
+    years:p.years, status, type:'comparison', activeVariantId:investmentScenario.activeVariantId,
+    managedRows, externalRows, proposalRows:(active?.rows || []).map(x => ({...x})),
+    dispositions:JSON.parse(JSON.stringify(active?.dispositions || {})),
+    projection:JSON.parse(JSON.stringify(active?.projection || p)), baselineProjection, variants
   };
 }
 function storeInvestmentForecast(c, p, status = 'forecast') {
   const record = investmentForecastRecord(c, p, status);
-  state.investmentForecasts.push(record);
+  state.investmentForecasts = state.investmentForecasts || [];
+  const index = state.investmentForecasts.findIndex(x => String(x.id) === String(record.id));
+  if (index >= 0) state.investmentForecasts[index] = record; else state.investmentForecasts.push(record);
+  investmentScenario.forecastId = record.id;
   return record;
 }
-function openSavedInvestmentForecast(id) {
+function openSavedInvestmentForecast(id, mode = 'forecast') {
   const record = (state.investmentForecasts || []).find(x => String(x.id) === String(id));
   if (!record) return alert('Prognóza nebyla nalezena.');
+  if (!(state.clients || []).some(c => String(c.id) === String(record.clientId))) return alert('Klient této prognózy nebyl nalezen.');
   openInvestmentScenarioModal(record.clientId, record.proposalRows?.[0]?.area || 'Investice');
-  setTimeout(() => {
-    investmentScenario.externalRows = (record.externalRows || []).map(x => ({...x}));
-    investmentScenario.managedRowsOverride = (record.managedRows || []).map(x => ({...x}));
-    if (record.variants?.length) {
-      investmentScenario.variants = record.variants.slice(0,2).map((v,i) => ({id:v.id || uid(),name:v.name || scenario_variantLabel(i),rows:(v.rows || []).map(x => ({...x})),dispositions:JSON.parse(JSON.stringify(v.dispositions || {}))}));
-      const first = investmentScenario.variants[0];
-      investmentScenario.activeVariantId = first.id;
-      investmentScenario.rows = first.rows.map(x => ({...x}));
-      investmentScenario.dispositions = JSON.parse(JSON.stringify(first.dispositions || {}));
-    } else {
-      investmentScenario.rows = (record.proposalRows || []).map(x => ({...x}));
-      investmentScenario.dispositions = JSON.parse(JSON.stringify(record.dispositions || {}));
-      scenario_ensureVariants(true);
-    }
-    setVal('scenarioForecastName', record.name || 'Prognóza');
-    setVal('scenarioYears', record.years || 10);
-    setVal('scenarioSaveMode', 'forecast');
-    renderScenarioExternalInvestments();
-    renderInvestmentScenario();
-    updateInvestmentScenarioSaveMode();
-  }, 0);
+  investmentScenario.forecastId = record.id;
+  investmentScenario.syncId = investmentForecastSyncId(record);
+  investmentScenario.externalRows = (record.externalRows || []).map(x => ({...x}));
+  investmentScenario.managedRowsOverride = (record.managedRows || []).map(x => ({...x}));
+  if (record.variants?.length) {
+    investmentScenario.variants = record.variants.slice(0,2).map((v,i) => ({id:v.id || 'legacy-variant-' + i,name:v.name || scenario_variantLabel(i),rows:(v.rows || []).map((x,j) => ({...x,proposalRowId:x.proposalRowId || 'legacy-row-' + j})),dispositions:JSON.parse(JSON.stringify(v.dispositions || {}))}));
+    const active = investmentScenario.variants.find(v => String(v.id) === String(record.activeVariantId)) || investmentScenario.variants[0];
+    investmentScenario.activeVariantId = active.id;
+    investmentScenario.rows = active.rows.map(x => ({...x}));
+    investmentScenario.dispositions = JSON.parse(JSON.stringify(active.dispositions));
+  } else {
+    investmentScenario.rows = (record.proposalRows || []).map((x,j) => ({...x,proposalRowId:x.proposalRowId || 'legacy-row-' + j}));
+    investmentScenario.dispositions = JSON.parse(JSON.stringify(record.dispositions || {}));
+    scenario_ensureVariants(true);
+    investmentScenario.variants[0].id = investmentScenario.activeVariantId = 'legacy-variant-0';
+  }
+  setVal('scenarioForecastName', record.name || 'Prognóza');
+  setVal('scenarioYears', record.years || 10);
+  setVal('scenarioSaveMode', mode === 'proposal' ? 'proposal' : 'forecast');
+  renderScenarioExternalInvestments();
+  renderInvestmentScenario();
+  updateInvestmentScenarioSaveMode();
 }
-function saveInvestmentScenario() {
-  const mode = scenario_scenarioSaveMode();
-  scenario_syncActiveVariant();
-  if (mode !== 'forecast' && !investmentScenario.rows.length) return alert('Nejdřív přidej alespoň jeden fond.');
+function saveInvestmentScenario(requestedMode) {
+  const mode = ['forecast','proposal','signed'].includes(requestedMode) ? requestedMode : scenario_scenarioSaveMode();
+  scenario_ensureLinks();
+  const rows = [...investmentScenario.rows, ...scenario_transferRows()];
+  if (mode !== 'forecast' && !rows.length) return alert('Nejdřív přidej alespoň jeden fond do aktivní varianty.');
+  if (mode !== 'forecast' && rows.some(r => (!r.product && !r.key) || scenario_n(r.amount) < 0 || scenario_n(r.monthly) < 0 || (scenario_n(r.amount) <= 0 && scenario_n(r.monthly) <= 0))) return alert('U každého fondu vyplň jednorázovou investici nebo měsíční vklad.');
+  const date = val('scenarioSignedDate') || today();
+  if (mode === 'signed' && !confirm(`Uložit ${num(rows.length)} fondů aktivní varianty rovnou jako sjednané obchody k datu ${date}?`)) return;
+  const before = JSON.parse(JSON.stringify(state)), draftBefore = JSON.parse(JSON.stringify(investmentScenario));
   const c = ensureInvestmentScenarioClient();
   if (!c) return;
   state.opportunities = state.opportunities || [];
   state.deals = state.deals || [];
-  const p = scenario_projection(),
-    summary = `Modelace: současná hodnota ${money(p.current)}, celkem vloženo ${money(p.insertedTotal)}, modelovaná hodnota ${money(p.final)}, celkový výnos ${money(p.gain)}, vážený výnos ${scenario_fmtPct(p.weighted)} % p.a.`,
-    horizon = scenario_n(val('scenarioYears')) || 10,
-    total = investmentScenario.rows.reduce((s, x) => s + scenario_n(x.amount), 0);
-  if (mode === 'forecast') {
-    const saved = storeInvestmentForecast(c, p, 'forecast');
-    addActivity(c.id, 'Investiční prognóza', `Uloženo srovnání: ${saved.name} · ${num(saved.variants?.length || 1)} variant · současný majetek ${money(p.current)}`, true);
-    selectedClientId = c.id;
-    clientSection = 'portfolio';
-    persist();
-    closeModal('investmentScenarioModal');
-    showView('clients');
-    saveToast('Prognóza uložena bez vlivu na AUM a provize');
-    return;
-  }
-  if (mode === 'signed') {
-    const date = val('scenarioSignedDate') || today();
-    if (!confirm(`Uložit ${num(investmentScenario.rows.length)} fondů rovnou jako sjednané obchody k datu ${date}?`)) return;
-    let added = 0;
-    investmentScenario.rows.forEach(r => {
-      scenario_addScenarioDeal(c, r, summary, horizon, date);
+  // Preserve the pre-purchase baseline even when signing immediately changes live holdings.
+  investmentScenario.managedRowsOverride = investmentScenario.managedRowsOverride || scenarioManagedRows(c.id).map(x => ({...x}));
+  const p = scenario_projection(), summary = `Modelace: současná hodnota ${money(p.current)}, celkem vloženo ${money(p.insertedTotal)}, modelovaná hodnota ${money(p.final)}, celkový výnos ${money(p.gain)}, vážený výnos ${scenario_fmtPct(p.weighted)} % p.a.`, horizon = scenario_n(val('scenarioYears')) || 10;
+  let added = 0, existing = 0;
+  try {
+    if (mode !== 'forecast') rows.forEach(r => {
+      const linked = scenario_linkedRecord(c, r);
+      if (linked.deal || linked.opportunity) {
+        if (linked.opportunity) r.opportunityId = linked.opportunity.id;
+        existing++;
+        return;
+      }
+      if (mode === 'signed') scenario_addScenarioDeal(c, r, summary, horizon, date);
+      else {
+        const opportunity = {id:uid(), ...scenario_scenarioOpportunityDraft(c, r, summary, horizon), createdAt:today(), history:[{d:today(),t:'Nabídka – z investičního návrhu'}]};
+        state.opportunities.push(opportunity);
+        r.opportunityId = opportunity.id;
+      }
       added++;
     });
-    storeInvestmentForecast(c, p, 'signed');
-    if (typeof syncCrmFkiDealsToRecords === 'function') syncCrmFkiDealsToRecords();
-    if (typeof dedupeInvestmentSnapshotsInState === 'function') dedupeInvestmentSnapshotsInState(state);
-    addActivity(c.id, 'Obchod', `Investice/FKI sjednáno rovnou: ${num(added)} fondů, ${money(total)}`, true);
-    selectedClientId = c.id;
-    clientSection = 'portfolio';
-    persist();
-    closeModal('investmentScenarioModal');
-    showView('clients');
-    saveToast(`Sjednáno uloženo · ${num(added)} obchodů`);
+    storeInvestmentForecast(c, p, mode);
+    if (mode === 'signed' && typeof syncCrmFkiDealsToRecords === 'function') syncCrmFkiDealsToRecords();
+    addActivity(c.id, mode === 'forecast' ? 'Investiční prognóza' : 'Investiční návrh', mode === 'forecast' ? `Uložena prognóza: ${val('scenarioForecastName')}` : `Aktivní varianta: ${added} nových ${mode === 'signed' ? 'obchodů' : 'případů'}, ${existing} již evidovaných.`, true);
+    if (!persist()) {
+      state = before;
+      investmentScenario = draftBefore;
+      return;
+    }
+  } catch (error) {
+    state = before;
+    investmentScenario = draftBefore;
+    console.error('Investment proposal save failed', error);
+    alert('Návrh se nepodařilo uložit. Údaje zůstaly ve formuláři, zkus uložení znovu.');
     return;
   }
-  let added = 0,
-    updated = 0;
-  investmentScenario.rows.forEach(r => {
-    const draft = scenario_scenarioOpportunityDraft(c, r, summary, horizon);
-    let target = state.opportunities.find(o => String(o.id) === String(r.opportunityId));
-    if (!target) target = state.opportunities.find(o => sameOpenOpportunity(o, draft));
-    if (target) {
-      Object.assign(target, draft, {
-        id: target.id,
-        createdAt: target.createdAt || today(),
-        history: [...(target.history || []), {
-          d: today(),
-          t: 'Upraven investiční návrh'
-        }]
-      });
-      updated++;
-    } else {
-      state.opportunities.push({
-        id: uid(),
-        ...draft,
-        createdAt: today(),
-        history: [{
-          d: today(),
-          t: 'Oportunita'
-        }]
-      });
-      added++;
-    }
-  });
-  storeInvestmentForecast(c, p, 'proposal');
-  addActivity(c.id, 'Investiční návrh', `Uložen návrh: ${num(added)} nových, ${num(updated)} upravených, ${money(total)}`, true);
   selectedClientId = c.id;
-  clientSection = 'opportunities';
-  persist();
+  clientSection = mode === 'proposal' ? 'opportunities' : 'portfolio';
   closeModal('investmentScenarioModal');
   showView('clients');
-  saveToast(`Návrh uložen ke klientovi · nové ${num(added)} · upravené ${num(updated)}`);
+  saveToast(mode === 'forecast' ? 'Prognóza uložena bez obchodů a změny AUM' : `${mode === 'signed' ? 'Sjednané investice' : 'Obchodní případy'}: ${added} nových · ${existing} již evidovaných`);
 }
 function updateFkRecordValuation() {
   const field = byId('fkRecCurrent'), hint = byId('fkRecValuationHint');
@@ -12536,7 +12655,7 @@ function liquidity_prevSaveFkRecord2() {
     ...state.investmentRecords[oldIndex],
     ...rec
   };else state.investmentRecords.push(rec);
-  const newRecordKey = invRecordKey(rec);
+  const newRecordKey = invRecordKey(oldIndex >= 0 ? state.investmentRecords[oldIndex] : rec);
   if (fkiEditor_editingFkRecordKey && newRecordKey !== fkiEditor_editingFkRecordKey) {
     state.investmentRecords.forEach(r => {
       if (r.redemptionSourceRecordKey === fkiEditor_editingFkRecordKey) r.redemptionSourceRecordKey = newRecordKey;
@@ -12711,8 +12830,9 @@ function fkClientRows() {
   }).filter(r => r.items.length || r.opps.length || r.aum > 0).sort((a, b) => b.aum - a.aum || clientName(a.client).localeCompare(clientName(b.client), 'cs'));
 }
 function saveDeal() {
-  const result = fkiSync_before_saveDeal.apply(this, arguments),
-    changed = fkiSync_syncCrmFkiDealsToRecords() + fkiSync_removeOrphanCrmFkiRecords();
+  const result = fkiSync_before_saveDeal.apply(this, arguments);
+  if (!result) return result;
+  const changed = fkiSync_syncCrmFkiDealsToRecords() + fkiSync_removeOrphanCrmFkiRecords();
   if (changed) {
     persist();
     renderAll();
@@ -14750,8 +14870,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.27-2';
-const VERSION_NOTE = 'Pevné pořadí dashboardu: denní priority, týdenní cíle, grafy, statistiky a kontrola dat, úkoly a připomínky.';
+const VERSION = '2026.10.27-3';
+const VERSION_NOTE = 'Investice a FKI: samostatné uložení prognózy nebo obchodních případů, pozdější převod uloženého návrhu a připsání jednotlivých fondů po sjednání.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';

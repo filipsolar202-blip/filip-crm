@@ -10,6 +10,9 @@ node tools/qa/regression.cjs
 node tools/qa/fki-nav.cjs
 node tools/qa/classic-valuation.cjs
 node tools/qa/contract-investment.cjs
+node tools/qa/investment-proposal.cjs
+node tools/qa/investment-proposal-position.cjs
+node tools/qa/forecast-merge.cjs
 node tools/qa/atris-manual.cjs
 node tools/qa/report-selection.cjs
 node tools/qa/pension-report.cjs
@@ -37,3 +40,7 @@ fund-profiles.cjs ověřuje přesné ISIN, aktuální i vlastní metadata, zacho
 report-fund-layout.cjs ověřuje sbalené informace o fondu, ovládání myší a klávesnicí, klientské odkazy pouze na oficiální stránky a zachování interních zdrojů. Porovnává pořadí společností a fondů v CRM, katalozích a reportech, správné odkazy přehledu na detail, výběr fondů, mobilní šířku i tisk. Kontroluje nezměněná data investic a chronologii transakcí. Používá pouze syntetická data a oddělený prohlížeč.
 
 insurance-claims.cjs ověřuje založení a úpravy pojistných událostí, historii, soubory, filtry, klientské vazby, nulu versus neuvedené plnění, obnovu JSON/Google, opakované sloučení a ochranu před ztrátou dat. Kontroluje i neúspěšné uložení a souběžné změny otevřeného záznamu. Snímky počítače a telefonu ukládá do /private/tmp/crm-claims-desktop.png, /private/tmp/crm-claims-mobile.png a /private/tmp/crm-claim-editor-mobile.png. Používá jen syntetická data a oddělený prohlížeč.
+
+`investment-proposal.cjs` ověřuje prognózu versus skutečné případy, obnovu aktivní varianty, samostatné fondy, zachování rozpracovaných stavů, opakovaný převod a sjednání bez duplicit, výpadek localStorage s ponecháním formuláře a správné AUM po dokupu. `forecast-merge.cjs` ověřuje slučování prognóz podle stabilní identity, přemapování vazeb na klienty/případy/obchody, zachování novější verze a oddělení variant stejného fondu. Testy používají pouze syntetická data.
+
+`investment-proposal-position.cjs` kontroluje, že ruční změna nově sjednané FKI pozice zachová cílené odkupy a ocenění i po aktualizaci NAV a obnovení CRM.

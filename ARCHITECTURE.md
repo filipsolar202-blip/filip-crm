@@ -1,6 +1,6 @@
 # Architektura hlavního CRM
 
-Stav k verzi 2026.10.27-2. Starší ARCHITECTURE_AUDIT.md popisuje stav před sjednocením aplikační logiky.
+Stav k verzi 2026.10.27-3. Starší ARCHITECTURE_AUDIT.md popisuje stav před sjednocením aplikační logiky.
 
 ## Jedna aplikace
 
@@ -13,6 +13,14 @@ Pojistné události používají kolekci `state.insuranceClaims`. Modul `assets/
 Investice mimo správu jsou uloženy samostatně v `externalInvestments` a prognózy v `investmentForecasts`. Výpočty AUM, produkce a provizí tyto externí položky nečtou. Prognóza si ukládá vlastní snímek spravovaných i externích pozic a návrhu, aby šla později znovu otevřít beze změny historického výstupu.
 
 Samostatné historické HTML nástroje zůstávají zachované. Nejsou součástí běhu hlavní aplikace a nebyly tímto vydáním funkčně sloučeny ani odstraněny.
+
+## Investiční návrh a obchodní případy
+
+`saveInvestmentScenario(mode)` rozlišuje `forecast`, `proposal` a pokročilé přímé sjednání `signed`. Výslovná tlačítka oddělují prognózu a obchodní případy. Oba typy investic používají stejný postup. Z obchodně potvrzené aktivní varianty vzniká jeden případ na fond; jiné varianty, dosavadní portfolio ani majetek mimo správu se nezakládají jako nové obchody. Přesun do jiného fondu zakládá pouze cílový nákup; prodej původního majetku se eviduje zvlášť.
+
+Prognóza má stabilní `syncId`, uchovává `activeVariantId` a při úpravě se aktualizuje pod původním ID. Varianty a jejich řádky mají stabilní identity; `scenarioLinkKey` na případu a obchodu spojuje prognózu, variantu a řádek. Opakovaný převod zachovává existující případ včetně stavu a ručních změn; sjednaný nebo zrušený případ neotevírá znovu. Nová prognóza automaticky nepřebírá rozpracované případy klienta. Selhání trvalého uložení vrací předchozí stav a ponechává návrh ve formuláři.
+
+Uzavření případu přenáší ISIN, fond a pravidelný vklad. `syncSignedInvestmentPosition` přičítá nový jednorázový vklad ke stávajícímu klasickému ocenění jako nový historický snímek; marker na obchodu brání opakovanému přičtení. FKI synchronizace založí pozici jednou a nepřepisuje pozdější ručně zadané ocenění aktuální hodnotou celého fondu. Prognózy a vazby se zachovávají také při sloučení záloh s přemapováním klientů a číselných ID.
 
 ## Pevné pořadí dashboardu
 
