@@ -5997,7 +5997,11 @@ function toggleContractDealFields() {
   });
 }
 function syncContractDealDefaults(forceType = false) {
-  byId('sPensionFields').hidden=!['DPS','DIP'].includes(val('sType'));
+  const pensionFields = byId('sPensionFields'), isPension = ['DPS','DIP'].includes(val('sType'));
+  pensionFields.hidden = !isPension;
+  // The shared .field display rule otherwise overrides the browser's hidden style.
+  pensionFields.style.display = isPension ? '' : 'none';
+  pensionFields.querySelectorAll('input').forEach(input => { input.disabled = !isPension; });
   updateContractInvestmentPreview();
   const client = findClient(+val('sClient')),
     lead = clientLeadDefault(client);
@@ -6106,7 +6110,7 @@ function openContractModal(clientId = null, id = null) {
   contractAttachmentDraft = (Array.isArray(s.attachments) ? s.attachments : []).map(a => ({
     ...a
   }));
-  byId('sPensionFields').innerHTML='<h3>Penzijní majetek klienta</h3>'+pensionValueFields('sPension');pensionFillFields('sPension',s);
+  byId('sPensionFields').innerHTML='<h3>Penzijní majetek klienta</h3>'+pensionValueFields('sPension');pensionFillFields('sPension',['DPS','DIP'].includes(s.type) ? s : {});
   loadContractInvestmentFields(s);
   syncContractDealDefaults();
   renderContractAttachments();
@@ -14870,8 +14874,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.27-3';
-const VERSION_NOTE = 'Investice a FKI: samostatné uložení prognózy nebo obchodních případů, pozdější převod uloženého návrhu a připsání jednotlivých fondů po sjednání.';
+const VERSION = '2026.10.27-4';
+const VERSION_NOTE = 'Opraven formulář smlouvy: penzijní údaje patří pouze k DPS a DIP, nezobrazují se u auta, pojištění, úvěrů ani jiných smluv.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';

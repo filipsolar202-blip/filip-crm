@@ -44,3 +44,5 @@ insurance-claims.cjs ověřuje založení a úpravy pojistných událostí, hist
 `investment-proposal.cjs` ověřuje prognózu versus skutečné případy, obnovu aktivní varianty, samostatné fondy, zachování rozpracovaných stavů, opakovaný převod a sjednání bez duplicit, výpadek localStorage s ponecháním formuláře a správné AUM po dokupu. `forecast-merge.cjs` ověřuje slučování prognóz podle stabilní identity, přemapování vazeb na klienty/případy/obchody, zachování novější verze a oddělení variant stejného fondu. Testy používají pouze syntetická data.
 
 `investment-proposal-position.cjs` kontroluje, že ruční změna nově sjednané FKI pozice zachová cílené odkupy a ocenění i po aktualizaci NAV a obnovení CRM.
+
+`pension-report.cjs` také ověřuje skutečnou viditelnost a deaktivaci penzijních polí podle typu smlouvy, zachování rozepsaných hodnot při přepnutí typu a vyloučení autosmlouvy z penzijního AUM. Volitelné `CRM_QA_SCRIPT_REF=<commit>` čte JavaScript staršího commitu pro reprodukci regrese, aniž mění pracovní soubory.

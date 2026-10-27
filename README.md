@@ -2,7 +2,9 @@
 
 Lokální CRM pro klienty, smlouvy, obchody, pojistné události, investice, FKI, poznámky, reporty a zálohu.
 
-## Verze 2026.10.27-3
+## Verze 2026.10.27-4
+
+Ve Správě smlouvy se **Penzijní majetek klienta** zobrazuje a upravuje pouze pro typy **DPS a DIP**. U auta, majetku, životního pojištění, úvěrů a dalších smluv je skrytý; platba smlouvy se do penzijního formuláře nepředvyplňuje. Rozpracované penzijní údaje zůstanou při přepnutí typu tam a zpět zachované.
 
 U nového nákupu v Investicích i FKI jsou dvě výslovné možnosti: **Uložit prognózu** uchová návrh bez obchodů a změny AUM; **Založit obchodní případy** vytvoří z aktivní varianty jeden případ na každý fond ve fázi Nabídka. Případy se řeší samostatně v klientské kartě a Pipeline. Po sjednání se každý fond připíše do portfolia; dokup zachová dosavadní hodnotu a výnos.
 

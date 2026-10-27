@@ -1,3 +1,8 @@
+## 2026.10.27-4
+- Opraven penzijní blok ve Správě smlouvy: společný styl formuláře přebíjel atribut hidden a zobrazoval ho i u auta a dalších nepenzijních smluv. Nyní je blok viditelný a aktivní pouze pro DPS/DIP.
+- Nepenzijní smlouvy nepředvyplňují penzijní formulář svou platbou. Přepnutí typu zachovává rozepsané penzijní hodnoty při návratu k DPS/DIP; u ostatních typů se penzijní pole neukládají.
+- Ověřeno oddělení penzijního majetku od ostatních smluv včetně uložení, opětovného otevření a zobrazení na počítači i telefonu.
+
 ## 2026.10.27-3
 - Nové investice a FKI mají samostatná tlačítka „Uložit prognózu“ a „Založit obchodní případy“. Prognóza nemění obchodní evidenci ani AUM; aktivní varianta vytvoří samostatný případ každého fondu ve fázi Nabídka.
 - Uloženou prognózu lze otevřít a převést na případy. Zachová se vybraná varianta i původní záznam; stabilní vazby brání opakovanému založení stejných případů a obnovování sjednaných nebo zrušených případů.
