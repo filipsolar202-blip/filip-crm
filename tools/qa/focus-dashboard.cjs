@@ -6,11 +6,40 @@ const root=path.resolve(__dirname,'../..');
  try{
   const context=await browser.newContext({viewport:{width:1440,height:1100},timezoneId:'Europe/Prague'});
   await context.route('**/*',route=>{const u=new URL(route.request().url()),f=path.join(root,decodeURIComponent(u.pathname));if(u.hostname==='crm.test'&&fs.existsSync(f)&&fs.statSync(f).isFile())return route.fulfill({body:fs.readFileSync(f),contentType:f.endsWith('.js')?'text/javascript':f.endsWith('.css')?'text/css':'text/html'});return route.abort();});
-  await context.addInitScript(data=>{if(location.hostname==='crm.test'&&!localStorage.getItem('filip_crm_main_v1'))localStorage.setItem('filip_crm_main_v1',JSON.stringify(data));},fixture);
+  const dashboardFixture=structuredClone(fixture);dashboardFixture.plans['2025']={...dashboardFixture.plans['2026']};
+  await context.addInitScript(data=>{if(location.hostname==='crm.test'&&!localStorage.getItem('filip_crm_main_v1'))localStorage.setItem('filip_crm_main_v1',JSON.stringify(data));},dashboardFixture);
   const page=await context.newPage(),errors=[],alerts=[];
   page.on('pageerror',e=>errors.push(e.message));page.on('dialog',async d=>{alerts.push(d.message());await d.dismiss();});
   await page.clock.install({time:new Date('2026-10-22T10:00:00+02:00')});
   await page.goto('https://crm.test/FILIP-CRM.html');await page.waitForFunction(()=>typeof renderDailyPriorities==='function');
+  // Main sections have one stable DOM order. Their visual order must agree even after rerenders.
+  const dashboardOrder=['daily','weekly','charts','stats','tasks'];
+  const dashboardIds=['dashboardDailyPriorities','dashboardWeeklyGoals','dashboardCharts','dashboardStats','dashboardTasks'];
+  async function assertDashboardOrder(stage){
+    const layout=await page.evaluate(()=>{
+      const root=document.getElementById('dashboardLayout'),blocks=[...root.children];
+      if(!window.__qaDashboardBlocks)window.__qaDashboardBlocks=blocks;
+      return {
+        order:blocks.map(el=>el.dataset.dashboardSection),ids:blocks.map(el=>el.id),
+        sameNodes:blocks.every((el,index)=>el===window.__qaDashboardBlocks[index]),
+        boxes:blocks.map(el=>{const r=el.getBoundingClientRect();return {id:el.id,top:r.top,bottom:r.bottom,width:r.width,height:r.height};}),
+        quickLinksInsideDaily:document.querySelector('.focus-links').closest('[data-dashboard-section]')?.id,
+        pendingInsideTasks:document.getElementById('focusUnfinished').closest('[data-dashboard-section]')?.id,
+        charts:[...document.querySelectorAll('#bjChart,#investmentChart')].map(el=>el.closest('[data-dashboard-section]')?.id),
+        tasksWidth:document.getElementById('dashboardTasks').getBoundingClientRect().width,
+        taskChildrenWidths:[...document.querySelectorAll('#dashboardTasks>.card')].map(el=>el.getBoundingClientRect().width),
+        statsLabel:document.querySelector('#dashboardStats>summary').textContent.trim()
+      };
+    });
+    assert.deepEqual(layout.order,dashboardOrder,stage+' DOM order');assert.deepEqual(layout.ids,dashboardIds,stage+' unique main sections');
+    assert.equal(layout.sameNodes,true,stage+' rendering retains stable section elements');
+    assert.ok(layout.boxes.every(b=>b.height>0&&b.width>0),stage+' all five sections remain visible');
+    layout.boxes.slice(1).forEach((b,index)=>assert.ok(b.top>=layout.boxes[index].bottom-1,stage+' visual order: '+layout.boxes[index].id+' before '+b.id));
+    assert.equal(layout.quickLinksInsideDaily,'dashboardDailyPriorities');assert.equal(layout.pendingInsideTasks,'dashboardTasks');
+    assert.deepEqual(layout.charts,['dashboardCharts','dashboardCharts']);assert.equal(layout.statsLabel,'Statistiky, grafy a kontrola dat');
+    assert.equal(layout.taskChildrenWidths.length,2);assert.ok(layout.taskChildrenWidths.every(width=>Math.abs(width-layout.tasksWidth)<=1),stage+' task cards fill their wrapper without implicit columns');
+  }
+  await assertDashboardOrder('Initial dashboard');
   assert.equal(await page.locator('#dailyPrioritiesList .focus-row').count(),3);
   assert.equal(await page.locator('#weeklyGoalsGrid .focus-row').count(),3);
   assert.equal(await page.locator('#dashboardStats').getAttribute('open'),null);
@@ -18,6 +47,29 @@ const root=path.resolve(__dirname,'../..');
   assert.equal(await page.locator('#bjChart').isVisible(),true);
   assert.ok(await page.locator('#dashTasks').innerHTML());
   assert.notEqual(await page.locator('#kpiYearBj').textContent(),'0');
+  await page.evaluate(()=>renderDashboard());await assertDashboardOrder('renderDashboard');
+  await page.evaluate(()=>renderAll());await assertDashboardOrder('renderAll');
+  for(const selector of ['#dailyPrioritiesList .focus-row','#weeklyGoalsGrid .focus-row']){
+    const boxes=await page.locator(selector).evaluateAll(es=>es.map(el=>{const r=el.getBoundingClientRect();return {top:r.top,left:r.left};}));
+    assert.equal(boxes.length,3);assert.equal(boxes[0].top,boxes[1].top);assert.equal(boxes[1].top,boxes[2].top);assert.ok(boxes[0].left<boxes[1].left&&boxes[1].left<boxes[2].left);
+  }
+  await page.locator('.focus-links').getByRole('button',{name:'Statistiky a grafy',exact:true}).click();
+  assert.equal(await page.locator('#dashboardStats').evaluate(el=>el.open),true);await assertDashboardOrder('Expanded statistics');
+  for(const id of ['dashDealTypeFilter','dashLeadSourceFilter']){
+    const value=await page.locator('#'+id+' option').evaluateAll(options=>options.find(option=>option.value)?.value);
+    assert.ok(value,id+' provides a meaningful filter');await page.locator('#'+id).selectOption(value);await assertDashboardOrder(id+' filtered');
+  }
+  await page.getByRole('button',{name:'Vymazat filtry',exact:true}).click();await assertDashboardOrder('Cleared statistics filters');
+  await page.locator('#chartYear').selectOption('2025');await assertDashboardOrder('Chart year filter');await page.locator('#chartYear').selectOption('2026');
+  await page.locator('#dashboardStats>summary').click();await assertDashboardOrder('Collapsed statistics');
+  await page.locator('.focus-links').getByRole('button',{name:'Běžné úkoly',exact:true}).click();await assertDashboardOrder('Task quick link');
+  await page.locator('#dashTaskType').selectOption('Telefon');await page.locator('#dashTaskPeriod').selectOption('all');await page.locator('#dashTaskSort').selectOption('desc');await assertDashboardOrder('Task filters');
+  await page.locator('#dashTaskType').selectOption('');await page.locator('#dashTaskPeriod').selectOption('today');await page.locator('#dashTaskSort').selectOption('asc');
+  await page.locator('.focus-links').getByRole('button',{name:'Roční cíle',exact:true}).click();assert.equal(await page.locator('#plan').isVisible(),true);
+  await page.locator('.tab[data-view=dashboard]').click();await assertDashboardOrder('Annual goals and return');
+  await page.locator('.tab[data-view=clients]').click();await page.locator('.tab[data-view=dashboard]').click();await assertDashboardOrder('Client navigation and return');
+  await page.locator('.focus-links').getByRole('button',{name:'Historie a vyhodnocení',exact:true}).click();await assertDashboardOrder('Weekly history expanded');
+  await page.reload();await assertDashboardOrder('Reload');
   // Both weekly editor tabs retain unfinished input across reload.
   await page.evaluate(()=>openWeeklyGoalModal(1));await page.locator('#wgTitle').fill('Dopsat postup');
   await page.locator('#weeklyGoalTabs button').nth(1).click();await page.locator('#wgTitle').fill('Investiční příležitosti');
@@ -80,11 +132,11 @@ const root=path.resolve(__dirname,'../..');
   assert.equal(await page.locator('.report-section-check[value=pensions]').count(),1);
   assert.equal(await page.locator('.report-section-check').count(),8);
   await page.locator('.report-section-check[value=investments]').uncheck();await page.locator('.report-section-check[value=fki]').uncheck();
-  const report=await page.evaluate(()=>{const opts={};document.querySelectorAll('.report-section-check').forEach(x=>opts[x.value]=x.checked);const html=clientOutput_xReportHtml(findClient(1),opts,'Poznámka');return new DOMParser().parseFromString(html,'text/html').body.textContent;});
-  assert.match(report,/DPS \/ DIP/);assert.match(report,/DIP-01/);assert.equal((report.match(/DIP-01/g)||[]).length,1);assert.doesNotMatch(report,/NEEXPORTOVAT|Test klasický fond|Test FKI fond/);assert.match(report,/Aktuální hodnota účtu/);assert.doesNotMatch(report,/Platba evidovaná u smlouvy/);
+  const report=await page.evaluate(()=>{const opts={};document.querySelectorAll('.report-section-check').forEach(x=>opts[x.value]=x.checked);const html=clientOutput_xReportHtml(findClient(1),opts,'Poznámka'),doc=new DOMParser().parseFromString(html,'text/html');doc.querySelectorAll('script').forEach(el=>el.remove());return {text:doc.body.textContent,dipCount:doc.querySelectorAll('.pension-card[data-report-item="pension-contract-901"]').length,dip:doc.querySelector('.pension-card[data-report-item="pension-contract-901"]')?.textContent};});
+  assert.match(report.text,/DPS \/ DIP/);assert.equal(report.dipCount,1);assert.match(report.dip,/DIP test/);assert.match(report.dip,/Aktuální hodnota\s*4\s*000 Kč/);assert.doesNotMatch(report.text,/DIP-01|SECRET-TEST|NEEXPORTOVAT|Test klasický fond|Test FKI fond/);assert.doesNotMatch(report.text,/Platba evidovaná u smlouvy/);
   const noPension=await page.evaluate(()=>new DOMParser().parseFromString(clientOutput_xReportHtml(findClient(1),{investments:false,summary:false,pensions:false,insurance:false,loans:false,open:false,notice:true}),'text/html').body.textContent);
   assert.doesNotMatch(noPension,/DIP-01|DPS \/ DIP/);
-  const downloadEvent=page.waitForEvent('download');await page.locator('#clientReportModal').getByText(/Stáhnout/).click();const download=await downloadEvent;const downloaded=fs.readFileSync(await download.path(),'utf8');assert.match(downloaded,/DIP-01/);assert.doesNotMatch(downloaded,/NEEXPORTOVAT/);
+  const downloadEvent=page.waitForEvent('download');await page.locator('#clientReportModal').getByText(/Stáhnout/).click();const download=await downloadEvent;const downloaded=fs.readFileSync(await download.path(),'utf8');assert.match(downloaded,/DIP test/);assert.match(downloaded,/data-report-item="pension-contract-901"/);assert.doesNotMatch(downloaded,/DIP-01|SECRET-TEST|NEEXPORTOVAT/);
   // Backup round-trip, merge id remapping and preserving local values.
   const backup=await page.evaluate(()=>googleSyncPayload().state);assert.ok(backup.dailyPriorities.length);assert.ok(backup.weeklyReviews.length);assert.ok(backup.focusSnapshots.length);assert.equal(backup.plans['2026'].totalBj,8000);
   await page.evaluate(data=>{state=normalizeState({...def(),nextId:10000,clients:[],contracts:[],activities:[],deals:[]});mergeIncomingState(data);persist();},backup);
@@ -104,12 +156,18 @@ const root=path.resolve(__dirname,'../..');
   // Missing historical AUM remains unavailable, rather than a fabricated zero.
   assert.equal(await page.evaluate(()=>weeklyGoalActual({metricType:'aum',weekKey:'2025-W01',target:100},'2025-W01')),null);
   await page.clock.setSystemTime(new Date('2026-10-26T10:00:00+01:00'));await page.evaluate(()=>renderDashboard());
-
+  await assertDashboardOrder('Populated dashboard after goal edits, rollover and restore');
+  await page.clock.runFor(4000);
   await page.locator('#dashboard').screenshot({path:'/private/tmp/crm-focus-desktop.png'});
   await page.setViewportSize({width:390,height:844});await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:'/private/tmp/crm-focus-mobile.png',fullPage:true});
+  await assertDashboardOrder('Mobile');
+  await page.locator('#dashboardStats>summary').click();await assertDashboardOrder('Mobile expanded statistics');
+  await page.evaluate(()=>{renderDashboard();renderAll();});await assertDashboardOrder('Mobile rerender with statistics expanded');
+  await page.locator('#dashboardStats>summary').click();
+  await page.reload();await page.evaluate(()=>showView('dashboard'));await assertDashboardOrder('Mobile reload');
   assert.ok(await page.locator('.focus-score').first().evaluate(el=>el.getBoundingClientRect().width>150));
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1));
   assert.deepEqual(errors,[]);assert.deepEqual(alerts,[]);
-  console.log('PASS: compact dashboard; weekly/daily/review drafts; linked task completion; reorder; day/week rollover; explicit carry/cancel/task; review snapshot; annual goals; report selectors, pension dedupe and client isolation; backup/merge; mobile width.');
+  console.log('PASS: fixed daily→weekly→charts→statistics→tasks DOM/visual order across render, filters, quick links, navigation, expansion, reload and mobile; compact dashboard; weekly/daily/review drafts; linked task completion; reorder; day/week rollover; explicit carry/cancel/task; review snapshot; annual goals; report selectors, pension dedupe and client isolation; backup/merge; mobile width.');
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -30,6 +30,8 @@ Regrese ukládá souhrn a náhledy do /private/tmp/crm-regression-results.json, 
 
 focus-dashboard.cjs ověřuje rozepsané cíle, dokončení sdílené aktivity, změny pořadí, přelom dne/týdne, výslovné rozhodování o nedokončených položkách, archiv vyhodnocení, roční cíle, export DPS/DIP a vypnutých sekcí, izolaci klientů, obnovu a slučování zálohy a mobilní šířku. Používá jen syntetická data.
 
+Tentýž test chrání pevné pořadí hlavních sekcí dashboardu: denní priority → týdenní cíle → grafy → statistiky a kontrola dat → úkoly. Kontroluje DOM i skutečné rozmístění po překreslení, použití filtrů, navigaci, rozbalení statistik, obnovení stránky a na mobilní šířce. Hlavní bloky se nesmějí při renderování nahrazovat ani přemisťovat; mění se pouze jejich obsah. Změna pořadí jednotlivých denních priorit je dál podporovaná.
+
 fund-profiles.cjs ověřuje přesné ISIN, aktuální i vlastní metadata, zachování ocenění a provizí, bezpečné odkazy a samostatné klientské reporty. pension-report.cjs ověřuje ukládání a historii DPS/DIP, příspěvky a výběry, nulu versus neznámou hodnotu a mobilní i tiskové zobrazení. Oba používají pouze syntetická data.
 
 report-fund-layout.cjs ověřuje sbalené informace o fondu, ovládání myší a klávesnicí, klientské odkazy pouze na oficiální stránky a zachování interních zdrojů. Porovnává pořadí společností a fondů v CRM, katalozích a reportech, správné odkazy přehledu na detail, výběr fondů, mobilní šířku i tisk. Kontroluje nezměněná data investic a chronologii transakcí. Používá pouze syntetická data a oddělený prohlížeč.

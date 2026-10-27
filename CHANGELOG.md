@@ -1,3 +1,8 @@
+## 2026.10.27-2
+- Dashboard má pět pevných sekcí v pořadí: dnešní 3 priority, tento týden 3 cíle, produkční grafy, statistiky/grafy/kontrola dat, úkoly a připomínky. Pořadí je shodně ukotvené v HTML i pojmenovaných oblastech CSS mřížky.
+- Statistiky jsou před úkoly. Nedokončené priority patří do posledního bloku úkolů; rychlé odkazy jsou uvnitř denní sekce, takže stránka začíná denními prioritami.
+- Zachováno zadávání priorit, cílů, filtry, grafy i rozbalovací přehledy. Pořadí hlídá regresní kontrola po překreslení, změně filtrů, navigaci, obnovení stránky a na telefonu.
+
 ## 2026.10.27-1
 - Klientské reporty mají u investic a FKI zavřený rozbalovací blok „Bližší info o fondu“. Podrobné údaje i popis fondu zůstávají dostupné na kliknutí; název, společnost, ISIN a datum ocenění jsou viditelné hned.
 - Po údajích o konkrétní investici následují rozbalovací transakce. Odstraněn opakovaný obecný blok o odkupu pod transakcemi; likvidita a výstupní poplatky zůstávají v informacích o fondu.

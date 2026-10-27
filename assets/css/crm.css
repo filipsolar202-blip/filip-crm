@@ -562,6 +562,16 @@ h1,h2,h3,h4,.detail-title,.client-row b,.portfolio-card b,.contact-value{color:#
 @media(max-width:760px){.wealth-panel {padding:12px}.wealth-panel table{min-width:650px}.wealth-panel .toolbar,.wealth-panel .actions {width:100%}}
 
 /* Daily and weekly focus: compact rows, details loaded only on demand. */
+/* Fixed section slots: changing data or expanding a panel must not reorder the dashboard. */
+#dashboardLayout{display:grid;grid-template-columns:minmax(0,1fr);grid-template-areas:"daily" "weekly" "charts" "stats" "tasks";gap:14px}
+#dashboardLayout>[data-dashboard-section]{min-width:0}
+#dashboardLayout>#dashboardDailyPriorities{grid-area:daily}
+#dashboardLayout>#dashboardWeeklyGoals{grid-area:weekly}
+#dashboardLayout>#dashboardCharts{grid-area:charts}
+#dashboardLayout>#dashboardStats{grid-area:stats}
+#dashboardLayout>#dashboardTasks{grid-area:tasks;grid-template-columns:minmax(0,1fr)}
+#dashboardTasks>.card{grid-column:1/-1;min-width:0}
+.daily-focus-card .focus-links{margin-top:10px}
 .focus-links{display:flex;flex-wrap:wrap;gap:8px}.focus-dashboard .weekly-goals-grid,.focus-list{display:grid;grid-template-columns:1fr;gap:10px}
 .focus-dashboard .focus-row,.focus-row{display:flex;flex-direction:row;align-items:center;gap:12px;min-height:72px;padding:12px 14px;border:1px solid #c6d8eb;border-radius:16px;background:rgba(255,255,255,.85);box-shadow:none;margin:0}
 .focus-row .focus-title{flex:1;min-width:0}.focus-title>b{display:block;overflow-wrap:anywhere;font-size:15px}.focus-title small,.focus-review-row small,.focus-review-metrics small{display:block;color:#607a96;font-size:12px;margin-top:4px}.focus-title .btn{margin-top:6px}
