@@ -7,7 +7,7 @@ const baselineHtml=require('node:child_process').execFileSync('git',['show','d33
 const browser=await chromium.launch(launchOptions);
 const results=[];
 async function session(dir){
- const context=await browser.newContext({viewport:{width:1440,height:1000},acceptDownloads:true});
+ const context=await browser.newContext({viewport:{width:1440,height:1000},acceptDownloads:true,timezoneId:'Europe/Prague'});
  const errors=[];context.on('page',p=>{p.on('pageerror',e=>errors.push(e.message));p.on('console',m=>{if(m.type()==='error'&&!m.text().includes('Failed to load resource'))errors.push(m.text())});p.on('dialog',d=>d.type()==='confirm'?d.accept():d.dismiss());});
  await context.route('**/*',async route=>{
  const u=new URL(route.request().url());
@@ -198,6 +198,27 @@ try{
  await offline.screenshot({path:'/private/tmp/crm-interactive-timeline.png',fullPage:true});
  await offline.locator('.timeline-reset').click();assert.equal(await offline.locator('.timeline-value').innerText(),'313 114 Kč');
  await offline.locator('input[type=range]').focus();await offline.keyboard.press('ArrowRight');assert.equal(await offline.locator('.timeline-status').innerText(),'Prognóza');await offline.close();
+ // Every keyboard tick must move exactly one calendar day, including the 23/25-hour DST days.
+ const dstPreviews=await page.evaluate(()=>{
+   const originalToday=today;
+   try{return ['2026-03-28','2026-03-29','2026-10-24','2026-10-25','2026-10-27'].map(date=>{
+     today=()=>date;
+     const funds=[{area:'Investice',key:'qa-dst',product:'QA změna času',company:'QA',amount:120000,invested:100000,valueDate:date,rows:[{sourceType:'deal',date:'2023-09-20',purchaseDate:'2023-09-20',current:120000,invested:100000}]}];
+     const [year,month,day]=date.split('-').map(Number);
+     return {date,tomorrow:new Date(year,month-1,day+1).toLocaleDateString('cs-CZ'),yesterday:new Date(year,month-1,day-1).toLocaleDateString('cs-CZ'),html:portfolioTimelineHtml(funds)+'<script>'+portfolioTimelineValue.toString()+'\n'+portfolioDonutSvg.toString()+'\n'+portfolioTimelineSelect.toString()+'</'+'script>'};
+   });}finally{today=originalToday;}
+ });
+ const dst=await context.newPage();
+ for(const preview of dstPreviews){
+   await dst.setContent(preview.html);await dst.locator('.timeline-reset').click();
+   const slider=dst.locator('input[type=range]'),initial=Number(await slider.inputValue());
+   await slider.focus();await dst.keyboard.press('ArrowRight');
+   assert.equal(Number(await slider.inputValue()),initial+86400000,preview.date+' slider moves forward');
+   assert.equal(await dst.locator('.timeline-status').innerText(),'Prognóza');assert.equal(await dst.locator('.timeline-date').innerText(),preview.tomorrow);
+   await dst.keyboard.press('ArrowLeft');assert.equal(await dst.locator('.timeline-status').innerText(),'Aktuální hodnota');assert.equal(await dst.locator('.timeline-value').innerText(),'120 000 Kč');
+   await dst.keyboard.press('ArrowLeft');assert.equal(Number(await slider.inputValue()),initial-86400000);assert.equal(await dst.locator('.timeline-date').innerText(),preview.yesterday);assert.equal(await dst.locator('.timeline-status').innerText(),'Zjednodušený průběh');
+ }
+ await dst.close();results.push('Calendar-day timeline keyboard controls cross spring and autumn daylight-saving changes without getting stuck');
  const providerFiltering=await page.evaluate(()=>{
    const added={...state.deals.find(d=>d.id===20),id:991,company:'Druhá společnost',product:'Druhý fond',amount:50000};state.deals.push(added);
    showView('investments');selectInvestmentClient(1);
@@ -285,7 +306,7 @@ try{
   const pending=page.waitForEvent('download');await page.evaluate(action);const download=await pending;assert(download.suggestedFilename().endsWith('.html'));
   const report=fs.readFileSync(await download.path(),'utf8');assert(report.includes('Testovací klient Alfa'));assert(!report.includes('NaN'));assert(!report.includes('undefined'));
   if(name==='scenario'){assert(report.includes('Skladba nového nákupu'));assert(report.includes('Model vývoje portfolia'));assert(report.includes('Navržené fondy'));assert(report.includes('Test FKI fond'));}
-  const reportPage=await context.newPage();await reportPage.setContent(report);await reportPage.waitForTimeout(150);assert((await reportPage.locator('body').innerText()).length>100);if(name==='client'){assert(await reportPage.locator('.report-fund-overview').count());assert.equal(await reportPage.locator('.report-transactions').first().getAttribute('open'),null);await reportPage.locator('.report-transactions summary').first().click();assert(await reportPage.locator('.fund-transactions').first().isVisible());await reportPage.locator('.report-transactions summary').first().click();await reportPage.locator('.portfolio-timeline input').evaluate(el=>{el.value=el.max;el.dispatchEvent(new Event('input',{bubbles:true}));});await reportPage.evaluate(()=>window.dispatchEvent(new Event('beforeprint')));assert.equal(await reportPage.locator('.timeline-date').innerText(),new Date().toLocaleDateString('cs-CZ'));assert(await reportPage.locator('.fund-transactions').first().isVisible());await reportPage.evaluate(()=>window.dispatchEvent(new Event('afterprint')));assert.equal(await reportPage.locator('.timeline-status').innerText(),'Prognóza');}if(name==='client')await reportPage.locator('.report-fund-detail').first().screenshot({path:'/private/tmp/crm-compact-fund.png'});if(name==='client'||name==='fki'){assert(report.includes('Odkup a dostupnost prostředků'));await reportPage.locator('.report-redemption').first().screenshot({path:'/private/tmp/crm-redemption-'+name+'.png'});}if(name==='scenario')await reportPage.screenshot({path:'/private/tmp/crm-investment-purchase-report.png',fullPage:true});const pdf=await reportPage.pdf({format:'A4',printBackground:true,...(name==='client'?{path:'/private/tmp/crm-client-layout.pdf'}:{})});assert(pdf.length>10000);await reportPage.close();
+  const reportPage=await context.newPage();await reportPage.setContent(report);await reportPage.waitForTimeout(150);assert((await reportPage.locator('body').innerText()).length>100);if(name==='client'){assert(await reportPage.locator('.report-fund-overview').count());assert.equal(await reportPage.locator('.report-transactions').first().getAttribute('open'),null);await reportPage.locator('.report-transactions summary').first().click();assert(await reportPage.locator('.fund-transactions').first().isVisible());await reportPage.locator('.report-transactions summary').first().click();await reportPage.locator('.portfolio-timeline input').evaluate(el=>{el.value=el.max;el.dispatchEvent(new Event('input',{bubbles:true}));});const selectedPrintDate=await reportPage.locator('.timeline-date').innerText(),selectedPrintValue=await reportPage.locator('.timeline-value').innerText();await reportPage.evaluate(()=>window.dispatchEvent(new Event('beforeprint')));assert.equal(await reportPage.locator('.timeline-date').innerText(),new Date().toLocaleDateString('cs-CZ'));assert(await reportPage.locator('.fund-transactions').first().isVisible());await reportPage.evaluate(()=>window.dispatchEvent(new Event('afterprint')));assert.equal(await reportPage.locator('.timeline-status').innerText(),'Prognóza');assert.equal(await reportPage.locator('.timeline-date').innerText(),selectedPrintDate);assert.equal(await reportPage.locator('.timeline-value').innerText(),selectedPrintValue);}if(name==='client')await reportPage.locator('.report-fund-detail').first().screenshot({path:'/private/tmp/crm-compact-fund.png'});if(name==='client'||name==='fki'){assert.equal(await reportPage.locator('.report-redemption').count(),0);assert(await reportPage.locator('details.report-fund-info').count());assert.equal(await reportPage.locator('details.report-fund-info[open]').count(),0);assert.equal(await reportPage.locator('.report-fund-info .fund-profile').first().isVisible(),false);}if(name==='scenario')await reportPage.screenshot({path:'/private/tmp/crm-investment-purchase-report.png',fullPage:true});const pdf=await reportPage.pdf({format:'A4',printBackground:true,...(name==='client'?{path:'/private/tmp/crm-client-layout.pdf'}:{})});assert(pdf.length>10000);await reportPage.close();
   results.push(name+' HTML download opens independently');
  }
  await page.evaluate(()=>{document.querySelectorAll('.modal.show').forEach(x=>x.classList.remove('show'));showView('referrers');openQuickActivity(1,'phone');setVal('qaDate','2026-09-16');setVal('qaFollowType','Schůzka');setVal('qaFollowDate','2026-09-23');saveQuickClientActivity()});

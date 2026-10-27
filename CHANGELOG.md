@@ -1,3 +1,11 @@
+## 2026.10.27-1
+- Klientské reporty mají u investic a FKI zavřený rozbalovací blok „Bližší info o fondu“. Podrobné údaje i popis fondu zůstávají dostupné na kliknutí; název, společnost, ISIN a datum ocenění jsou viditelné hned.
+- Po údajích o konkrétní investici následují rozbalovací transakce. Odstraněn opakovaný obecný blok o odkupu pod transakcemi; likvidita a výstupní poplatky zůstávají v informacích o fondu.
+- Klient vidí pouze odkaz na oficiální stránku fondu. Odkazy na KID, statuty, factsheety a ceníky zůstávají v interním přehledu podkladů poradce.
+- Fondy v CRM i klientských výstupech se řadí nejprve podle investiční společnosti a potom podle názvu. Změna pořadí nemění ocenění, uložené pozice ani pořadí transakcí.
+- Opraveno ovládání časového posuvníku grafu klávesnicí kolem změny letního a zimního času. Posun o den již neuvízne na dnešku; tisk obnoví původní datum i hodnotu grafu.
+- Nové rozložení se použije v nově vytvořených HTML reportech; dříve stažené soubory zůstávají samostatnými snímky.
+
 ## 2026.10.23-2
 - Samostatné Pojistné události v hlavní navigaci, vlastní záložka klienta a rychlé založení přímo z jeho karty. Evidence pro životní pojištění, úrazy a děti, auta, majetek, odpovědnost a ostatní oblasti.
 - Pipeline Nahlášeno, Kompletace, Odesláno pojišťovně, Posouzení a Vyřízeno; samostatné ukončení zamítnutím nebo zrušením. Hledání a filtry podle oblasti, stavu a otevřených/ukončených událostí.

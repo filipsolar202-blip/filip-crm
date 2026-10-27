@@ -1,6 +1,6 @@
 # Architektura hlavního CRM
 
-Stav k verzi 2026.10.23-2. Starší ARCHITECTURE_AUDIT.md popisuje stav před sjednocením aplikační logiky.
+Stav k verzi 2026.10.27-1. Starší ARCHITECTURE_AUDIT.md popisuje stav před sjednocením aplikační logiky.
 
 ## Jedna aplikace
 
@@ -25,6 +25,8 @@ Diskový zápis odesílá snímek stavu. Pokud během čekání vzniknou nověj�
 ## Výstupy a závislosti
 
 Klientský přehled, FKI přehled a investiční prognóza používají společné stahování HTML. Výstupy obsahují vlastní styly a lze je předat samostatně. Změna vzhledu aplikace nepřepisuje vzhled klientských reportů.
+
+Řazení fondů v katalozích, klientských kartách a výstupech sdílí `compareFundsByCompanyName`: nejprve společnost, potom název fondu a stabilní identifikátor. `fundCompanySortName` sjednocuje známé varianty názvů pouze pro zobrazení a seskupení; identita uložených fondů se nemění. Transakce zůstávají řazené podle data. Klientská karta fondu používá nativní zavřený prvek `details` s názvem „Bližší info o fondu“. `clientOutput_xFundProfileHtml` rozlišuje klientský výstup s jediným odkazem na oficiální stránku a interní přehled poradce se všemi zdroji.
 
 Časový test investic a FKI se počítá jednou společnou funkcí z data nákupu nebo emise a pravidla konkrétního fondu. Datum ocenění se k výpočtu nepoužívá. Pokud datum nákupu chybí, aplikace zobrazí chybějící údaj a termín neodhaduje.
 
