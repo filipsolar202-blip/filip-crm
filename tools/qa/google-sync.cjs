@@ -11,7 +11,10 @@ const sheets=new Map();const spreadsheet={getSheetByName:n=>sheets.get(n),insert
 const ctx={SpreadsheetApp:{openById:()=>spreadsheet},Utilities:{getUuid:()=> 'qa-backup'},ContentService:{MimeType:{JAVASCRIPT:'js'},createTextOutput:text=>({text,setMimeType(){return this}})},HtmlService:{createHtmlOutput:text=>({text})}};
 const source=fs.readFileSync(path.join(__dirname,'../../google-sync/Code.gs'),'utf8').replace('PASTE_GOOGLE_SHEET_ID_HERE','qa-sheet').replace('CHANGE_THIS_PRIVATE_KEY','qa-key');
 vm.createContext(ctx);vm.runInContext(source,ctx);
-const state={clients:[{id:1,name:'Synthetic QA'}],contracts:[],notes:[{text:'test '.repeat(20000)}]};
+const state={clients:[{id:1,name:'Synthetic QA'}],contracts:[],notes:[{text:'test '.repeat(20000)}],
+ workPilots:[{id:'qa-pilot',startDate:'2026-11-02',process:'QA zápis',caseIds:[42]}],
+ workOutputs:[{id:'qa-output',pilotId:'qa-pilot',clientId:1,opportunityId:42,process:'QA zápis',method:'new',status:'complete'}],
+ activities:[{id:11,syncId:'qa-block',clientId:1,sourceOpportunityId:42,duration:0,outcome:'no_show',work:{timeKind:'actual',area:'recording',outputId:'qa-output',pilotId:'qa-pilot',method:'new'}},{id:12,syncId:'qa-unknown',duration:null,work:{timeKind:'unknown'}}]};
 const saved=ctx.doPost({parameter:{action:'save',key:'qa-key',app:'filip_crm',payload:JSON.stringify({version:'qa',state})}});
 assert(saved.text.includes('byla ulozena'));
 function read(action,key='qa-key'){const text=ctx.doGet({parameter:{action,key,app:'filip_crm',callback:'qa'}}).text;return JSON.parse(text.slice(3,-2))}

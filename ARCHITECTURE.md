@@ -1,6 +1,6 @@
 # Architektura hlavního CRM
 
-Stav k verzi 2026.10.27-4. Starší ARCHITECTURE_AUDIT.md popisuje stav před sjednocením aplikační logiky.
+Stav k verzi 2026.10.28-1. Starší ARCHITECTURE_AUDIT.md popisuje stav před sjednocením aplikační logiky.
 
 ## Jedna aplikace
 
@@ -27,6 +27,14 @@ Uzavření případu přenáší ISIN, fond a pravidelný vklad. `syncSignedInve
 Uživatel výslovně požaduje pořadí: denní 3 priority → týdenní 3 cíle → produkční grafy → statistiky, grafy a kontrola dat → úkoly a připomínky. Při úpravách ostatních funkcí toto pořadí neměnit. `#dashboardLayout` obsahuje právě pět stabilních bloků `data-dashboard-section="daily|weekly|charts|stats|tasks"`; pořadí HTML odpovídá pojmenovaným CSS oblastem. Grafy jsou uvnitř `#dashboardCharts`, nedokončené priority uvnitř `#dashboardTasks` a rychlé odkazy uvnitř denní karty. Renderovací funkce aktualizují obsah, nepřesouvají hlavní bloky. `tools/qa/focus-dashboard.cjs` chrání pořadí DOM i skutečné rozmístění na počítači a telefonu.
 
 ## Data
+
+### Měření práce
+
+`assets/js/work-measurement.js` používá společný stav, formuláře a ukládání CRM; načítá se před `crm.js` a nenahrazuje jeho funkce. `activities[].duration` zůstává jedinou délkou práce. Volitelné `activities[].work` eviduje oblast, původ času (`actual`/`estimate`/`unknown`), postup, překážku, pilot a výstup. Chybějící původ času se nikdy automaticky nepovažuje za skutečnost. `null` délka je neznámá, `0` je platná výslovná hodnota.
+
+`workPilots` obsahuje nastavení pilotu a odkazy na existující případy. `workOutputs` obsahuje kontext a stav jednotlivých výstupů; neukládá druhou kopii aktivit ani jejich minut. Čas výstupu je součtem jeho původních pracovních bloků, včetně kontroly a oprav. Porovnání vyžaduje shodný proces, dokončený výstup a úplná skutečná měření. Plánované aktivity a automatická historie jsou z pracovního času vyloučené. Pracovní metriky nemění obchodní KPI.
+
+Aktivity mají stabilní `syncId`, piloty a výstupy stabilní řetězcová ID. Slučování záloh přemapovává klienty, případy a návazné aktivity; nevyřešené vazby se uchovají jako neověřené místo odhadu podle jména nebo shodného čísla. Nové kolekce a měření jsou součástí ochranných počtů záloh. Formuláře zachovají draft při chybě uložení a rychlý zápis předá rozepsané hodnoty do detailu.
 
 - Prohlížeč: dosavadní klíč localStorage `filip_crm_main_v1`.
 - Disk: existující pomocná služba na 127.0.0.1:48730, standardně složka FILIP-CRM-data. Data nejsou součástí Git repozitáře.

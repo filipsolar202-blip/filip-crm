@@ -1,3 +1,12 @@
+## 2026.10.28-1
+
+- Volitelné měření práce v rychlé i podrobné aktivitě: oblast, skutečnost/odhad/nezjištěno, běžný/nový postup, překážka a explicitní obchodní případ. Délka aktivity zůstává jediným časovým údajem.
+- Dvoutýdenní pilot v Analýze: vlastní začátek a proces, ruční výběr existujících aktivních případů, návod, osnova zápisu a kontrola dalších kroků bez automatického vytváření úkolů.
+- Pracovní výstupy spojují jednotlivé bloky včetně kontrol a oprav. Porovnání zobrazuje počty a medián; neúplná měření ani odhady se nezapočítají do naměřené úspory.
+- Rozlišení prázdného času a potvrzené nuly, oddělení pracovní doby od obchodních výsledků a vyloučení plánovaných délek. Historické a předvyplněné hodnoty nejsou automaticky skutečné měření.
+- Zachování rozepsaných hodnot při přechodu z rychlé aktivity do detailu, editace interní práce bez klienta a ponechání formuláře při chybě uložení. Úprava zdrojové aktivity znovu neotevře dokončený navazující krok.
+- Stabilní identity aktivit a pracovních výstupů, přemapování vazeb při slučování záloh a rozšíření ochrany před ztrátou dat. Pevné pořadí dashboardu zůstává zachované.
+
 ## 2026.10.27-4
 - Opraven penzijní blok ve Správě smlouvy: společný styl formuláře přebíjel atribut hidden a zobrazoval ho i u auta a dalších nepenzijních smluv. Nyní je blok viditelný a aktivní pouze pro DPS/DIP.
 - Nepenzijní smlouvy nepředvyplňují penzijní formulář svou platbou. Přepnutí typu zachovává rozepsané penzijní hodnoty při návratu k DPS/DIP; u ostatních typů se penzijní pole neukládají.

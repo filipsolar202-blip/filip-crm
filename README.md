@@ -2,7 +2,25 @@
 
 Lokální CRM pro klienty, smlouvy, obchody, pojistné události, investice, FKI, poznámky, reporty a zálohu.
 
-## Verze 2026.10.27-4
+## Verze 2026.10.28-1
+
+### Měření práce a dvoutýdenní pilot
+
+V **Analýza → Měření práce · dvoutýdenní pilot** založ pilot: zvol datum začátku, sledovaný proces a přibližně deset svých aktivních obchodních případů. Výchozím procesem je zápis po schůzce a naplánování dalších kroků. CRM žádné klienty nevybírá a případy nekopíruje.
+
+Při běžném zápisu přes **+ Aktivita** rozbal volitelnou část **Měření práce**. Vyber oblast práce, způsob určení času a případně překážku, případ a pilot. Minuty zapisuj do původního pole **Délka minut**. Předvyplněná délka ani historické záznamy nejsou skutečné měření; skutečný čas musíš výslovně potvrdit. Prázdné minuty znamenají nezjištěný čas, výslovná nula je povolená.
+
+Pro porovnání založ v aktivitě konkrétní **výstup** (například „Zápis ze schůzky 2. 11.“). K němu přiřazuj další pracovní bloky včetně kontroly a oprav. Výstup označ jako hotový a úplný až po dokončení všech částí. Každý blok práce zapisuj jednou; čekání na klienta do aktivního času nepatří. Při přechodu do podrobného zápisu zůstanou rozepsané hodnoty zachované.
+
+- **Prvních pět pracovních dnů:** běžný postup, měření času a překážek, kontrola dalšího kroku a termínu u sledovaných případů. Potom vyber jednu činnost ke zlepšení.
+- **Dalších pět pracovních dnů:** nový jednotný postup u 3–5 podobných výstupů, měření celého aktivního času včetně kontroly a oprav.
+- **Vyhodnocení v Analýze:** počet výstupů, medián času na dokončený výstup a rozhodnutí zavést, upravit nebo měřit déle. Srovnání potřebuje alespoň tři úplně změřené výstupy každého postupu a zůstává orientační. Odhady, neúplné záznamy a plány se nevydávají za naměřenou úsporu.
+
+Osnova zápisu: **situace klienta → rozhodnutí → chybějící podklady → kdo co udělá → termín**. Pilotní pracovní dny jsou pondělí až pátek; nepracovní dny si při vyhodnocení zohledni. Skutečný čas neúspěšného kontaktu lze měřit, aniž se tím zvýší počet uskutečněných schůzek nebo obchodů.
+
+Přehled návaznosti pouze ukazuje ověřené další kroky, chybějící termíny a prodlení. Nezakládá úkoly bez tvého zápisu. Starší přehled **Delegování a automatizace** zůstává dostupný jako evidence délek a oddělený měsíční model odhadů. Pilot i nové údaje jsou součástí JSON a Google záloh. Nastavení a zápisy lze používat bez externích služeb.
+
+### Dosavadní funkce
 
 Ve Správě smlouvy se **Penzijní majetek klienta** zobrazuje a upravuje pouze pro typy **DPS a DIP**. U auta, majetku, životního pojištění, úvěrů a dalších smluv je skrytý; platba smlouvy se do penzijního formuláře nepředvyplňuje. Rozpracované penzijní údaje zůstanou při přepnutí typu tam a zpět zachované.
 
@@ -12,7 +30,7 @@ Uložený návrh najdeš na kartě klienta v **Portfolio → Prognózy portfolia
 
 Dashboard má pevné pořadí: **Dnešní 3 priority → Tento týden 3 cíle → Grafy → Statistiky, grafy a kontrola dat → Úkoly a připomínky**. Změny dat, filtrů ani rozbalení přehledů pořadí nemění. Nedokončené priority jsou součástí poslední sekce; rychlé odkazy zůstávají v denní kartě.
 
-Hlavní CRM má jednu aplikační logiku a společný modrý glass vzhled. Investiční plán porovnává aktuální portfolio s nejvýše dvěma alternativami A a B. Odprodej lze rozdělit do více nových nákupů. Pro klienta lze stáhnout podrobný investiční návrh ve stylu původní kalkulačky nebo stručné srovnání variant. Přehled změn je v `CHANGELOG.md`, ověření aktuálního vydání v `QA-2026-10-27-3.md`.
+Hlavní CRM má jednu aplikační logiku a společný modrý glass vzhled. Investiční plán porovnává aktuální portfolio s nejvýše dvěma alternativami A a B. Odprodej lze rozdělit do více nových nákupů. Pro klienta lze stáhnout podrobný investiční návrh ve stylu původní kalkulačky nebo stručné srovnání variant. Přehled změn je v `CHANGELOG.md`, ověření aktuálního vydání v `QA-2026-10-28-1.md`.
 
 V klientském HTML reportu jsou podrobnosti a popis fondu pod tlačítkem **Bližší info o fondu**. Název, společnost, ISIN, ocenění a hodnoty investice jsou viditelné hned; transakce se rozbalují zvlášť. Klientský detail odkazuje jen na oficiální stránku fondu. V interním přehledu informací o fondech zůstávají všechny ověřovací podklady. Fondy se v CRM i reportech řadí podle společnosti a potom podle názvu. Pro nové rozložení vytvoř report znovu — již stažené HTML soubory se automaticky nemění.
 
@@ -37,6 +55,8 @@ Datum obchodu je nezávislé na účinnosti. Obchod je evidovaný hned. Pokud je
 - `assets/js/fund-profiles.js` — veřejné informace fondů podle přesného ISIN, s daty kontroly a oficiálními zdroji; neobsahuje klientská ocenění.
 - `assets/js/insurance-claims.js` — evidence pojistných událostí nad společným stavem a ukládáním CRM.
 - `assets/css/insurance-claims.css` — přehled a detail pojistných událostí.
+- `assets/js/work-measurement.js` — volitelné měření aktivit, pilot, porovnání výstupů a kontrola návaznosti.
+- `assets/css/work-measurement.css` — formuláře a analýza měření práce pro počítač i telefon.
 - `assets/css/crm.css` — společný vzhled včetně rozložení pro tablet.
 - `assets/vendor/` — lokální knihovny pro grafy a tabulky.
 - `index.html` — přesměrování na aktuální verzi.

@@ -63,6 +63,8 @@ function def() {
     contracts: [],
     deals: [],
     activities: [],
+    workPilots: [],
+    workOutputs: [],
     referrals: [],
     referrerPayouts: [],
     managementPartners: [
@@ -194,8 +196,45 @@ function mergeInsuranceClaimRecord(existing, incoming) {
     history:insuranceClaimMergeEntries(older.history, newer.history, 'history'),
     attachments:insuranceClaimMergeEntries(older.attachments, newer.attachments, 'attachment')};
 }
+function workStorageTimestamp(record) {
+  return Date.parse(record?.updatedAt || record?.createdAt || '') || 0;
+}
+function activityStorageSyncId(activity, source, index = 0) {
+  if (source.createdAt && activity.id != null) return 'activity:legacy:' + encodeURIComponent(JSON.stringify([source.createdAt, activity.id]));
+  const client = (source.clients || []).find(c => String(c.id) === String(activity.clientId));
+  const owner = client ? clientMatchKey(client) || JSON.stringify([client.name || '', client.email || '', client.phone || '']) : String(activity.clientId ?? '');
+  return 'activity:legacy:' + encodeURIComponent(JSON.stringify([source.createdAt || '', activity.id ?? ('row:' + index), owner, activity.createdAt || '', activity.date || '', activity.time || '', activity.type || '', activity.text || '']));
+}
+function normalizeWorkStorage(s, legacyOrigin) {
+  s.activities = s.activities.filter(x => x && typeof x === 'object' && !Array.isArray(x));
+  s.activities.forEach((a, index) => {
+    if (!a.syncId) a.syncId = activityStorageSyncId(a, {...s, createdAt:legacyOrigin}, index);
+    if (a.duration == null || String(a.duration).trim() === '' || !Number.isFinite(+a.duration) || +a.duration < 0) a.duration = null;
+    else a.duration = +a.duration;
+    if (a.work && typeof a.work === 'object' && !Array.isArray(a.work)) {
+      a.work = {...a.work};
+      if (!['actual', 'estimate', 'unknown'].includes(a.work.timeKind) || a.duration == null) a.work.timeKind = 'unknown';
+    }
+  });
+  ['workPilots','workOutputs'].forEach(key => {
+    s[key] = s[key].filter(x => x && typeof x === 'object' && !Array.isArray(x));
+    s[key].forEach((record, index) => {
+      if (!record.id) record.id = key + ':legacy:' + encodeURIComponent(JSON.stringify([legacyOrigin, index, record.createdAt || '', record.title || record.process || '']));
+      record.id = String(record.id);
+      if (key === 'workPilots') record.caseIds = Array.isArray(record.caseIds) ? [...new Set(record.caseIds.filter(id => id != null && id !== ''))] : [];
+    });
+  });
+}
+function mergeActivityStorageRecord(existing, incoming) {
+  if (workStorageTimestamp(incoming) <= workStorageTimestamp(existing)) return false;
+  const work = existing.work && typeof existing.work === 'object' ? {...existing.work} : null, duration = existing.duration;
+  Object.assign(existing, incoming, {id:existing.id, syncId:existing.syncId});
+  if (work && !incoming.work) { existing.work = work; existing.duration = duration; }
+  else if (work && incoming.work) existing.work = {...work, ...incoming.work};
+  return true;
+}
 function normalizeState(s) {
-  const base = def();
+  const base = def(), legacyOrigin = s?.createdAt || '';
   s = {
     ...base,
     ...s
@@ -203,7 +242,8 @@ function normalizeState(s) {
   delete s.mailHeaders;
   delete s.aiInbox;
   try { localStorage.removeItem('filip_crm_ai_active_job'); } catch (e) {}
-  ['clients', 'contracts', 'deals', 'activities', 'referrals', 'referrerPayouts', 'managementPartners', 'managementPayouts', 'notes', 'opportunities', 'insuranceClaims', 'investmentRecords', 'investmentSnapshots', 'commissionImports', 'analysisEntries', 'campaigns', 'externalInvestments', 'investmentForecasts', 'weeklyGoals', 'weeklyReviews', 'dailyPriorities', 'focusDrafts', 'focusSnapshots', 'delegationProcesses'].forEach(k => s[k] = Array.isArray(s[k]) ? s[k] : []);
+  ['clients', 'contracts', 'deals', 'activities', 'workPilots', 'workOutputs', 'referrals', 'referrerPayouts', 'managementPartners', 'managementPayouts', 'notes', 'opportunities', 'insuranceClaims', 'investmentRecords', 'investmentSnapshots', 'commissionImports', 'analysisEntries', 'campaigns', 'externalInvestments', 'investmentForecasts', 'weeklyGoals', 'weeklyReviews', 'dailyPriorities', 'focusDrafts', 'focusSnapshots', 'delegationProcesses'].forEach(k => s[k] = Array.isArray(s[k]) ? s[k] : []);
+  normalizeWorkStorage(s, legacyOrigin);
   normalizeInsuranceClaimRecords(s);
   normalizeInternalCommissions(s);
   normalizeActivityHistory(s.activities);
@@ -391,8 +431,8 @@ function diskFileUrl(ref) {
   return DISK_STORAGE_URL + '/file?ref=' + encodeURIComponent(ref || '');
 }
 function diskStateWeight(source) {
-  const keys=['clients','contracts','deals','opportunities','insuranceClaims','notes','activities','investmentRecords','investmentSnapshots','analysisEntries','delegationProcesses'];
-  return keys.reduce((sum,key)=>sum+(Array.isArray(source?.[key])?source[key].length:0),0) + (source?.insuranceClaims || []).reduce((sum, claim) => sum + (claim.history?.length || 0) + (claim.attachments?.length || 0), 0);
+  const keys=['clients','contracts','deals','opportunities','insuranceClaims','notes','activities','workPilots','workOutputs','investmentRecords','investmentSnapshots','analysisEntries','delegationProcesses'];
+  return keys.reduce((sum,key)=>sum+(Array.isArray(source?.[key])?source[key].length:0),0) + (source?.insuranceClaims || []).reduce((sum, claim) => sum + (claim.history?.length || 0) + (claim.attachments?.length || 0), 0) + (source?.activities || []).filter(a => a.work && typeof a.work === 'object').length;
 }
 function queueDiskSave(reason = 'autosave') {
   if (!diskLoadDone) return;
@@ -2446,7 +2486,7 @@ function mergeClientsFromModal() {
   master.aliases = [...new Set([...String(master.aliases || '').split(',').map(x => x.trim()), ...originalNames].filter(x => x && norm(x) !== norm(master.name)))].join(', ');
   const loserIds = clients.map(c => c.id).filter(id => id !== masterId),
     loserSet = new Set(loserIds.map(String));
-  ['contracts', 'deals', 'opportunities', 'insuranceClaims', 'activities', 'notes', 'investmentSnapshots', 'analysisEntries', 'investmentForecasts', 'externalInvestments'].forEach(arr => (state[arr] || []).forEach(x => {
+  ['contracts', 'deals', 'opportunities', 'insuranceClaims', 'activities', 'workOutputs', 'notes', 'investmentSnapshots', 'analysisEntries', 'investmentForecasts', 'externalInvestments'].forEach(arr => (state[arr] || []).forEach(x => {
     if (loserSet.has(String(x.clientId))) x.clientId = masterId;
   }));
   (state.investmentRecords || []).forEach(r => {
@@ -3117,7 +3157,7 @@ function renderCaseDetail() {
   const c = findClient(o.clientId), stages = caseStages(), current = caseStage(o.status), currentIndex = stages.indexOf(current), closed = !isOpenOpportunity(o),
     history = [...(o.history || [])].sort((a,b)=>String(b.d || '').localeCompare(String(a.d || ''))), commission = caseExpectedCommission(o),
     next = opportunityNextContactDate(o), replacement = o.replacesContractId ? state.contracts.find(x=>String(x.id)===String(o.replacesContractId)) : null;
-  root.innerHTML = `<div class="case-detail-shell"><section class="case-detail-top"><div class="case-detail-breadcrumb"><button class="client-back-button" onclick="closeCaseDetail()">← Zpět na seznam</button><div class="actions"><button class="btn" onclick="openQuickActivity(${Number(o.clientId)})">Zaznamenat kontakt</button><button class="btn primary" onclick="openOpportunityModal(${Number(o.clientId)},${Number(o.id)})">Upravit případ</button></div></div><div class="case-detail-title"><div><div class="chips"><span class="badge blue">${esc(o.category || 'Obchodní případ')}</span>${opportunityBadge(current)}${replacementBadge(o)}</div><h2>${esc(o.product || o.category || 'Obchodní případ')}</h2><p class="note">${esc(clientName(c))} · ${esc(o.company || 'bez společnosti')} · poslední změna ${esc(caseLastUpdate(o) ? dateObj(caseLastUpdate(o)).toLocaleDateString('cs-CZ') : 'bez data')}</p></div><div class="client-summary-tile"><small>${closed ? 'Původní odhad provize' : 'Očekávaná provize'}</small><b>${money(commission)}</b><span>objem ${money(o.amount)} · ${num(o.bj)} BJ</span></div></div><div class="case-stage-track">${(o.status === 'Podepsáno' ? [] : [...stages,'Klient nemá zájem','Zrušeno']).map((stage,i)=>`<button class="case-stage-step ${stage === current ? 'active' : i < currentIndex ? 'done' : ''}" onclick="updateOpportunityStatus('${esc(o.id)}','${esc(stage)}')">${esc(stage)}</button>`).join('')}</div></section><div class="case-detail-grid"><div class="case-detail-shell"><section class="case-detail-panel"><div class="toolbar"><div><div class="eyebrow">Aktuální fáze</div><h3>${esc(current)}</h3></div></div><div class="case-history-list">${caseDetailChecklist(o)}</div></section><section class="case-detail-panel"><div class="toolbar"><div><div class="eyebrow">Podrobnosti</div><h3>Parametry případu</h3></div><button class="btn slim" onclick="openOpportunityModal(${Number(o.clientId)},${Number(o.id)})">Upravit</button></div><div class="case-detail-facts"><div class="case-detail-fact"><span>Klient</span><button class="case-title" onclick="openClientWorkspace(${Number(o.clientId)},'opportunities')">${esc(clientName(c))}</button></div><div class="case-detail-fact"><span>Kategorie</span><b>${esc(o.category || '-')}</b></div><div class="case-detail-fact"><span>Společnost</span><b>${esc(o.company || '-')}</b></div><div class="case-detail-fact"><span>Produkt</span><b>${esc(o.product || '-')}</b></div><div class="case-detail-fact"><span>Objem</span><b>${money(o.amount)}</b></div><div class="case-detail-fact"><span>BJ</span><b>${num(o.bj)}</b></div><div class="case-detail-fact"><span>Termín dokončení</span><b>${esc(o.expectedDate || '-')}</b></div><div class="case-detail-fact"><span>Původní smlouva</span><b>${esc(replacement ? [replacement.company,replacement.product,replacement.number].filter(Boolean).join(' · ') : '-')}</b></div></div>${o.note ? `<div class="notice small" style="margin-top:12px"><b>Poznámky k jednání</b><div style="white-space:pre-wrap;margin-top:5px">${esc(o.note)}</div></div>` : ''}</section></div><aside class="case-detail-shell"><section class="case-detail-panel"><div class="eyebrow">Další krok</div><div class="case-next-action"><b>${closed ? 'Případ je uzavřený' : next ? dateObj(next).toLocaleDateString('cs-CZ') : 'Termín není naplánovaný'}</b><p class="note">${closed ? 'Historie a podklady zůstávají uložené.' : esc(o.lastContactMethod || (current === 'Opportunity' ? 'Klienta je potřeba kontaktovat.' : 'Doplňte další návaznost.'))}</p></div>${closed ? '' : `<button class="btn primary" onclick="openQuickActivity(${Number(o.clientId)})">+ Naplánovat aktivitu</button>`}</section><section class="case-detail-panel"><div class="eyebrow">Historie případu</div><h3>Posuny a kontakty</h3><div class="case-history-list">${history.map(x=>`<div class="case-history-row"><b>${esc(x.t || 'Aktualizace')}</b><small>${esc(x.d || '')}</small></div>`).join('') || '<p class="note">Zatím bez zaznamenané změny.</p>'}</div></section><section class="case-detail-panel"><div class="eyebrow">Provize</div><h3>${money(commission)}</h3><p class="note">${pipelineStageCommissionEnabled(current) ? 'Tato fáze se počítá do očekávané provize.' : 'Tato fáze je z očekávané provize vypnutá.'}</p></section></aside></div></div>`;
+  root.innerHTML = `<div class="case-detail-shell"><section class="case-detail-top"><div class="case-detail-breadcrumb"><button class="client-back-button" onclick="closeCaseDetail()">← Zpět na seznam</button><div class="actions"><button class="btn" onclick="openQuickActivity(${Number(o.clientId)},'phone',${Number(o.id)})">Zaznamenat kontakt</button><button class="btn primary" onclick="openOpportunityModal(${Number(o.clientId)},${Number(o.id)})">Upravit případ</button></div></div><div class="case-detail-title"><div><div class="chips"><span class="badge blue">${esc(o.category || 'Obchodní případ')}</span>${opportunityBadge(current)}${replacementBadge(o)}</div><h2>${esc(o.product || o.category || 'Obchodní případ')}</h2><p class="note">${esc(clientName(c))} · ${esc(o.company || 'bez společnosti')} · poslední změna ${esc(caseLastUpdate(o) ? dateObj(caseLastUpdate(o)).toLocaleDateString('cs-CZ') : 'bez data')}</p></div><div class="client-summary-tile"><small>${closed ? 'Původní odhad provize' : 'Očekávaná provize'}</small><b>${money(commission)}</b><span>objem ${money(o.amount)} · ${num(o.bj)} BJ</span></div></div><div class="case-stage-track">${(o.status === 'Podepsáno' ? [] : [...stages,'Klient nemá zájem','Zrušeno']).map((stage,i)=>`<button class="case-stage-step ${stage === current ? 'active' : i < currentIndex ? 'done' : ''}" onclick="updateOpportunityStatus('${esc(o.id)}','${esc(stage)}')">${esc(stage)}</button>`).join('')}</div></section><div class="case-detail-grid"><div class="case-detail-shell"><section class="case-detail-panel"><div class="toolbar"><div><div class="eyebrow">Aktuální fáze</div><h3>${esc(current)}</h3></div></div><div class="case-history-list">${caseDetailChecklist(o)}</div></section><section class="case-detail-panel"><div class="toolbar"><div><div class="eyebrow">Podrobnosti</div><h3>Parametry případu</h3></div><button class="btn slim" onclick="openOpportunityModal(${Number(o.clientId)},${Number(o.id)})">Upravit</button></div><div class="case-detail-facts"><div class="case-detail-fact"><span>Klient</span><button class="case-title" onclick="openClientWorkspace(${Number(o.clientId)},'opportunities')">${esc(clientName(c))}</button></div><div class="case-detail-fact"><span>Kategorie</span><b>${esc(o.category || '-')}</b></div><div class="case-detail-fact"><span>Společnost</span><b>${esc(o.company || '-')}</b></div><div class="case-detail-fact"><span>Produkt</span><b>${esc(o.product || '-')}</b></div><div class="case-detail-fact"><span>Objem</span><b>${money(o.amount)}</b></div><div class="case-detail-fact"><span>BJ</span><b>${num(o.bj)}</b></div><div class="case-detail-fact"><span>Termín dokončení</span><b>${esc(o.expectedDate || '-')}</b></div><div class="case-detail-fact"><span>Původní smlouva</span><b>${esc(replacement ? [replacement.company,replacement.product,replacement.number].filter(Boolean).join(' · ') : '-')}</b></div></div>${o.note ? `<div class="notice small" style="margin-top:12px"><b>Poznámky k jednání</b><div style="white-space:pre-wrap;margin-top:5px">${esc(o.note)}</div></div>` : ''}</section></div><aside class="case-detail-shell"><section class="case-detail-panel"><div class="eyebrow">Další krok</div><div class="case-next-action"><b>${closed ? 'Případ je uzavřený' : next ? dateObj(next).toLocaleDateString('cs-CZ') : 'Termín není naplánovaný'}</b><p class="note">${closed ? 'Historie a podklady zůstávají uložené.' : esc(o.lastContactMethod || (current === 'Opportunity' ? 'Klienta je potřeba kontaktovat.' : 'Doplňte další návaznost.'))}</p></div>${closed ? '' : `<button class="btn primary" onclick="openQuickActivity(${Number(o.clientId)},'phone',${Number(o.id)});setVal('qaOutcome','agreed')">+ Naplánovat aktivitu</button>`}</section><section class="case-detail-panel"><div class="eyebrow">Historie případu</div><h3>Posuny a kontakty</h3><div class="case-history-list">${history.map(x=>`<div class="case-history-row"><b>${esc(x.t || 'Aktualizace')}</b><small>${esc(x.d || '')}</small></div>`).join('') || '<p class="note">Zatím bez zaznamenané změny.</p>'}</div></section><section class="case-detail-panel"><div class="eyebrow">Provize</div><h3>${money(commission)}</h3><p class="note">${pipelineStageCommissionEnabled(current) ? 'Tato fáze se počítá do očekávané provize.' : 'Tato fáze je z očekávané provize vypnutá.'}</p></section></aside></div></div>`;
 }
 let closedCaseLimit = 50;
 function showMoreClosedCases() {
@@ -3160,7 +3200,7 @@ function renderOpportunities() {
   const commissionSummary=byId('pipelineCommissionSummary');
   if(commissionSummary)commissionSummary.innerHTML=`<div><span class="badge blue">Počítáno ${num(caseStages().filter(pipelineStageCommissionEnabled).length)} ze ${num(caseStages().length)} fází</span><span class="note">Vypnuté fáze jsou v pipeline dál viditelné, pouze se nepromítnou do částky.</span></div><div class="actions"><button class="btn slim" onclick="setAllPipelineCommissionStages(true)">Počítat vše</button><button class="btn slim" onclick="setAllPipelineCommissionStages(false)">Vypnout vše</button></div>`;
   const table=byId('opportunityTable');
-  if(table)table.innerHTML=`<thead><tr><th>Případ / klient</th><th>Kategorie</th><th>Fáze</th><th>Od aktualizace</th><th>Společnost</th><th>Objem</th><th>BJ</th><th>Oček. provize</th><th>Kontakt / další termín</th><th>Akce</th></tr></thead><tbody>${rows.map(({o,c})=>`<tr data-case-id="${esc(o.id)}"><td><button class="case-title" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">${esc(o.product||o.category||'Obchodní případ')}</button><br><span>${esc(clientName(c))}</span>${o.isContractOpportunity?'<span class="chip">ze smlouvy</span>':''}${replacementBadge(o)}</td><td>${esc(o.category)}</td><td>${opportunityStatusSelect(o)}</td><td>${caseAgeHtml(o)}<br><small>${esc(caseLastUpdate(o)?dateObj(caseLastUpdate(o)).toLocaleDateString('cs-CZ'):'')}</small></td><td>${esc(o.company)}</td><td class="money"><button class="case-title" title="Upravit objem případu" onclick="caseEditVolume(decodeURIComponent('${caseEncodedId(o.id)}'))">${money(o.amount)} ✎</button></td><td>${num(o.bj)}</td><td class="money">${money(+o.actualCommission||+o.expectedCommission||opportunityCash(o,new Date().getFullYear()))}</td><td>${opportunityContactHtml(o)}</td><td><button class="btn slim" onclick="openQuickActivity(${Number(o.clientId)})">+ Aktivita</button><button class="btn slim" onclick="selectedClientId=${Number(o.clientId)};showView('clients')">Klient</button><button class="btn slim" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">Upravit</button></td></tr>`).join('')||'<tr><td colspan="10" class="note">Žádné obchodní případy pro tento výběr.</td></tr>'}</tbody>`;
+  if(table)table.innerHTML=`<thead><tr><th>Případ / klient</th><th>Kategorie</th><th>Fáze</th><th>Od aktualizace</th><th>Společnost</th><th>Objem</th><th>BJ</th><th>Oček. provize</th><th>Kontakt / další termín</th><th>Akce</th></tr></thead><tbody>${rows.map(({o,c})=>`<tr data-case-id="${esc(o.id)}"><td><button class="case-title" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">${esc(o.product||o.category||'Obchodní případ')}</button><br><span>${esc(clientName(c))}</span>${o.isContractOpportunity?'<span class="chip">ze smlouvy</span>':''}${replacementBadge(o)}</td><td>${esc(o.category)}</td><td>${opportunityStatusSelect(o)}</td><td>${caseAgeHtml(o)}<br><small>${esc(caseLastUpdate(o)?dateObj(caseLastUpdate(o)).toLocaleDateString('cs-CZ'):'')}</small></td><td>${esc(o.company)}</td><td class="money"><button class="case-title" title="Upravit objem případu" onclick="caseEditVolume(decodeURIComponent('${caseEncodedId(o.id)}'))">${money(o.amount)} ✎</button></td><td>${num(o.bj)}</td><td class="money">${money(+o.actualCommission||+o.expectedCommission||opportunityCash(o,new Date().getFullYear()))}</td><td>${opportunityContactHtml(o)}</td><td><button class="btn slim" onclick="openQuickActivity(${Number(o.clientId)},'phone',${Number(o.id)})">+ Aktivita</button><button class="btn slim" onclick="selectedClientId=${Number(o.clientId)};showView('clients')">Klient</button><button class="btn slim" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">Upravit</button></td></tr>`).join('')||'<tr><td colspan="10" class="note">Žádné obchodní případy pro tento výběr.</td></tr>'}</tbody>`;
   const closed = state.opportunities.filter(o=>!isOpenOpportunity(o) && (!filters.category || o.category===filters.category) && (!q || norm([clientName(findClient(o.clientId)),o.product,o.company,o.category,o.status,o.note].join(' ')).includes(q)));
   for (const id of ['closedCaseArchive','pipelineClosedCaseArchive']) {
     const archive = byId(id);
@@ -3169,7 +3209,7 @@ function renderOpportunities() {
   const board=byId('pipelineBoard');
   if(board)board.innerHTML=caseStages().map((stage,index)=>{
     const cards=rows.filter(x=>caseStage(x.o.status)===stage), enabled=pipelineStageCommissionEnabled(stage), stageCash=cards.reduce((sum,x)=>sum+caseExpectedCommission(x.o),0);
-    return `<section class="pipeline-column ${enabled?'commission-on':'commission-off'}" data-stage="${esc(stage)}" style="--stage-color:${['#8b7db9','#7289bb','#b69a65','#69a69c','#739ac3','#8b7db9','#487aa0'][index]}" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="caseDrop(event,'${esc(stage)}')"><header><h3>${esc(stage)} <span>${cards.length}</span></h3><div class="pipeline-stage-commission"><label><input type="checkbox" ${enabled?'checked':''} onchange="togglePipelineStageCommission('${esc(stage)}',this.checked)"><span>Počítat do provize</span></label><strong>${money(stageCash)}</strong></div><b>${num(cards.reduce((s,x)=>s+(+x.o.bj||0),0))} BJ</b></header><div class="pipeline-cards">${cards.map(({o,c})=>`<article class="pipeline-card" draggable="true" data-case-id="${esc(o.id)}" ondragstart="event.dataTransfer.setData('application/x-crm-case',decodeURIComponent('${caseEncodedId(o.id)}'))"><button class="case-title" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">${esc(o.product||o.category||'Obchodní případ')}</button><div class="pipeline-client">${esc(clientName(c))}</div>${replacementBadge(o)}<div class="chips"><span class="chip">${esc(o.category)}</span>${caseAgeHtml(o)}</div>${opportunityContactHtml(o)}<div class="pipeline-amount">${num(o.bj)} BJ</div><div class="note">Oček. provize ${money(caseExpectedCommission(o))}</div><div class="pipeline-volume"><button class="case-title" title="Upravit objem případu" onclick="caseEditVolume(decodeURIComponent('${caseEncodedId(o.id)}'))">${money(o.amount)} ✎</button></div><div class="note">${esc(o.company||'')}</div>${opportunityStatusSelect(o)}<div class="actions"><button class="btn slim primary" onclick="openQuickActivity(${Number(o.clientId)})">+ Aktivita</button><button class="btn slim" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">Upravit</button><button class="btn slim" onclick="selectedClientId=${Number(o.clientId)};showView('clients')">Klient</button></div></article>`).join('')||'<p class="pipeline-empty">Žádné případy</p>'}</div></section>`;
+    return `<section class="pipeline-column ${enabled?'commission-on':'commission-off'}" data-stage="${esc(stage)}" style="--stage-color:${['#8b7db9','#7289bb','#b69a65','#69a69c','#739ac3','#8b7db9','#487aa0'][index]}" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="caseDrop(event,'${esc(stage)}')"><header><h3>${esc(stage)} <span>${cards.length}</span></h3><div class="pipeline-stage-commission"><label><input type="checkbox" ${enabled?'checked':''} onchange="togglePipelineStageCommission('${esc(stage)}',this.checked)"><span>Počítat do provize</span></label><strong>${money(stageCash)}</strong></div><b>${num(cards.reduce((s,x)=>s+(+x.o.bj||0),0))} BJ</b></header><div class="pipeline-cards">${cards.map(({o,c})=>`<article class="pipeline-card" draggable="true" data-case-id="${esc(o.id)}" ondragstart="event.dataTransfer.setData('application/x-crm-case',decodeURIComponent('${caseEncodedId(o.id)}'))"><button class="case-title" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">${esc(o.product||o.category||'Obchodní případ')}</button><div class="pipeline-client">${esc(clientName(c))}</div>${replacementBadge(o)}<div class="chips"><span class="chip">${esc(o.category)}</span>${caseAgeHtml(o)}</div>${opportunityContactHtml(o)}<div class="pipeline-amount">${num(o.bj)} BJ</div><div class="note">Oček. provize ${money(caseExpectedCommission(o))}</div><div class="pipeline-volume"><button class="case-title" title="Upravit objem případu" onclick="caseEditVolume(decodeURIComponent('${caseEncodedId(o.id)}'))">${money(o.amount)} ✎</button></div><div class="note">${esc(o.company||'')}</div>${opportunityStatusSelect(o)}<div class="actions"><button class="btn slim primary" onclick="openQuickActivity(${Number(o.clientId)},'phone',${Number(o.id)})">+ Aktivita</button><button class="btn slim" onclick="caseEdit(decodeURIComponent('${caseEncodedId(o.id)}'))">Upravit</button><button class="btn slim" onclick="selectedClientId=${Number(o.clientId)};showView('clients')">Klient</button></div></article>`).join('')||'<p class="pipeline-empty">Žádné případy</p>'}</div></section>`;
   }).join('');
 }
 function renderVersion() {
@@ -5847,6 +5887,23 @@ function deleteClient() {
   if (!c) return;
   if ((state.insuranceClaims || []).some(x => String(x.clientId) === String(c.id))) return alert('Klienta nelze smazat, protože má evidované pojistné události. Jejich historie musí zůstat u klienta. Pokud jde o duplicitní kartu, použij sloučení klientů.');
   if (!confirm('Smazat klienta včetně smluv, obchodů, obchodních případů, poznámek a aktivit?')) return;
+  const removedCases = new Set(state.opportunities.filter(x => String(x.clientId) === String(c.id)).map(x => String(x.id)));
+  (state.workOutputs || []).forEach(output => {
+    if (String(output.clientId) !== String(c.id) && !removedCases.has(String(output.opportunityId))) return;
+    output.importReference = {...(output.importReference || {}), clientId:output.clientId, opportunityId:output.opportunityId, reason:'client-deleted'};
+    if (String(output.clientId) === String(c.id)) output.clientId = null;
+    if (removedCases.has(String(output.opportunityId))) output.opportunityId = null;
+    output.workLinksUnverified = true;
+    output.updatedAt = new Date().toISOString();
+  });
+  (state.workPilots || []).forEach(pilot => {
+    const missing = (pilot.caseIds || []).filter(id => removedCases.has(String(id)));
+    if (!missing.length) return;
+    pilot.importReference = {...(pilot.importReference || {}), caseIds:[...new Set([...(pilot.importReference?.caseIds || []), ...missing])], reason:'client-deleted'};
+    pilot.caseIds = pilot.caseIds.filter(id => !removedCases.has(String(id)));
+    pilot.workLinksUnverified = true;
+    pilot.updatedAt = new Date().toISOString();
+  });
   state.clients = state.clients.filter(x => x.id !== c.id);
   state.contracts = state.contracts.filter(x => x.clientId !== c.id);
   state.deals = state.deals.filter(x => x.clientId !== c.id);
@@ -7757,12 +7814,13 @@ function findMatchingClient(c) {
 }
 function mergeIncomingStateCore(incoming) {
   incoming = normalizeState(incoming);
+  state = normalizeState(state);
   if(incoming.settings.commissionLegacyArchive){
     const archive=state.settings.commissionLegacyArchive||(state.settings.commissionLegacyArchive={});
     Object.entries(incoming.settings.commissionLegacyArchive).forEach(([key,rows])=>{const existing=archive[key]||(archive[key]=[]);rows.forEach(x=>{if(!existing.some(y=>JSON.stringify(y)===JSON.stringify(x)))existing.push(JSON.parse(JSON.stringify(x)));});});
   }
   dedupeInvestmentRecordsInState(state);
-  const map = new Map(), contractMap = new Map(), dealMap = new Map(), opportunityMap = new Map(),
+  const map = new Map(), contractMap = new Map(), dealMap = new Map(), opportunityMap = new Map(), activityMap = new Map(), pilotMap = new Map(), outputMap = new Map(),
     count = {
       clients: 0,
       contracts: 0,
@@ -7775,6 +7833,11 @@ function mergeIncomingStateCore(incoming) {
       notes: 0,
       investments: 0,
       activities: 0,
+      activitiesUpdated: 0,
+      workPilots: 0,
+      workPilotsUpdated: 0,
+      workOutputs: 0,
+      workOutputsUpdated: 0,
       analysisEntries: 0,
       referrals: 0,
       skipped: 0
@@ -8000,38 +8063,118 @@ function mergeIncomingStateCore(incoming) {
     ...state.trailSettings,
     ...(incoming.trailSettings || {})
   };
-  incoming.activities.forEach(ia => {
-    const clientId = ia.clientId ? mappedClient(ia.clientId) : null;
-    if (ia.clientId && !clientId) return;
-    const exists = state.activities.find(a => String(a.clientId || '') === String(clientId || '') && a.date === ia.date && a.type === ia.type && norm(a.text) === norm(ia.text));
-    if (exists) {
-      if (!exists.delegationRoute && ia.delegationRoute) exists.delegationRoute = ia.delegationRoute;
-      count.skipped++;
-      return;
-    }
-    state.activities.push({
-      ...ia,
-      id: uid(),
-      clientId,
-      createdAt: ia.createdAt || today(),
-      importedAt: today()
-    });
-    count.activities++;
+  function unverifiedWorkLink(record, field, value) {
+    record.importReference = {...(record.importReference || {}), [field]:value, origin:incoming.createdAt || ''};
+    record.workLinksUnverified = true;
+  }
+  function workMappedOpportunity(sourceId, clientId, sourceClientId) {
+    const reference = String(sourceId), qualifiedDeal = reference.startsWith('deal:'),
+      source = qualifiedDeal ? null : incoming.opportunities.find(x => String(x.id) === reference);
+    if (source && sourceClientId != null && String(source.clientId) !== String(sourceClientId)) return null;
+    const mapped = source ? state.opportunities.find(x => String(x.id) === String(opportunityMap.get(reference))) : null;
+    if (mapped && (clientId == null || String(mapped.clientId) === String(clientId))) return mapped.id;
+    // Signed cases leave the active list. Only a proven imported deal may stand in for that historical case.
+    const owner = sourceClientId ?? source?.clientId;
+    const candidates = incoming.deals.filter(d => (qualifiedDeal ? String(d.id) === reference.slice(5) : d.fromOpportunityId != null && String(d.fromOpportunityId) === reference) && (owner == null || String(d.clientId) === String(owner)));
+    if (candidates.length !== 1) return null;
+    const original = candidates[0], mappedOwner = mappedClient(original.clientId),
+      deal = state.deals.find(d => String(d.id) === String(dealMap.get(String(original.id))) && mappedOwner != null && String(d.clientId) === String(mappedOwner));
+    return deal && (clientId == null || String(deal.clientId) === String(clientId)) ? 'deal:' + deal.id : null;
+  }
+  incoming.workPilots.forEach(source => {
+    const next = JSON.parse(JSON.stringify(source)), missing = [];
+    next.caseIds = [...new Set((source.caseIds || []).flatMap(id => {
+      const mapped = workMappedOpportunity(id, null, null);
+      if (mapped == null) { missing.push(id); return []; }
+      return [mapped];
+    }))];
+    if (missing.length) unverifiedWorkLink(next, 'caseIds', missing);
+    const existing = state.workPilots.find(x => String(x.id) === String(source.id));
+    if (!existing) { state.workPilots.push(next); count.workPilots++; }
+    else if (workStorageTimestamp(next) > workStorageTimestamp(existing)) { Object.assign(existing, next, {id:existing.id}); count.workPilotsUpdated++; }
+    pilotMap.set(String(source.id), existing?.id || next.id);
   });
-  (incoming.analysisEntries || []).forEach(ia => {
-    const clientId = ia.clientId ? mappedClient(ia.clientId) : null;
-    const exists = (state.analysisEntries || []).some(a => a.date === ia.date && a.type === ia.type && String(a.clientId || "") === String(clientId || "") && norm(a.note) === norm(ia.note));
-    if (exists) {
-      count.skipped++;
-      return;
+  incoming.workOutputs.forEach(source => {
+    const next = JSON.parse(JSON.stringify(source));
+    next.clientId = source.clientId == null ? null : mappedClient(source.clientId);
+    if (source.clientId != null && next.clientId == null) unverifiedWorkLink(next, 'clientId', source.clientId);
+    if (source.opportunityId != null) {
+      next.opportunityId = workMappedOpportunity(source.opportunityId, next.clientId, source.clientId);
+      if (next.opportunityId == null) unverifiedWorkLink(next, 'opportunityId', source.opportunityId);
     }
-    state.analysisEntries.push({
-      ...ia,
-      id: uid(),
-      clientId,
-      createdAt: ia.createdAt || today(),
-      importedAt: today()
+    if (source.pilotId) {
+      next.pilotId = pilotMap.get(String(source.pilotId)) || null;
+      if (!next.pilotId) unverifiedWorkLink(next, 'pilotId', source.pilotId);
+    }
+    const sameOwner = x => String(x.clientId ?? '') === String(next.clientId ?? '') && (next.clientId != null || source.clientId == null || String(x.importReference?.clientId) === String(source.clientId) && x.importReference?.origin === (incoming.createdAt || ''));
+    let existing = state.workOutputs.find(x => String(x.id) === String(next.id) && sameOwner(x));
+    if (!existing && state.workOutputs.some(x => String(x.id) === String(next.id))) {
+      next.id = source.id + ':owner:' + encodeURIComponent(JSON.stringify([next.clientId, next.importReference?.clientId || '', incoming.createdAt || '']));
+      existing = state.workOutputs.find(x => String(x.id) === String(next.id) && sameOwner(x));
+    }
+    if (!existing) { state.workOutputs.push(next); count.workOutputs++; }
+    else if (workStorageTimestamp(next) > workStorageTimestamp(existing)) { Object.assign(existing, next, {id:existing.id}); count.workOutputsUpdated++; }
+    outputMap.set(String(source.id), existing?.id || next.id);
+  });
+  const activityUpdates = [];
+  incoming.activities.forEach(source => {
+    const next = JSON.parse(JSON.stringify(source));
+    next.clientId = source.clientId == null ? null : mappedClient(source.clientId);
+    if (source.clientId != null && next.clientId == null) unverifiedWorkLink(next, 'clientId', source.clientId);
+    const sameOwner = x => String(x.clientId ?? '') === String(next.clientId ?? '') && (next.clientId != null || source.clientId == null || x.importReference?.clientId === source.clientId && x.importReference?.origin === (incoming.createdAt || ''));
+    let local = state.activities.find(x => x.syncId === next.syncId && sameOwner(x));
+    if (!local && state.activities.some(x => x.syncId === next.syncId)) {
+      next.syncId += ':owner:' + encodeURIComponent(JSON.stringify([next.clientId, next.importReference?.clientId || '', incoming.createdAt || '']));
+      local = state.activities.find(x => x.syncId === next.syncId && sameOwner(x));
+    }
+    if (!local) {
+      local = {...next, id:uid(), importedAt:today()};
+      state.activities.push(local); count.activities++;
+      activityUpdates.push({local, next, source, added:true});
+    } else if (workStorageTimestamp(next) > workStorageTimestamp(local)) activityUpdates.push({local, next, source, added:false});
+    else count.skipped++;
+    activityMap.set(String(source.id), local.id);
+  });
+  activityUpdates.forEach(({local, next, source, added}) => {
+    ['sourceActivityId','followActivityId'].forEach(field => {
+      if (source[field] == null || source[field] === '') return;
+      const related = incoming.activities.find(x => String(x.id) === String(source[field]));
+      next[field] = related && String(related.clientId ?? '') === String(source.clientId ?? '') ? activityMap.get(String(related.id)) || null : null;
+      if (next[field] == null) unverifiedWorkLink(next, field, source[field]);
     });
+    if (source.sourceOpportunityId != null) {
+      next.sourceOpportunityId = workMappedOpportunity(source.sourceOpportunityId, next.clientId, source.clientId);
+      if (next.sourceOpportunityId == null) unverifiedWorkLink(next, 'sourceOpportunityId', source.sourceOpportunityId);
+    }
+    if (next.work && typeof next.work === 'object') {
+      if (source.work.pilotId) {
+        next.work.pilotId = pilotMap.get(String(source.work.pilotId)) || null;
+        if (!next.work.pilotId) unverifiedWorkLink(next, 'pilotId', source.work.pilotId);
+      }
+      if (source.work.outputId) {
+        const id = outputMap.get(String(source.work.outputId)), output = state.workOutputs.find(x => String(x.id) === String(id));
+        next.work.outputId = output && String(output.clientId ?? '') === String(next.clientId ?? '') ? output.id : null;
+        if (!next.work.outputId) unverifiedWorkLink(next, 'outputId', source.work.outputId);
+      }
+    }
+    if (added) Object.assign(local, next, {id:local.id});
+    else if (mergeActivityStorageRecord(local, next)) count.activitiesUpdated++;
+  });
+  (incoming.analysisEntries || []).forEach(source => {
+    const clientId = source.clientId ? mappedClient(source.clientId) : null, next = {...source, clientId};
+    if (source.sourceActivityId != null) {
+      next.sourceProjection = true;
+      next.sourceActivitySyncId = incoming.activities.find(a => String(a.id) === String(source.sourceActivityId))?.syncId || 'missing:' + JSON.stringify([incoming.createdAt || '', source.sourceActivityId]);
+      next.sourceActivityId = activityMap.get(String(source.sourceActivityId)) || null;
+      if (next.sourceActivityId == null) unverifiedWorkLink(next, 'sourceActivityId', source.sourceActivityId);
+    }
+    if (source.sourceOpportunityId != null) {
+      next.sourceOpportunityId = workMappedOpportunity(source.sourceOpportunityId, clientId, source.clientId);
+      if (next.sourceOpportunityId == null) unverifiedWorkLink(next, 'sourceOpportunityId', source.sourceOpportunityId);
+    }
+    const exists = (state.analysisEntries || []).some(a => source.sourceActivityId != null ? a.sourceActivitySyncId === next.sourceActivitySyncId || next.sourceActivityId != null && String(a.sourceActivityId) === String(next.sourceActivityId) : a.date === source.date && a.type === source.type && String(a.clientId || '') === String(clientId || '') && norm(a.note) === norm(source.note));
+    if (exists) { count.skipped++; return; }
+    state.analysisEntries.push({...next, id:uid(), createdAt:source.createdAt || today(), importedAt:today()});
     count.analysisEntries++;
   });
   state.analysisPlans = {
@@ -8061,8 +8204,7 @@ function mergeIncomingStateCore(incoming) {
   incoming.weeklyReviews.forEach(r=>{if(!state.weeklyReviews.some(x=>x.weekKey===r.weekKey))state.weeklyReviews.push({...r,id:uid(),goals:(r.goals||[]).map(g=>({...g,id:goalIds.get(String(g.id))||g.id}))});});
   incoming.dailyPriorities.forEach(p=>{
     if(state.dailyPriorities.some(x=>x.date===p.date && +x.slot===+p.slot)){count.skipped++;return;}
-    const a=incoming.activities.find(x=>String(x.id)===String(p.activityId));
-    const local=a?state.activities.find(x=>String(x.clientId||'')===String(mappedClient(a.clientId)||'') && x.date===a.date && x.type===a.type && norm(x.text)===norm(a.text)):null;
+    const local=state.activities.find(x=>String(x.id)===String(activityMap.get(String(p.activityId))));
     state.dailyPriorities.push({...p,id:uid(),clientId:mappedClient(p.clientId),activityId:local?.id||null,goalId:goalIds.get(String(p.goalId))||null});
   });
   incoming.focusSnapshots.forEach(x=>{if(!state.focusSnapshots.some(s=>s.date===x.date))state.focusSnapshots.push({...x,id:uid()});});
@@ -8070,7 +8212,7 @@ function mergeIncomingStateCore(incoming) {
     if(state.focusDrafts.some(s=>s.id===x.id))return;
     const values={...x.values};
     if(values.fpClient)values.fpClient=String(mappedClient(values.fpClient)||'');
-    if(values.fpActivity){const a=incoming.activities.find(a=>String(a.id)===String(values.fpActivity));const local=a?state.activities.find(l=>l.date===a.date&&l.type===a.type&&norm(l.text)===norm(a.text)&&String(l.clientId||'')===String(mappedClient(a.clientId)||'')):null;values.fpActivity=local?String(local.id):'';}
+    if(values.fpActivity)values.fpActivity=String(activityMap.get(String(values.fpActivity))||'');
     if(values.fpGoal)values.fpGoal=String(goalIds.get(String(values.fpGoal))||'');
     state.focusDrafts.push({...x,values});
   });
@@ -8083,7 +8225,7 @@ function mergeIncomingStateCore(incoming) {
     }
   });
   relinkAllStrongIdentities();
-  Object.defineProperty(count, '_mergeIds', {value:{clients:map, contracts:contractMap, deals:dealMap, opportunities:opportunityMap}, enumerable:false});
+  Object.defineProperty(count, '_mergeIds', {value:{clients:map, contracts:contractMap, deals:dealMap, opportunities:opportunityMap, activities:activityMap, workPilots:pilotMap, workOutputs:outputMap}, enumerable:false});
   return count;
 }
 function previewGoogleBackup() {
@@ -8117,6 +8259,8 @@ function loadGoogleBackup() {
 function backupCountValue(s, key) {
   if (key === 'investments') return (s.investmentRecords || []).length;
   if (key === 'claimHistory' || key === 'claimAttachments') return (s.insuranceClaims || []).reduce((n, claim) => n + (claim[key === 'claimHistory' ? 'history' : 'attachments']?.length || 0), 0);
+  if (key === 'workActivities') return (s.activities || []).filter(a => a.work && typeof a.work === 'object' && Object.keys(a.work).length).length;
+  if (key === 'workTimeEntries') return (s.activities || []).filter(a => ['actual','estimate'].includes(a.work?.timeKind) && a.duration != null && a.duration !== '' && Number.isFinite(+a.duration) && +a.duration >= 0).length;
   return Array.isArray(s[key]) ? s[key].length : 0;
 }
 function backupCountDrops(smaller, bigger) {
@@ -8153,7 +8297,7 @@ function restoreIncomingStateFromGoogle(incoming, source) {
     next.focusDrafts=next.focusDrafts.filter(x=>x.id!==d.id);
     const copy=JSON.parse(JSON.stringify(d));
     if(copy.values?.fpClient){const c=before.clients.find(x=>String(x.id)===String(copy.values.fpClient));const match=c?next.clients.find(x=>clientMatchKey(x)===clientMatchKey(c)):null;copy.values.fpClient=match?String(match.id):'';}
-    if(copy.values?.fpActivity){const a=before.activities.find(x=>String(x.id)===String(copy.values.fpActivity));const match=a?next.activities.find(x=>x.text===a.text&&x.date===a.date&&String(x.clientId||'')===String(copy.values.fpClient||'')):null;copy.values.fpActivity=match?String(match.id):'';}
+    if(copy.values?.fpActivity){const a=before.activities.find(x=>String(x.id)===String(copy.values.fpActivity));const match=a?next.activities.find(x=>x.syncId===a.syncId&&String(x.clientId||'')===String(copy.values.fpClient||'')):null;copy.values.fpActivity=match?String(match.id):'';}
     if(copy.values?.fpGoal){const g=before.weeklyGoals.find(x=>String(x.id)===String(copy.values.fpGoal));const match=g?next.weeklyGoals.find(x=>x.weekKey===g.weekKey&&x.slot===g.slot&&x.title===g.title):null;copy.values.fpGoal=match?String(match.id):'';}
     next.focusDrafts.push(copy);
   });
@@ -11875,10 +12019,13 @@ function activities_aCreateFollowUp(source) {
   const type = followType || source.type || 'Telefon';
   const date = followDate || source.date || activities_aToday();
   let next = (state.activities || []).find(x => String(x.sourceActivityId) === String(source.id) && String(x.id) === String(source.followActivityId || ''));
-  if (!next && source.followActivityId) next = (state.activities || []).find(x => String(x.id) === String(source.followActivityId));
+  if (!next && source.followActivityId) next = (state.activities || []).find(x => String(x.id) === String(source.followActivityId) && String(x.clientId || '') === String(source.clientId || '') && String(x.sourceActivityId) === String(source.id));
+  // Editing the original entry must not reopen or overwrite already performed work.
+  if (next && activities_aOutcome(next) !== 'agreed') return next;
   if (!next) {
     next = {
       id: activities_aUid(),
+      syncId:crypto.randomUUID(),
       createdAt: activities_aToday(),
       clientId: source.clientId,
       source: 'activity',
@@ -11889,6 +12036,7 @@ function activities_aCreateFollowUp(source) {
   }
   Object.assign(next, {
     clientId: source.clientId,
+    sourceOpportunityId: (state.opportunities || []).some(o => String(o.id) === String(source.sourceOpportunityId) && String(o.clientId) === String(source.clientId)) ? source.sourceOpportunityId : null,
     type,
     date,
     time: source.followTime || '09:00',
@@ -11900,7 +12048,7 @@ function activities_aCreateFollowUp(source) {
     analysisType: activities_aDefaultAnalysisType({
       type
     }),
-    updatedAt: activities_aToday()
+    updatedAt: new Date().toISOString()
   });
   return next;
 }
@@ -12016,7 +12164,7 @@ function quickAnalysis_outcome(x) {
   return x?.outcome || x?.result || 'realized';
 }
 function quickAnalysis_rows(start, end) {
-  const entries = (state.analysisEntries || []).filter(x => !x.sourceActivityId && quickAnalysis_inRange(x.date, start, end)).map(x => ({
+  const entries = (state.analysisEntries || []).filter(x => !x.sourceActivityId && !x.sourceProjection && quickAnalysis_inRange(x.date, start, end)).map(x => ({
     ...x,
     source: x.source || 'Rychlý zápis',
     clientId: null,
@@ -12055,7 +12203,7 @@ function quickAnalysis_summary(list, key) {
     noShow,
     done: realized + moved + noShow,
     next,
-    minutes: chosen.reduce((a, x) => a + (+x.minutes || 0), 0)
+    minutes: chosen.reduce((a, x) => a + (quickAnalysis_outcome(x) === 'agreed' ? 0 : +x.minutes || 0), 0)
   };
 }
 function quickAnalysis_dayKey(date) {
@@ -12070,7 +12218,7 @@ function quickAnalysis_callMinutesByDay(list) {
     thu: 0,
     fri: 0
   };
-  list.filter(x => quickAnalysis_rowKey(x.type) === 'calls').forEach(x => {
+  list.filter(x => quickAnalysis_rowKey(x.type) === 'calls' && quickAnalysis_outcome(x) !== 'agreed').forEach(x => {
     const k = quickAnalysis_dayKey(x.date);
     if (k in out) out[k] += +x.minutes || 0;
   });
@@ -12164,7 +12312,7 @@ function mergeIncomingState(incoming) {
 }
 function stateCountsText(s = state) {
   s = normalizeState(s);
-  return `${num((s.clients || []).length)} klientů · ${num((s.contracts || []).length)} smluv · ${num((s.deals || []).length)} obchodů · ${num((s.opportunities || []).length)} obchodních případů · ${num((s.insuranceClaims || []).length)} pojistných událostí · ${num((s.notes || []).length)} poznámek · ${num((s.analysisEntries || []).length)} analytických aktivit · ${num((s.weeklyGoals || []).length)} týdenních cílů · ${num((s.weeklyReviews || []).length)} uzavřených týdnů · ${num((s.delegationProcesses || []).length)} činností k delegování · ${num((s.investmentRecords || []).length)} investičních záznamů · ${num((s.investmentSnapshots || []).length)} aktualizací investic · ${num((s.externalInvestments || []).length)} investic mimo správu · ${num((s.investmentForecasts || []).length)} prognóz · ${num((s.activities || []).length)} aktivit · ${num((s.commissionImports || []).length)} provizních importů · ${num((s.referrerPayouts || []).length)} výplat tipařům`;
+  return `${num((s.clients || []).length)} klientů · ${num((s.contracts || []).length)} smluv · ${num((s.deals || []).length)} obchodů · ${num((s.opportunities || []).length)} obchodních případů · ${num((s.insuranceClaims || []).length)} pojistných událostí · ${num((s.notes || []).length)} poznámek · ${num((s.analysisEntries || []).length)} analytických aktivit · ${num((s.weeklyGoals || []).length)} týdenních cílů · ${num((s.weeklyReviews || []).length)} uzavřených týdnů · ${num((s.delegationProcesses || []).length)} činností k delegování · ${num((s.investmentRecords || []).length)} investičních záznamů · ${num((s.investmentSnapshots || []).length)} aktualizací investic · ${num((s.externalInvestments || []).length)} investic mimo správu · ${num((s.investmentForecasts || []).length)} prognóz · ${num((s.activities || []).length)} aktivit · ${num(s.workPilots.length)} pracovních pilotů · ${num(s.workOutputs.length)} pracovních výstupů · ${num((s.commissionImports || []).length)} provizních importů · ${num((s.referrerPayouts || []).length)} výplat tipařům`;
 }
 function criticalBackupCounts(s = state) {
   s = normalizeState(s);
@@ -12182,6 +12330,10 @@ function criticalBackupCounts(s = state) {
     externalInvestments: s.externalInvestments.length,
     investmentForecasts: s.investmentForecasts.length,
     activities: s.activities.length,
+    workPilots: s.workPilots.length,
+    workOutputs: s.workOutputs.length,
+    workActivities: backupCountValue(s, 'workActivities'),
+    workTimeEntries: backupCountValue(s, 'workTimeEntries'),
     analysisEntries: s.analysisEntries.length,
     weeklyGoals: (s.weeklyGoals || []).length,
     weeklyReviews: (s.weeklyReviews || []).length,
@@ -13725,7 +13877,7 @@ const QUICK_ACTIVITY_PRESETS = {
   followup: {label:'Následný kontakt', icon:'↻', type:'Telefon', analysisType:'Volání', duration:10, outcome:'realized', placeholder:'na co kontakt navazoval a výsledek'},
   internal: {label:'Interní práce', icon:'✓', type:'Interní práce', analysisType:'Poznámka', duration:15, outcome:'realized', placeholder:'co bylo zpracováno nebo zlepšeno', optionalClient:true}
 };
-function openQuickActivity(clientId = null, preset = 'phone') {
+function openQuickActivity(clientId = null, preset = 'phone', opportunityId = null) {
   quickActivityPreset = QUICK_ACTIVITY_PRESETS[preset] ? preset : 'phone';
   const remembered = localStorage.getItem('filip_crm_quick_activity_client'), chosen = clientId || selectedClientId || remembered || '';
   fillOptionalClientSelect('qaClient', chosen);
@@ -13735,6 +13887,7 @@ function openQuickActivity(clientId = null, preset = 'phone') {
   const details = byId('quickActivityModal')?.querySelector('.quick-activity-follow');
   if (details) details.open = false;
   selectQuickActivityPreset(quickActivityPreset);
+  workFillFields('qa', {clientId:+val('qaClient') || null, sourceOpportunityId:opportunityId});
   openModal('quickActivityModal');
   setTimeout(() => byId('qaText')?.focus(), 0);
 }
@@ -13744,32 +13897,63 @@ function selectQuickActivityPreset(key) {
   const p = QUICK_ACTIVITY_PRESETS[key];
   byId('quickActivityPresets').innerHTML = Object.entries(QUICK_ACTIVITY_PRESETS).map(([k, x]) => `<button type="button" class="quick-preset ${k === key ? 'active' : ''}" onclick="selectQuickActivityPreset('${k}')"><span>${x.icon}</span><b>${esc(x.label)}</b></button>`).join('');
   setVal('qaOutcome', p.outcome); setVal('qaDuration', p.duration); byId('qaText').placeholder = p.placeholder;
+  // A newly inserted preset duration is not a confirmed measurement.
+  if (byId('qaWorkTimeKind')) setVal('qaWorkTimeKind','unknown');
   setText('qaClientHint', p.optionalClient ? 'Klient je u interní práce volitelný.' : 'Vyber klienta, kterého se aktivita týká.');
 }
 function saveQuickClientActivity() {
   const p = QUICK_ACTIVITY_PRESETS[quickActivityPreset], clientId = +val('qaClient') || null;
   if (!p.optionalClient && !clientId) return alert('Vyber klienta.');
+  const duration = activityReadDuration('qaDuration');
+  if (duration === false) return;
+  const snapshot = activitySaveSnapshot();
   const outcome = val('qaOutcome') || p.outcome, completed = outcome !== 'agreed', activity = {
-    id:uid(), clientId, type:p.type, date:val('qaDate') || today(), time:'', duration:parseMoney(val('qaDuration')) || 0,
+    id:uid(), syncId:crypto.randomUUID(), clientId, type:p.type, recordKind:'activity', date:val('qaDate') || today(), time:'', duration,
     location:'', delegationRoute:val('qaDelegationRoute'), text:val('qaText').trim(), outcome, analysisType:p.analysisType, source:'quick_activity',
     followType:val('qaFollowType') || '', followDate:val('qaFollowDate') || '', followTime:val('qaFollowTime') || '', followText:val('qaFollowText').trim(),
     completed, completedAt:completed ? today() : '', createdAt:new Date().toISOString(), updatedAt:new Date().toISOString()
   };
-  if (activity.followType && !activity.followDate) return alert('Doplň datum dalšího kroku.');
+  if (activity.followType && !activity.followDate) { activityRestoreSnapshot(snapshot); return alert('Doplň datum dalšího kroku.'); }
+  if (!workApplyFields('qa', activity)) { activityRestoreSnapshot(snapshot); return; }
   state.activities = state.activities || []; state.activities.push(activity);
   if (completed && activity.followDate) activities_aCreateFollowUp(activity);
+  if (!persist()) { activityRestoreSnapshot(snapshot); return; }
   if (clientId) { selectedClientId = clientId; localStorage.setItem('filip_crm_quick_activity_client', String(clientId)); }
-  persist(); closeModal('quickActivityModal'); renderAll(); saveToast(`${p.label} uložen${p.label.endsWith('a') ? 'a' : ''}${activity.followDate ? ' · další krok naplánován' : ''}`);
+  closeModal('quickActivityModal'); renderAll(); saveToast(`${p.label} uložen${p.label.endsWith('a') ? 'a' : ''}${activity.followDate ? ' · další krok naplánován' : ''}`);
+}
+function activityReadDuration(id) {
+  const raw = val(id).trim();
+  if (!raw) return null;
+  const n = Number(raw.replace(',', '.'));
+  if (!Number.isFinite(n) || n < 0) { alert('Délka práce musí být nezáporný počet minut.'); return false; }
+  return n;
+}
+function activitySaveSnapshot() {
+  return structuredClone({activities:state.activities || [], workOutputs:state.workOutputs || [], workPilots:state.workPilots || [], nextId:state.nextId});
+}
+function activityRestoreSnapshot(snapshot) {
+  Object.assign(state, snapshot);
+}
+function openDetailedQuickActivity() {
+  const preset = QUICK_ACTIVITY_PRESETS[quickActivityPreset], draft = {};
+  ['Client','Date','Outcome','Duration','DelegationRoute','Text','FollowType','FollowDate','FollowTime','FollowText'].forEach(key => draft[key] = val('qa'+key));
+  const workDraft = workCaptureFields('qa');
+  closeModal('quickActivityModal');
+  openActivityModal(+draft.Client || null);
+  Object.entries(draft).forEach(([key,value]) => setVal('a'+key,value));
+  setVal('aType',preset.type); setVal('aAnalysisType',preset.analysisType); setVal('aTime','');
+  workRestoreFields('a',workDraft);
 }
 function openActivityModal(clientId = null, id = null) {
   editingActivityId = id;
   const a = id ? (state.activities || []).find(x => String(x.id) === String(id)) : null;
-  if (typeof fillClientSelect === 'function') fillClientSelect('aClient', a?.clientId || clientId || selectedClientId);
-  activities_aSet('aClient', a?.clientId || clientId || selectedClientId || '');
+  const chosenClient = a ? a.clientId : clientId || selectedClientId;
+  fillOptionalClientSelect('aClient', chosenClient);
+  activities_aSet('aClient', chosenClient || '');
   activities_aSet('aType', a?.type || 'Telefon');
   activities_aSet('aDate', a?.date || activities_aToday());
   activities_aSet('aTime', a?.time || '09:00');
-  activities_aSet('aDuration', a?.duration ?? 60);
+  activities_aSet('aDuration', a ? a.duration ?? '' : 60);
   setVal('aDelegationRoute', a?.delegationRoute || '');
   activities_aSet('aLocation', a?.location || '');
   activities_aSet('aOutcome', activities_aOutcome(a));
@@ -13782,18 +13966,24 @@ function openActivityModal(clientId = null, id = null) {
   activities_aSet('aFollowText', a?.followText || '');
   activities_aSet('aText', a?.text || '');
   activities_aSetText('activityModalTitle', a ? 'Upravit aktivitu' : 'Aktivita');
+  workFillFields('a', a || {clientId:chosenClient});
   if (typeof openModal === 'function') openModal('activityModal');
 }
 function saveActivity(markDone = false) {
-  const clientId = +activities_aVal('aClient');
-  if (!clientId) return alert('Vyber klienta.');
+  const clientId = +activities_aVal('aClient') || null;
+  if (!clientId && activities_aVal('aType') !== 'Interní práce') return alert('Vyber klienta, nebo typ Interní práce.');
+  const duration = activityReadDuration('aDuration');
+  if (duration === false) return;
+  if (activities_aVal('aFollowType') && !activities_aVal('aFollowDate')) return alert('Doplň datum dalšího kroku.');
+  const snapshot = activitySaveSnapshot();
   state.activities = state.activities || [];
   let a = editingActivityId ? (state.activities || []).find(x => String(x.id) === String(editingActivityId)) : null;
   const isNew = !a;
   if (!a) {
     a = {
       id: activities_aUid(),
-      createdAt: activities_aToday()
+      syncId:crypto.randomUUID(),
+      createdAt: new Date().toISOString()
     };
     state.activities.push(a);
   }
@@ -13805,7 +13995,7 @@ function saveActivity(markDone = false) {
     type: activities_aVal('aType') || 'Telefon',
     date: activities_aVal('aDate') || activities_aToday(),
     time: activities_aVal('aTime'),
-    duration: activities_aNum(activities_aVal('aDuration')) || 0,
+    duration,
     delegationRoute: val('aDelegationRoute'),
     location: activities_aVal('aLocation').trim(),
     text: activities_aVal('aText').trim(),
@@ -13819,13 +14009,14 @@ function saveActivity(markDone = false) {
     followText: activities_aVal('aFollowText').trim(),
     completed,
     completedAt: completed ? a.completedAt || activities_aToday() : '',
-    updatedAt: activities_aToday()
+    updatedAt: new Date().toISOString()
   });
+  if (!workApplyFields('a', a)) { activityRestoreSnapshot(snapshot); return; }
   if ((a.followDate || a.followType) && completed) activities_aCreateFollowUp(a);
-  selectedClientId = clientId;
+  if (!persist()) { activityRestoreSnapshot(snapshot); return; }
+  if (clientId) selectedClientId = clientId;
   editingActivityId = null;
   if (typeof closeModal === 'function') closeModal('activityModal');
-  if (typeof persist === 'function') persist();
   if (typeof renderAll === 'function') renderAll();
   if (typeof saveToast === 'function') saveToast(completed ? 'Aktivita vyhodnocena' : 'Aktivita uložena');
   if (isNew && a.type === 'Schůzka' && !completed && typeof googleCalendarUrl === 'function') window.open(googleCalendarUrl(a), '_blank');
@@ -14754,7 +14945,7 @@ function renderDelegationAnalysis() {
   const sorted = [...data.rows].sort((a,b) => String(b.date).localeCompare(String(a.date))), pages = Math.max(1, Math.ceil(sorted.length / 25));
   delegationActivityPage = Math.min(Math.max(0, delegationActivityPage), pages - 1);
   const clients = new Map(state.clients.map(c => [String(c.id), clientName(c)]));
-  byId('delegationActivitiesTable').innerHTML = `<thead><tr><th>Datum / klient</th><th>Činnost</th><th>Skutečně minut</th><th>Možné předání</th></tr></thead><tbody>${sorted.slice(delegationActivityPage*25, (delegationActivityPage+1)*25).map(a => `<tr><td>${esc(a.date)}<br>${esc(clients.get(String(a.clientId)) || 'Interní práce')}</td><td><b>${esc(a.type || 'Činnost')}</b><br>${esc(a.text || '')}</td><td><input aria-label="Skutečně minut" type="number" min="0" step="1" value="${delegationMinutes(a.duration) || ''}" data-id="${esc(a.id)}" onchange="updateDelegationActivity(this.dataset.id,'duration',this.value)"></td><td><select aria-label="Možné předání" data-id="${esc(a.id)}" onchange="updateDelegationActivity(this.dataset.id,'delegationRoute',this.value)">${delegationOptions(a.delegationRoute)}</select></td></tr>`).join('') || '<tr><td colspan="4" class="note">V tomto měsíci zatím nejsou uskutečněné aktivity k posouzení. Použij + Aktivita a zapiš délku práce.</td></tr>'}</tbody>`;
+  byId('delegationActivitiesTable').innerHTML = `<thead><tr><th>Datum / klient</th><th>Činnost</th><th>Evidováno minut</th><th>Možné předání</th></tr></thead><tbody>${sorted.slice(delegationActivityPage*25, (delegationActivityPage+1)*25).map(a => `<tr><td>${esc(a.date)}<br>${esc(clients.get(String(a.clientId)) || 'Interní práce')}</td><td><b>${esc(a.type || 'Činnost')}</b><br>${esc(a.text || '')}</td><td><input aria-label="Evidováno minut" type="number" min="0" step="1" value="${a.duration ?? ''}" data-id="${esc(a.id)}" onchange="updateDelegationActivity(this.dataset.id,'duration',this.value)"></td><td><select aria-label="Možné předání" data-id="${esc(a.id)}" onchange="updateDelegationActivity(this.dataset.id,'delegationRoute',this.value)">${delegationOptions(a.delegationRoute)}</select></td></tr>`).join('') || '<tr><td colspan="4" class="note">V tomto měsíci zatím nejsou uskutečněné aktivity k posouzení. Použij + Aktivita a zapiš délku práce.</td></tr>'}</tbody>`;
   byId('delegationActivityPages').innerHTML = pages > 1 ? `<button class="btn" ${delegationActivityPage === 0 ? 'disabled' : ''} onclick="delegationActivityPage--;renderDelegationAnalysis()">← Předchozí</button><span>Strana ${delegationActivityPage+1} / ${pages}</span><button class="btn" ${delegationActivityPage === pages-1 ? 'disabled' : ''} onclick="delegationActivityPage++;renderDelegationAnalysis()">Další →</button>` : '';
   const processes = state.delegationProcesses || [], savings = route => processes.filter(p => p.route === route).reduce((sum,p) => sum + delegationProcessSavings(p),0);
   byId('delegationPlanMetrics').innerHTML = metric('Asistentka · odhad úspory / měsíc', savings('assistant'), 'po odečtení zadávání a kontroly') + metric('Automatizace · odhad úspory / měsíc', savings('automation'), 'po odečtení průběžné obsluhy') + `<div class="metric"><span class="note">Činností k posouzení</span><b>${processes.length}</b><small>vlastní model běžného měsíce</small></div>`;
@@ -14764,7 +14955,7 @@ function updateDelegationActivity(id, field, value) {
   const activity = state.activities.find(a => String(a.id) === String(id));
   if (!activity || !['duration','delegationRoute'].includes(field)) return;
   if (field === 'duration' && (!Number.isFinite(Number(value)) || Number(value) < 0)) {renderDelegationAnalysis();return alert('Počet minut musí být nezáporné číslo.');}
-  activity[field] = field === 'duration' ? Number(value) : delegationRoute(value);
+  activity[field] = field === 'duration' ? value.trim() === '' ? null : Number(value) : delegationRoute(value);
   activity.updatedAt = new Date().toISOString();
   persist(); renderAnalysis(); saveToast('Posouzení aktivity uloženo');
 }
@@ -14862,6 +15053,7 @@ function renderAnalysis() {
   if (typeof renderAnalysisBusinessChart === 'function') renderAnalysisBusinessChart();
   if (typeof renderAnalysisWeekHistory === 'function') renderAnalysisWeekHistory();
   renderDelegationAnalysis();
+  workRenderAnalysis();
 }
 
 var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
@@ -14874,8 +15066,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.27-4';
-const VERSION_NOTE = 'Opraven formulář smlouvy: penzijní údaje patří pouze k DPS a DIP, nezobrazují se u auta, pojištění, úvěrů ani jiných smluv.';
+const VERSION = '2026.10.28-1';
+const VERSION_NOTE = 'Volitelné měření práce v aktivitách a dvoutýdenní pilot v Analýze. Skutečný čas, odhady, návazné úkoly a porovnání celých výstupů včetně kontroly a oprav.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
@@ -14982,6 +15174,10 @@ const BACKUP_COUNT_LABELS = {
   claimAttachments: 'podkladů pojistných událostí',
   notes: 'poznámek',
   activities: 'aktivit',
+  workPilots: 'pracovních pilotů',
+  workOutputs: 'pracovních výstupů',
+  workActivities: 'aktivit s údaji o práci',
+  workTimeEntries: 'naměřených nebo odhadovaných časů',
   analysisEntries: 'analytických aktivit',
   investments: 'investičních záznamů',
   investmentSnapshots: 'aktualizací investic',
@@ -14998,7 +15194,7 @@ const BACKUP_COUNT_LABELS = {
   delegationProcesses: 'činností k delegování',
   wealthRecords: 'majetkových podkladů'
 };
-const BACKUP_PROTECTED_KEYS = ['clients', 'contracts', 'deals', 'opportunities', 'insuranceClaims', 'claimHistory', 'claimAttachments', 'notes', 'activities', 'analysisEntries', 'campaigns', 'investments', 'investmentSnapshots', 'externalInvestments', 'investmentForecasts', 'commissionImports', 'referrerPayouts', 'referrals', 'weeklyGoals', 'weeklyReviews', 'dailyPriorities', 'focusSnapshots', 'delegationProcesses', 'wealthRecords'];
+const BACKUP_PROTECTED_KEYS = ['clients', 'contracts', 'deals', 'opportunities', 'insuranceClaims', 'claimHistory', 'claimAttachments', 'notes', 'activities', 'workPilots', 'workOutputs', 'workActivities', 'workTimeEntries', 'analysisEntries', 'campaigns', 'investments', 'investmentSnapshots', 'externalInvestments', 'investmentForecasts', 'commissionImports', 'referrerPayouts', 'referrals', 'weeklyGoals', 'weeklyReviews', 'dailyPriorities', 'focusSnapshots', 'delegationProcesses', 'wealthRecords'];
 let scenario_editableScope = '';
 let fkiEditor_editingFkRecordKey = '',
   fkiEditor_editingFkClientId = null;

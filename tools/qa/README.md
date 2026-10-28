@@ -22,6 +22,8 @@ node tools/qa/weekly-goals.cjs
 node tools/qa/focus-dashboard.cjs
 node tools/qa/daily-tasks.cjs
 node tools/qa/delegation.cjs
+node tools/qa/work-measurement.cjs
+node tools/qa/work-measurement-storage.cjs
 node tools/qa/insurance-claims.cjs
 ```
 
@@ -46,3 +48,7 @@ insurance-claims.cjs ověřuje založení a úpravy pojistných událostí, hist
 `investment-proposal-position.cjs` kontroluje, že ruční změna nově sjednané FKI pozice zachová cílené odkupy a ocenění i po aktualizaci NAV a obnovení CRM.
 
 `pension-report.cjs` také ověřuje skutečnou viditelnost a deaktivaci penzijních polí podle typu smlouvy, zachování rozepsaných hodnot při přepnutí typu a vyloučení autosmlouvy z penzijního AUM. Volitelné `CRM_QA_SCRIPT_REF=<commit>` čte JavaScript staršího commitu pro reprodukci regrese, aniž mění pracovní soubory.
+
+`work-measurement.cjs` ověřuje skutečné a odhadované minuty, nulu a chybějící hodnotu, plánované aktivity, přechod rychlého zápisu do detailu, rollback při chybě uložení a interní práci. Porovnání výstupů kontroluje součet oprav, mediány, úplnost, kontext klienta a případu včetně uzavření nebo přesunu a minimální počet měření. Ověřuje i ruční nastavení pilotu, návaznost a mobilní formuláře. Snímky ukládá do `/private/tmp/crm-work-measurement-*.png`.
+
+`work-measurement-storage.cjs` ověřuje normalizaci starších záloh, stabilní identitu aktivit, přemapování klientů/případů/výstupů a opakované sloučení bez duplicit. Nové kolekce i metadata měření jsou zahrnuté do ochrany záloh. Google roundtrip ověřuje `google-sync.cjs` a dočasné diskové snímky `storage.py`. Vše používá pouze syntetická data.

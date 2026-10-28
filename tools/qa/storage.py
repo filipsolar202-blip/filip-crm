@@ -19,6 +19,9 @@ with tempfile.TemporaryDirectory(prefix='filip-crm-qa-') as folder:
     storage.ensure_dirs()
     assert storage.read_state() is None
     state = {'clients': [{'id': 1, 'name': 'Synthetic QA'}], 'contracts': [{'id': 2, 'attachments': [{'id': 'qa', 'name': 'test.txt', 'dataUrl': 'data:text/plain;base64,dGVzdA=='}]}], 'insuranceClaims': [{'id': 3, 'syncId': 'qa-claim', 'clientId': 1, 'history': [{'id': 'entry', 'text': 'Synthetic update'}], 'attachments': [{'id': 'qa', 'name': 'test.txt', 'dataUrl': 'data:text/plain;base64,Y2xhaW0='}]}]}
+    state['workPilots'] = [{'id': 'qa-pilot', 'startDate': '2026-11-02', 'process': 'QA zápis', 'caseIds': [42]}]
+    state['workOutputs'] = [{'id': 'qa-output', 'pilotId': 'qa-pilot', 'clientId': 1, 'opportunityId': 42, 'method': 'new', 'status': 'complete'}]
+    state['activities'] = [{'id': 11, 'syncId': 'qa-work', 'duration': 0, 'work': {'timeKind': 'actual', 'outputId': 'qa-output'}}, {'id': 12, 'duration': None, 'work': {'timeKind': 'unknown'}}]
     assert storage.externalize_attachments(state) == 2
     attachment = state['contracts'][0]['attachments'][0]
     assert (storage.ATTACHMENT_DIR / attachment['fileRef']).read_bytes() == b'test'

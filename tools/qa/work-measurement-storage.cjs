@@ -1,0 +1,86 @@
+// Synthetic records only. Work history, identities and links must survive backup merges.
+const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict');
+const {chromium, launchOptions} = require('./runtime.cjs'), fixture = require('./fixture.cjs');
+const root = path.resolve(__dirname, '../..');
+(async () => {
+  const browser = await chromium.launch(launchOptions);
+  try {
+    const context = await browser.newContext();
+    await context.route('**/*', route => {
+      const url = new URL(route.request().url()), file = path.join(root, decodeURIComponent(url.pathname));
+      if (url.hostname === 'crm.test' && fs.existsSync(file) && fs.statSync(file).isFile()) return route.fulfill({body:fs.readFileSync(file), contentType:file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':'text/html'});
+      return route.abort();
+    });
+    await context.addInitScript(data => {if (location.hostname === 'crm.test' && !localStorage.getItem('filip_crm_main_v1')) localStorage.setItem('filip_crm_main_v1', JSON.stringify(data));}, fixture);
+    const page = await context.newPage(), errors = [];
+    page.on('pageerror', error => errors.push(error.message)); page.on('dialog', async dialog => {await dialog.accept();});
+    await page.goto('https://crm.test/FILIP-CRM.html');
+    const result = await page.evaluate(() => {
+      const make = () => normalizeState({createdAt:'2026-10-01T00:00:00.000Z', nextId:1000});
+      const alpha = {id:1, name:'Work Alpha QA', birthId:'9001010001'}, beta = {id:99, name:'Work Beta QA', birthId:'9001010002'};
+      const legacyRaw = {createdAt:'2026-01-01T00:00:00.000Z', clients:[alpha], activities:[{id:40,clientId:1,date:'2026-10-28',type:'Telefon',text:'Stejná práce',duration:15},{id:41,clientId:1,date:'2026-10-28',type:'Telefon',text:'Stejná práce',duration:''}]};
+      const legacy = normalizeState(structuredClone(legacyRaw)), repeatedLegacy = normalizeState(structuredClone(legacyRaw));
+      const legacyResult = {durations:legacy.activities.map(a=>a.duration), noWork:legacy.activities.every(a=>!a.work), unique:new Set(legacy.activities.map(a=>a.syncId)).size, stable:JSON.stringify(legacy.activities.map(a=>a.syncId))===JSON.stringify(repeatedLegacy.activities.map(a=>a.syncId))};
+      state = normalizeState(structuredClone(legacyRaw));
+      const editedLegacy = structuredClone(legacyRaw);editedLegacy.activities[0].text='Opravený historický text';editedLegacy.activities[0].updatedAt='2026-10-28T10:00:00.000Z';
+      const legacyMerge=mergeIncomingState(editedLegacy);
+      legacyResult.editMerged=state.activities.length===2&&legacyMerge.activities===0&&legacyMerge.activitiesUpdated===1&&state.activities.find(a=>a.id===40).text==='Opravený historický text';
+      state = make(); state.clients = [alpha, beta];
+      state.activities = [{id:40,syncId:'foreign-activity',clientId:99,date:'2026-10-28',type:'Telefon',text:'Cizí lokální aktivita'}];
+      state.opportunities = [{id:31,clientId:99,status:'Nabídka',statusDate:'2026-10-01',product:'Cizí lokální případ'}];
+      const incoming = make(); incoming.clients = [{...alpha,id:7}];
+      incoming.opportunities = [{id:31,clientId:7,status:'Nabídka',statusDate:'2026-10-28',product:'QA pilotní případ',category:'Investice'}];
+      incoming.workPilots = [{id:'11111111-1111-4111-8111-111111111111',startDate:'2026-10-28',process:'Podklady',caseIds:[31,999],decision:'',createdAt:'2026-10-28T08:00:00.000Z',updatedAt:'2026-10-28T08:00:00.000Z'}];
+      const pilotId = incoming.workPilots[0].id, outputId = '22222222-2222-4222-8222-222222222222';
+      incoming.workOutputs = [{id:outputId,pilotId,clientId:7,opportunityId:31,process:'Podklady',method:'usual',title:'Kompletní sada',status:'needs_work',createdAt:'2026-10-28T08:00:00.000Z',updatedAt:'2026-10-28T08:00:00.000Z'}, {id:'33333333-3333-4333-8333-333333333333',pilotId:'missing-pilot',clientId:99,opportunityId:999,title:'Chybějící vazby',updatedAt:'2026-10-28T08:00:00.000Z'}];
+      const activity = (id, syncId, duration) => ({id,syncId,clientId:7,date:'2026-10-28',time:'09:00',type:'Úkol',text:'Stejná práce',duration,completed:true,createdAt:'2026-10-28T08:00:00.000Z',updatedAt:'2026-10-28T08:00:00.000Z',work:{area:'administration',timeKind:'actual',method:'usual',process:'Podklady',outputId,pilotId}});
+      incoming.activities = [activity(40,'work-block-a',0),activity(41,'work-block-b',25),{...activity(42,'work-block-orphan',null),sourceActivityId:999,followActivityId:998,sourceOpportunityId:999,work:{timeKind:'unknown',outputId:'missing-output',pilotId:'missing-pilot'}},{...activity(43,'work-client-orphan',10),clientId:99}];
+      incoming.activities[0].followActivityId=41; incoming.activities[0].sourceOpportunityId=31; incoming.activities[1].sourceActivityId=40;
+      incoming.dailyPriorities=[{id:61,date:'2026-10-28',slot:1,title:'Správný blok',clientId:7,activityId:41}];
+      incoming.focusDrafts=[{id:'draft-qa',values:{fpClient:'7',fpActivity:'41'}}];
+      incoming.analysisEntries=[{id:75,clientId:7,date:'2026-10-28',type:'Analýza',note:'Starý projekční řádek',sourceActivityId:999}];
+      const first=mergeIncomingState(structuredClone(incoming));
+      const saved=()=>JSON.stringify([state.activities,state.workPilots,state.workOutputs,state.dailyPriorities,state.focusDrafts,state.analysisEntries]);
+      const beforeRepeat=saved();mergeIncomingState(structuredClone(incoming));const idempotent=beforeRepeat===saved();
+      const a=state.activities.find(x=>x.syncId==='work-block-a'), b=state.activities.find(x=>x.syncId==='work-block-b'), orphan=state.activities.find(x=>x.syncId==='work-block-orphan'), ownerOrphan=state.activities.find(x=>x.syncId==='work-client-orphan'), output=state.workOutputs.find(x=>x.id===outputId), pilot=state.workPilots[0];
+      const links={a:a.id,b:b.id,zero:a.duration,follow:a.followActivityId,source:b.sourceActivityId,case:a.sourceOpportunityId,outputCase:output.opportunityId,pilotCases:pilot.caseIds,priority:state.dailyPriorities[0].activityId,draft:state.focusDrafts[0].values.fpActivity,outputOwner:output.clientId,unresolved:[orphan.sourceActivityId,orphan.followActivityId,orphan.sourceOpportunityId,orphan.work.outputId,orphan.work.pilotId],orphanOwner:ownerOrphan.clientId,unverified:orphan.workLinksUnverified,pilotMissing:pilot.importReference.caseIds};
+      const projection=state.analysisEntries[0];
+      incoming.activities[0].duration=12;incoming.activities[0].work.method='new';incoming.activities[0].work.obstacle='Čekání';incoming.activities[0].updatedAt='2026-10-28T10:00:00.000Z';
+      incoming.workPilots[0].decision='keep';incoming.workPilots[0].updatedAt='2026-10-28T10:00:00.000Z';
+      incoming.workOutputs[0].status='complete';incoming.workOutputs[0].updatedAt='2026-10-28T10:00:00.000Z';
+      const newer=mergeIncomingState(structuredClone(incoming));
+      const changed={duration:a.duration,method:a.work.method,obstacle:a.work.obstacle,decision:pilot.decision,status:output.status};
+      incoming.activities[0].duration=99;incoming.activities[0].work.method='usual';incoming.activities[0].updatedAt='2026-10-28T07:00:00.000Z';mergeIncomingState(structuredClone(incoming));
+      const olderPreserved=a.duration===12&&a.work.method==='new';
+      const counts=criticalBackupCounts(state), reduced=structuredClone(state);reduced.workPilots=[];reduced.workOutputs=[];reduced.activities.forEach(x=>delete x.work);
+      const drops=backupCountDrops(criticalBackupCounts(reduced),counts).map(x=>x.key);
+      persist();const json=normalizeState(JSON.parse(localStorage.getItem(STORE)));
+      return {legacyResult,first:{activities:first.activities,pilots:first.workPilots,outputs:first.workOutputs},idempotent,links,newer:newer.activitiesUpdated,changed,olderPreserved,projection:{excluded:projection.sourceProjection,id:projection.sourceActivityId,count:state.analysisEntries.length},count:state.activities.length,drops,zeroBefore:first.activities>0&&incoming.activities[1].duration===25,jsonPreserved:JSON.stringify(json.workPilots)===JSON.stringify(state.workPilots)&&JSON.stringify(json.workOutputs)===JSON.stringify(state.workOutputs)&&json.activities.find(x=>x.syncId==='work-block-b').duration===25};
+    });
+    assert.deepEqual(result.legacyResult,{durations:[15,null],noWork:true,unique:2,stable:true,editMerged:true});
+    assert.deepEqual(result.first,{activities:4,pilots:1,outputs:2}); assert.equal(result.idempotent,true); assert.equal(result.count,5);
+    const l=result.links;assert.notEqual(l.a,l.b);assert.equal(l.zero,0);assert.equal(l.follow,l.b);assert.equal(l.source,l.a);assert.notEqual(l.case,31);assert.equal(l.outputCase,l.case);assert.deepEqual(l.pilotCases,[l.case]);assert.deepEqual(l.pilotMissing,[999]);assert.equal(l.priority,l.b);assert.equal(l.draft,String(l.b));assert.equal(l.outputOwner,1);assert.deepEqual(l.unresolved,[null,null,null,null,null]);assert.equal(l.orphanOwner,null);assert.equal(l.unverified,true);
+    assert.deepEqual(result.changed,{duration:12,method:'new',obstacle:'Čekání',decision:'keep',status:'complete'});assert.equal(result.newer,1);assert.equal(result.olderPreserved,true);assert.deepEqual(result.projection,{excluded:true,id:null,count:1});assert.equal(result.jsonPreserved,true);
+    for(const key of ['workPilots','workOutputs','workActivities','workTimeEntries'])assert(result.drops.includes(key),'backup guard includes '+key);
+    const closed = await page.evaluate(() => {
+      const saved=structuredClone(state), make=()=>normalizeState({createdAt:'2026-10-01T00:00:00.000Z',nextId:2000});
+      state=make();state.clients=[{id:1,name:'Closed Alpha QA',birthId:'9001010001'},{id:99,name:'Foreign QA',birthId:'9001010002'}];
+      state.deals=[{id:70,clientId:99,fromOpportunityId:32,category:'Investice',product:'Cizí obchod',date:'2026-10-28',amount:50}];
+      const incoming=make();incoming.clients=[{id:7,name:'Closed Alpha QA',birthId:'9001010001'}];
+      incoming.deals=[{id:70,clientId:7,fromOpportunityId:32,category:'Investice',product:'Uzavřený pilotní případ',date:'2026-10-28',amount:100}];
+      incoming.workPilots=[{id:'closed-pilot',caseIds:[32,'deal:70',999],createdAt:'2026-10-28'}];
+      incoming.workOutputs=[{id:'closed-output',pilotId:'closed-pilot',clientId:7,opportunityId:32,title:'Podpis',status:'complete',createdAt:'2026-10-28'},{id:'qualified-output',pilotId:'closed-pilot',clientId:7,opportunityId:'deal:70',title:'Historický podpis',status:'complete',createdAt:'2026-10-28'}];
+      incoming.activities=[{id:42,syncId:'closed-activity',clientId:7,sourceOpportunityId:32,duration:20,work:{outputId:'closed-output',pilotId:'closed-pilot',timeKind:'actual'},createdAt:'2026-10-28'}];
+      mergeIncomingState(structuredClone(incoming));
+      const deal=state.deals.find(d=>d.clientId===1),expected='deal:'+deal.id;
+      const first={caseIds:state.workPilots[0].caseIds,outputs:state.workOutputs.map(o=>o.opportunityId),activity:state.activities[0].sourceOpportunityId,expected,missing:state.workPilots[0].importReference.caseIds};
+      const backup=structuredClone(state);mergeIncomingState(backup);
+      const repeated=state.workPilots.length===1&&state.workOutputs.length===2&&state.activities.length===1&&state.workPilots[0].caseIds[0]===expected;
+      state=saved;return {...first,repeated};
+    });
+    assert.deepEqual(closed.caseIds,[closed.expected]);assert.deepEqual(closed.outputs,[closed.expected,closed.expected]);assert.equal(closed.activity,closed.expected);assert.deepEqual(closed.missing,[999]);assert.equal(closed.repeated,true);
+    const merge = await page.evaluate(() => {state.clients.push({id:88,name:'QA duplicate',birthId:'9001010001'});state.workOutputs.push({id:'merge-output',clientId:88,title:'Keep me'});openClientMergeModal([1,88]);setVal('mergeMaster',1);mergeClientsFromModal();return {owner:state.workOutputs.find(x=>x.id==='merge-output').clientId,removed:!state.clients.some(x=>x.id===88)};});
+    assert.deepEqual(merge,{owner:1,removed:true}); assert.deepEqual(errors,[]);
+    console.log('PASS work storage: legacy unknown time, distinct same-text blocks, stable merge, newest metadata, safe remapping/orphans, projection exclusion, priority/draft links, JSON persistence, protected backup counts and client merge.');
+  } finally {await browser.close();}
+})().catch(error => {console.error(error);process.exitCode=1;});
