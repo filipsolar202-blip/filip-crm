@@ -7,6 +7,8 @@ node tools/qa/static.cjs
 node tools/qa/google-sync.cjs
 python3 tools/qa/storage.py
 node tools/qa/regression.cjs
+node tools/qa/provider-import.cjs
+node tools/qa/provider-storage-calc.cjs
 node tools/qa/fki-nav.cjs
 node tools/qa/classic-valuation.cjs
 node tools/qa/contract-investment.cjs
@@ -52,3 +54,7 @@ insurance-claims.cjs ověřuje založení a úpravy pojistných událostí, hist
 `work-measurement.cjs` ověřuje skutečné a odhadované minuty, nulu a chybějící hodnotu, plánované aktivity, přechod rychlého zápisu do detailu, rollback při chybě uložení a interní práci. Porovnání výstupů kontroluje součet oprav, mediány, úplnost, kontext klienta a případu včetně uzavření nebo přesunu a minimální počet měření. Ověřuje i ruční nastavení pilotu, návaznost a mobilní formuláře. Snímky ukládá do `/private/tmp/crm-work-measurement-*.png`.
 
 `work-measurement-storage.cjs` ověřuje normalizaci starších záloh, stabilní identitu aktivit, přemapování klientů/případů/výstupů a opakované sloučení bez duplicit. Nové kolekce i metadata měření jsou zahrnuté do ochrany záloh. Google roundtrip ověřuje `google-sync.cjs` a dočasné diskové snímky `storage.py`. Vše používá pouze syntetická data.
+
+`provider-import.cjs` ověřuje parser skutečně vytvořeného syntetického XLSX, česká čísla, Excel data, silné identity, pokyny, ISIN, ruční/starší hodnoty, náhled bez mutací, opakovaný import i nové porovnání po editaci, přijetí/ponechání CRM a návrat stavu při chybě. Pokrývá odkupy versus NAV, převody/konverze, Codya třídy/souhrny/prázdné/nulové buňky a viditelné červené kontroly na počítači i telefonu. Snímky: `/private/tmp/crm-provider-import-review-desktop.png` a `-mobile.png`.
+
+`provider-storage-calc.cjs` ověřuje ukládání a slučování importní historie, identity transakcí a klientů, zachování novějších hodnot, cílené odkupy, AUM/výnos a soulad klientského reportu. V repozitáři jsou pouze syntetické testovací údaje; klientský export není fixture.

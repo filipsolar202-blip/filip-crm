@@ -1,6 +1,6 @@
 # Architektura hlavního CRM
 
-Stav k verzi 2026.10.28-1. Starší ARCHITECTURE_AUDIT.md popisuje stav před sjednocením aplikační logiky.
+Stav k verzi 2026.10.28-2. Starší ARCHITECTURE_AUDIT.md popisuje stav před sjednocením aplikační logiky.
 
 ## Jedna aplikace
 
@@ -27,6 +27,14 @@ Uzavření případu přenáší ISIN, fond a pravidelný vklad. `syncSignedInve
 Uživatel výslovně požaduje pořadí: denní 3 priority → týdenní 3 cíle → produkční grafy → statistiky, grafy a kontrola dat → úkoly a připomínky. Při úpravách ostatních funkcí toto pořadí neměnit. `#dashboardLayout` obsahuje právě pět stabilních bloků `data-dashboard-section="daily|weekly|charts|stats|tasks"`; pořadí HTML odpovídá pojmenovaným CSS oblastem. Grafy jsou uvnitř `#dashboardCharts`, nedokončené priority uvnitř `#dashboardTasks` a rychlé odkazy uvnitř denní karty. Renderovací funkce aktualizují obsah, nepřesouvají hlavní bloky. `tools/qa/focus-dashboard.cjs` chrání pořadí DOM i skutečné rozmístění na počítači a telefonu.
 
 ## Data
+
+### Reporty producentů
+
+`provider-import.js` obsahuje čisté parsery Avant/Codya a plánování nad předaným stavem; `provider-import-ui.js` poskytuje náhled a porovnání. Oba moduly se načítají před `crm.js`. Náhled nemutuje portfolio. Teprve explicitní commit aplikuje bezpečné položky a uloží `providerImports`; ostatní položky zůstávají `pending`. Rozhodnutí `accepted`/`kept` i stav beze změny se uchovávají. Hash zdrojového stavu, cílového záznamu a souvisejících údajů fondu chrání proti zastaralému přijetí. Selhání ukládání obnoví předchozí stav.
+
+Avant používá normalizované RČ/IČO, ISIN, pokyn, typ transakce a směr pohybu. `investmentRecords[]._providerTransactionKey` rozlišuje i samostatné pokyny se stejným datem a částkou; při změně klíče se přemapují cílené odkupy a kontrolní vazby. `_providerClientId` omezuje vlastnictví na potvrzeného klienta. `providerValuation` uchovává datum, aktuální hodnotu, NAV a samostatnou vyplacenou částku odkupu. `_providerSource` je základ pro kontrolu pozdějších místních úprav. Převody a konverze nejsou automatické nákupy/odkupy. Codya souhrny vyžadují přesný název třídy a jedinou pozici; historické či vícenásobné pozice se nerozdělují odhadem.
+
+Klientské kontroly jsou indexované podle vlastníka a ISIN; přehled je stránkovaný. Absence v reportu nikdy není příkaz ke smazání. Import nemění globální NAV pro ostatní klienty, obchodní produkci ani provizní evidenci. Nové kolekce a počty kontrolovaných řádků jsou zahrnuté do ochrany záloh.
 
 ### Měření práce
 

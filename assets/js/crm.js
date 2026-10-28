@@ -91,6 +91,7 @@ function def() {
     verifiedDuplicates: {},
     investmentRecords: [],
     investmentSnapshots: [],
+    providerImports: [],
     fundValues: {},
     lockedFunds: {},
     trailSettings: {},
@@ -233,6 +234,109 @@ function mergeActivityStorageRecord(existing, incoming) {
   else if (work && incoming.work) existing.work = {...work, ...incoming.work};
   return true;
 }
+// Producer reports retain their review ledger independently of the portfolio.
+function providerStorageTimestamp(record, fallback = '') {
+  const own = Math.max(...['updatedAt','decidedAt','resolvedAt','createdAt','_updatedAt'].map(k => Date.parse(record?.[k] || '') || 0));
+  return own || Date.parse(fallback || '') || 0;
+}
+function providerStorageReviewAmbiguousRecord(row, clientId, provider, origin, target = null) {
+  const id = 'provider:backup-ambiguity:' + String(provider || 'avant');
+  state.providerImports = state.providerImports || [];
+  let batch = state.providerImports.find(x => x.id === id);
+  const now = new Date().toISOString(), entryId = 'backup-row:' + encodeURIComponent(JSON.stringify([origin || '',invRecordKey(row)]));
+  if (batch?.entries.some(x => x.id === entryId)) return false;
+  if (!batch) {
+    batch = {id,provider:provider || 'avant',area:'fki',fileName:'Sloučení zálohy',reportDate:row.providerValuation?.date || '',createdAt:now,updatedAt:now,fingerprint:id,entries:[]};
+    state.providerImports.push(batch);
+  }
+  batch.entries.push({id:entryId,clientId:clientId ?? null,isin:invIsin(row),fund:invFund(row),status:'pending',canAccept:false,
+    reason:'Více pokynů producenta odpovídá stejné starší pozici. Původní CRM zůstalo beze změny; tento řádek zálohy vyžaduje ruční ověření.',
+    incoming:{fund:invFund(row),isin:invIsin(row),amount:invDeposit(row),units:invQty(row),current:invProviderNumber(row,'current') ?? invCurrent(row),valuationDate:row.providerValuation?.date || '',transactionType:invTx(row)},
+    rawRecord:JSON.parse(JSON.stringify(row)),changes:[],recordKey:target ? invRecordKey(target) : null,targetKey:target ? {kind:'record',key:invRecordKey(target)} : null,
+    importReference:{origin:origin || ''},createdAt:now,updatedAt:now});
+  batch.updatedAt = now;
+  return true;
+}
+function normalizeProviderImportStorage(s, origin = '') {
+  s.providerImports = (s.providerImports || []).filter(x => x && typeof x === 'object' && !Array.isArray(x));
+  s.providerImports.forEach((batch, index) => {
+    batch.id = String(batch.id || 'provider:legacy:' + encodeURIComponent(JSON.stringify([origin, batch.provider || '', batch.fingerprint || '', batch.reportDate || '', index])));
+    batch.entries = (Array.isArray(batch.entries) ? batch.entries : []).filter(x => x && typeof x === 'object' && !Array.isArray(x));
+    batch.entries.forEach((entry, i) => {
+      entry.id = String(entry.id || batch.id + ':row:' + i);
+      if (!['pending','auto','accepted','kept','unchanged'].includes(entry.status)) entry.status = 'pending';
+      if (entry.clientId == null || entry.clientId === '') entry.clientId = null;
+    });
+  });
+}
+function providerStorageRemapRecordReferences(oldKey, newKey, source = state) {
+  if (!oldKey || !newKey || oldKey === newKey) return;
+  (source.investmentRecords || []).forEach(record => {
+    if (record.redemptionSourceRecordKey === oldKey) record.redemptionSourceRecordKey = newKey;
+    if (record['Odkup z nákupu'] === oldKey) record['Odkup z nákupu'] = newKey;
+  });
+  (source.providerImports || []).forEach(batch => (batch.entries || []).forEach(entry => {
+    if (entry.recordKey === oldKey) entry.recordKey = newKey;
+    if (entry.targetKey?.kind === 'record' && entry.targetKey.key === oldKey) entry.targetKey = {...entry.targetKey, key:newKey};
+  }));
+}
+function providerStorageMergeInvestmentRecord(existing, incoming) {
+  const incomingAt = providerStorageTimestamp(incoming, incoming?._updatedAt), existingAt = providerStorageTimestamp(existing, existing?._updatedAt);
+  const incomingDate = String(incoming.providerValuation?.date || ''), existingDate = String(existing.providerValuation?.date || '');
+  if (incomingAt <= existingAt || (existingDate && incomingDate && incomingDate < existingDate)) return existing;
+  const next = {...existing, ...incoming};
+  if (existing.providerValuation && !incoming.providerValuation) next.providerValuation = {...existing.providerValuation};
+  return next;
+}
+function mergeProviderImportStorage(incoming, maps) {
+  let added = 0, updated = 0;
+  const clone = x => JSON.parse(JSON.stringify(x));
+  incoming.providerImports.forEach(source => {
+    const next = clone(source);
+    next.entries = next.entries.map(entry => {
+      const oldClientId = entry.clientId, mapped = oldClientId == null ? null : maps.clients.get(String(oldClientId));
+      entry.clientId = mapped ?? null;
+      if (oldClientId != null && mapped == null) entry.importReference = {...entry.importReference, sourceClientId:oldClientId, origin:incoming.createdAt || ''};
+      const remapTarget = (kind, key) => {
+        if (!key) return key;
+        if (entry.clientId == null) return null;
+        const mappedKey = (kind === 'snapshot' ? maps.snapshots : maps.investments)?.get(String(key));
+        if (mappedKey == null) return null;
+        const valid = kind === 'snapshot' ? state.investmentSnapshots.some(x => String(x.id) === String(mappedKey) && String(x.clientId) === String(entry.clientId)) : investmentRecordsForClient(entry.clientId).some(x => invRecordKey(x) === mappedKey);
+        return valid ? mappedKey : null;
+      };
+      if (entry.recordKey) {
+        const old = entry.recordKey; entry.recordKey = remapTarget('record', old);
+        if (!entry.recordKey) entry.importReference = {...entry.importReference, recordKey:old};
+      }
+      if (entry.targetKey && typeof entry.targetKey === 'object') {
+        const old = entry.targetKey, key = remapTarget(old.kind, old.key);
+        entry.targetKey = key == null ? null : {...old,key};
+        if (key == null) entry.importReference = {...entry.importReference, targetKey:old};
+      }
+      return entry;
+    });
+    let local = state.providerImports.find(batch => batch.id === next.id && batch.provider === next.provider && batch.area === next.area);
+    if (!local && state.providerImports.some(batch => batch.id === next.id)) {
+      next.id = next.id + ':import:' + encodeURIComponent(JSON.stringify([next.provider || '', next.area || '', next.fingerprint || '']));
+      local = state.providerImports.find(batch => batch.id === next.id && batch.provider === next.provider && batch.area === next.area);
+    }
+    if (!local) { state.providerImports.push(next); added++; return; }
+    const entries = local.entries;
+    next.entries.forEach(entry => {
+      const sameOwner = x => String(x.clientId ?? '') === String(entry.clientId ?? '') && JSON.stringify(x.importReference?.sourceClientId ?? '') === JSON.stringify(entry.importReference?.sourceClientId ?? '');
+      let current = entries.find(x => x.id === entry.id && sameOwner(x));
+      if (!current && entries.some(x => x.id === entry.id)) {
+        entry.id += ':import:' + encodeURIComponent(JSON.stringify([entry.clientId, entry.importReference?.sourceClientId ?? '', entry.importReference?.origin || '']));
+        current = entries.find(x => x.id === entry.id && sameOwner(x));
+      }
+      if (!current) { entries.push(entry); updated++; }
+      else if (providerStorageTimestamp(entry, next.updatedAt) > providerStorageTimestamp(current, local.updatedAt)) { Object.assign(current, entry); updated++; }
+    });
+    if (providerStorageTimestamp(next) > providerStorageTimestamp(local)) Object.assign(local, next, {id:local.id,entries});
+  });
+  return {providerImports:added,providerImportEntriesUpdated:updated};
+}
 function normalizeState(s) {
   const base = def(), legacyOrigin = s?.createdAt || '';
   s = {
@@ -242,8 +346,9 @@ function normalizeState(s) {
   delete s.mailHeaders;
   delete s.aiInbox;
   try { localStorage.removeItem('filip_crm_ai_active_job'); } catch (e) {}
-  ['clients', 'contracts', 'deals', 'activities', 'workPilots', 'workOutputs', 'referrals', 'referrerPayouts', 'managementPartners', 'managementPayouts', 'notes', 'opportunities', 'insuranceClaims', 'investmentRecords', 'investmentSnapshots', 'commissionImports', 'analysisEntries', 'campaigns', 'externalInvestments', 'investmentForecasts', 'weeklyGoals', 'weeklyReviews', 'dailyPriorities', 'focusDrafts', 'focusSnapshots', 'delegationProcesses'].forEach(k => s[k] = Array.isArray(s[k]) ? s[k] : []);
+  ['clients', 'contracts', 'deals', 'activities', 'workPilots', 'workOutputs', 'referrals', 'referrerPayouts', 'managementPartners', 'managementPayouts', 'notes', 'opportunities', 'insuranceClaims', 'investmentRecords', 'investmentSnapshots', 'providerImports', 'commissionImports', 'analysisEntries', 'campaigns', 'externalInvestments', 'investmentForecasts', 'weeklyGoals', 'weeklyReviews', 'dailyPriorities', 'focusDrafts', 'focusSnapshots', 'delegationProcesses'].forEach(k => s[k] = Array.isArray(s[k]) ? s[k] : []);
   normalizeWorkStorage(s, legacyOrigin);
+  normalizeProviderImportStorage(s, legacyOrigin);
   normalizeInsuranceClaimRecords(s);
   normalizeInternalCommissions(s);
   normalizeActivityHistory(s.activities);
@@ -431,8 +536,8 @@ function diskFileUrl(ref) {
   return DISK_STORAGE_URL + '/file?ref=' + encodeURIComponent(ref || '');
 }
 function diskStateWeight(source) {
-  const keys=['clients','contracts','deals','opportunities','insuranceClaims','notes','activities','workPilots','workOutputs','investmentRecords','investmentSnapshots','analysisEntries','delegationProcesses'];
-  return keys.reduce((sum,key)=>sum+(Array.isArray(source?.[key])?source[key].length:0),0) + (source?.insuranceClaims || []).reduce((sum, claim) => sum + (claim.history?.length || 0) + (claim.attachments?.length || 0), 0) + (source?.activities || []).filter(a => a.work && typeof a.work === 'object').length;
+  const keys=['clients','contracts','deals','opportunities','insuranceClaims','notes','activities','workPilots','workOutputs','investmentRecords','investmentSnapshots','providerImports','analysisEntries','delegationProcesses'];
+  return keys.reduce((sum,key)=>sum+(Array.isArray(source?.[key])?source[key].length:0),0) + (source?.insuranceClaims || []).reduce((sum, claim) => sum + (claim.history?.length || 0) + (claim.attachments?.length || 0), 0) + (source?.activities || []).filter(a => a.work && typeof a.work === 'object').length + (source?.providerImports || []).reduce((sum, batch) => sum + (batch.entries?.length || 0), 0);
 }
 function queueDiskSave(reason = 'autosave') {
   if (!diskLoadDone) return;
@@ -1301,9 +1406,24 @@ function invIsFutureWithdrawal(r) {
   const d = invDateObj(r?.['Datum připsání platby'] || r?.paymentDate || r?.date);
   return invIsWithdrawal(r) && d && d > invTodayObj();
 }
-function invCurrentNav(r) {
-  const fv = state.fundValues?.[invPositionKey(r)] || {};
-  return invNum(fv.nav) || invNum(r?.['Poslední schválená hodnota CP'] || r?.['Posledni schvalena hodnota CP']);
+function invProviderNumber(r, field) {
+  const value = r?.providerValuation?.[field];
+  return value !== '' && value != null && Number.isFinite(+value) ? +value : null;
+}
+function invCurrentNav(r, source = state) {
+  const fv = source.fundValues?.[invPositionKey(r)] || {}, rowNav = invNum(r?.['Poslední schválená hodnota CP'] || r?.['Posledni schvalena hodnota CP']);
+  if (!r?.providerValuation) return invNum(fv.nav) || rowNav;
+  const candidates = [
+    {nav:invNum(fv.nav), date:String(fv.date || fv.navDate || '')},
+    {nav:rowNav, date:String(r?.['Poslední schválená hodnota do'] || '')},
+    {nav:invProviderNumber(r,'nav'), date:String(r.providerValuation.date || '')}
+  ].filter(x => x.nav > 0).sort((a,b) => b.date.localeCompare(a.date));
+  return candidates[0]?.nav || 0;
+}
+function invProviderValueDate(r, source = state) {
+  if (!r?.providerValuation) return '';
+  const date = String(r.providerValuation.date || ''), fv = source.fundValues?.[invPositionKey(r)] || {};
+  return invNum(fv.nav) > 0 && String(fv.date || '') > date ? String(fv.date) : date;
 }
 function invEffectiveQty(r) {
   const q = invQty(r);
@@ -1313,7 +1433,17 @@ function invEffectiveQty(r) {
   return dep && up && !invIsWithdrawal(r) ? dep / up : 0;
 }
 function invWithdrawalValue(r) {
-  return invIsWithdrawal(r) ? Math.abs(invCurrent(r) || invDeposit(r)) : 0;
+  if (!invIsWithdrawal(r)) return 0;
+  const cash = invProviderNumber(r, 'redemptionValue');
+  return cash !== null ? Math.abs(cash) : Math.abs(invCurrent(r) || invDeposit(r));
+}
+function invWithdrawalCurrentValue(r, source = state) {
+  if (!invIsWithdrawal(r)) return 0;
+  const current = invProviderNumber(r, 'current');
+  if (current === null) return invWithdrawalValue(r);
+  const qty = Math.abs(invQty(r)), nav = invCurrentNav(r, source), date = String(r.providerValuation.date || '');
+  if (qty > 0 && nav > 0 && (invPrefersNavCalculation(r) || invProviderValueDate(r, source) > date)) return qty * nav;
+  return Math.abs(current);
 }
 function invPrefersNavCalculation(r) {
   if (r?.fkiValuationMode) return r.fkiValuationMode === 'nav';
@@ -1327,22 +1457,30 @@ function invManualValue(r) {
   const raw = r?.fkiManualCurrent;
   return !invIsWithdrawal(r) && r?.fkiValuationMode === 'manual' && raw !== '' && raw != null && Number.isFinite(+raw) && +raw >= 0 ? +raw : null;
 }
-function invPositionValue(r) {
-  const manual = invManualValue(r);
-  return manual !== null ? manual : invCurrentValue(r) || invCurrent(r) || invDeposit(r) || 0;
-}
-function invCurrentValue(r) {
-  if (invIsWithdrawal(r)) return invIsFutureWithdrawal(r) ? 0 : -invWithdrawalValue(r);
+function invPositionValue(r, source = state) {
   const manual = invManualValue(r);
   if (manual !== null) return manual;
-  const qty = invEffectiveQty(r), nav = invCurrentNav(r), canCalculate = qty > 0 && nav > 0;
+  if (invProviderNumber(r, 'current') !== null) return invCurrentValue(r, source);
+  return invCurrentValue(r, source) || invCurrent(r) || invDeposit(r) || 0;
+}
+function invCurrentValue(r, source = state) {
+  if (invIsWithdrawal(r)) return invIsFutureWithdrawal(r) ? 0 : -invWithdrawalCurrentValue(r, source);
+  const manual = invManualValue(r);
+  if (manual !== null) return manual;
+  const qty = invEffectiveQty(r), nav = invCurrentNav(r, source), canCalculate = qty > 0 && nav > 0;
   if (canCalculate && invPrefersNavCalculation(r)) return qty * nav;
+  const providerCurrent = invProviderNumber(r, 'current');
+  if (providerCurrent !== null && (!canCalculate || invProviderValueDate(r, source) <= String(r.providerValuation.date || ''))) return providerCurrent;
+  if (providerCurrent !== null && canCalculate) return qty * nav;
   const imported = r?.codyaImportedCurrent,
     importedDate = String(r?.codyaImportDate || ''),
-    fundDate = String(state.fundValues?.[invPositionKey(r)]?.date || '');
+    fundDate = String(source.fundValues?.[invPositionKey(r)]?.date || '');
   if (imported !== '' && imported != null && Number.isFinite(+imported) && (!fundDate || importedDate >= fundDate)) return +imported;
   if (canCalculate) return qty * nav;
   return invCurrent(r);
+}
+function providerStorageCurrentValue(record, source = state) {
+  return invCurrentValue(record,source);
 }
 function invClientIdentity(r) {
   return normalizeStrongId(invBirthId(r)) || normalizeStrongId(String(invClientId(r)).replace(/^RC[_-]?/i, '')) || norm(invInvestor(r));
@@ -1352,15 +1490,20 @@ function invPositionKey(r) {
   if (isin) return ['isin', isin].join('|');
   return ['fond', norm(cleanInvFundName(invFund(r), invCompany(r))), norm(invType(r) || invAreaGuess(r))].join('|');
 }
-function invRecordKey(r) {
+function invRecordLegacyKey(r) {
   const identity = invClientIdentity(r);
   const key = [identity, invPositionKey(r), invEmissionDate(r), invPaymentDate(r), invTx(r), Math.round(invDeposit(r) * 100), Math.round(invQty(r) * 1000000), Math.round(invSubscribeValue(r) * 1000000)].join('|');
   return r?._crmScenarioLinkKey ? key + '|scenario|' + r._crmScenarioLinkKey : key;
+}
+function invRecordKey(r) {
+  const key = invRecordLegacyKey(r);
+  return r?._providerTransactionKey ? key + '|provider|' + r._providerTransactionKey : key;
 }
 function invRecordScore(r) {
   return Object.values(r || {}).filter(v => v !== null && v !== undefined && String(v).trim() !== '').length + (invCurrent(r) > 0 ? 2 : 0);
 }
 function mergeInvRecord(a, b) {
+  if ((a?._providerTransactionKey && a._providerTransactionKey === b?._providerTransactionKey) || (a?.providerValuation && b?.providerValuation && a.providerValuation.provider === b.providerValuation.provider && invRecordKey(a) === invRecordKey(b))) return providerStorageMergeInvestmentRecord(a,b);
   const keep = invRecordScore(b) >= invRecordScore(a) ? {
     ...a,
     ...b
@@ -1378,10 +1521,24 @@ function mergeInvRecord(a, b) {
   return keep;
 }
 function dedupeInvestmentRecordsInState(s) {
-  const map = new Map(),
-    out = [];
-  (s.investmentRecords || []).forEach(r => {
-    const key = invRecordKey(r);
+  const map = new Map(), out = [], providerByLegacy = new Map();
+  (s.investmentRecords || []).filter(r => r._providerTransactionKey).forEach(r => {
+    const key = invRecordLegacyKey(r), rows = providerByLegacy.get(key) || [];
+    if (!rows.some(x => x._providerTransactionKey === r._providerTransactionKey)) rows.push(r);
+    providerByLegacy.set(key,rows);
+  });
+  (s.investmentRecords || []).forEach(original => {
+    let r = original;
+    if (!r._providerTransactionKey) {
+      const linked = providerByLegacy.get(invRecordLegacyKey(r)) || [];
+      if (linked.length === 1) {
+        const oldKey = invRecordKey(r), provider = linked[0];
+        const newerLocal = providerStorageTimestamp(r,r._updatedAt) > providerStorageTimestamp(provider,provider._updatedAt);
+        r = newerLocal ? {...provider,...r,_providerTransactionKey:provider._providerTransactionKey,_providerClientId:provider._providerClientId,_providerSource:provider._providerSource,providerValuation:provider.providerValuation} : {...r,...provider};
+        providerStorageRemapRecordReferences(oldKey,invRecordKey(r),s);
+      }
+    }
+    const key = invRecordKey(r) + (Object.prototype.hasOwnProperty.call(r,'_providerClientId') ? '|owner|' + String(r._providerClientId ?? 'unverified') : '');
     if (key && map.has(key)) {
       const i = map.get(key);
       out[i] = mergeInvRecord(out[i], r);
@@ -1464,6 +1621,7 @@ function clientMatchesName(c, name) {
   return clientAliasNames(c).some(alias => norm(alias) === exact || person && personNameKey(alias) === person);
 }
 function findOrCreateClientFromInvestment(r) {
+  if (Object.prototype.hasOwnProperty.call(r || {}, '_providerClientId')) return r._providerClientId == null ? null : findClient(r._providerClientId);
   const name = invInvestor(r);
   if (!name) return null;
   let c = null;
@@ -1496,6 +1654,7 @@ function linkInvestmentRecordsToClient(c) {
   if (!rc) return 0;
   let changed = 0;
   (state.investmentRecords || []).forEach(r => {
+    if (Object.prototype.hasOwnProperty.call(r || {}, '_providerClientId') && String(r._providerClientId ?? '') !== String(c.id)) return;
     if (normalizeStrongId(invBirthId(r)) !== rc) return;
     if (!r.ClientID || String(r.ClientID).startsWith('CL')) {
       r.ClientID = 'RC_' + rc;
@@ -1525,7 +1684,7 @@ function investmentRecordsForClient(clientId) {
   if (!c) return [];
   const rc = normalizeStrongId(c.birthId),
     id = String(c.id);
-  return (state.investmentRecords || []).filter(r=>!r.portfolioReplacedBy).filter(r => rc && (normalizeStrongId(invBirthId(r)) === rc || normalizeStrongId(invClientId(r).replace(/^RC[_-]?/i, '')) === rc) || String(invClientId(r)) === id || clientMatchesName(c, invInvestor(r)));
+  return (state.investmentRecords || []).filter(r=>!r.portfolioReplacedBy).filter(r => Object.prototype.hasOwnProperty.call(r || {}, '_providerClientId') ? r._providerClientId != null && String(r._providerClientId) === id : rc && (normalizeStrongId(invBirthId(r)) === rc || normalizeStrongId(invClientId(r).replace(/^RC[_-]?/i, '')) === rc) || String(invClientId(r)) === id || clientMatchesName(c, invInvestor(r)));
 }
 function readLocalJson(key, fallback) {
   try {
@@ -2489,7 +2648,10 @@ function mergeClientsFromModal() {
   ['contracts', 'deals', 'opportunities', 'insuranceClaims', 'activities', 'workOutputs', 'notes', 'investmentSnapshots', 'analysisEntries', 'investmentForecasts', 'externalInvestments'].forEach(arr => (state[arr] || []).forEach(x => {
     if (loserSet.has(String(x.clientId))) x.clientId = masterId;
   }));
+  (state.providerImports || []).forEach(batch => (batch.entries || []).forEach(entry => { if (loserSet.has(String(entry.clientId))) entry.clientId = masterId; }));
   (state.investmentRecords || []).forEach(r => {
+    const oldRecordKey = invRecordKey(r);
+    if (loserSet.has(String(r._providerClientId))) r._providerClientId = masterId;
     const recordId = String(invClientId(r) || ''),
       recordBirth = normalizeStrongId(invBirthId(r)),
       matchesName = originalNames.some(name => personNameKey(name) && personNameKey(name) === personNameKey(invInvestor(r)));
@@ -2502,6 +2664,7 @@ function mergeClientsFromModal() {
       r.ClientID = 'RC_' + rc;
       r['RČ'] = master.birthId;
     }
+    providerStorageRemapRecordReferences(oldRecordKey,invRecordKey(r));
   });
   state.clients = state.clients.filter(c => !loserSet.has(String(c.id)));
   syncClientReferral(master);
@@ -2576,6 +2739,7 @@ function isFkiFundGloballyLocked(k) {
   return !!state.lockedFunds?.[fkiGlobalLockKey(k)];
 }
 function isFkiReportRecord(r) {
+  if (Object.prototype.hasOwnProperty.call(r || {}, '_providerClientId') && (r._providerClientId == null || !findClient(r._providerClientId))) return false;
   return isFkiMirrorRecord(r) && invProductGroup(r) === 'FKI' && String(r?.['Stav scénáře'] || r?.['Stav scenare'] || '').trim() !== 'čeká';
 }
 function fkiReportItems() {
@@ -3398,7 +3562,7 @@ function renderClients() {
   if (body) body.innerHTML = list.map(({c, s, areas}) => {
     const p = managementPartner(clientManagementId(c)), contact = [c.email, c.phone].filter(Boolean).join(' · ') || 'bez kontaktu',
       last = s.last ? `${dateObj(s.last).toLocaleDateString('cs-CZ')} (${num(s.contactDays)} d)` : 'nikdy', created = s.created ? dateObj(s.created).toLocaleDateString('cs-CZ') : 'neuvedeno';
-    return `<tr class="client-directory-row client-row" onclick="selectClient(${c.id})"><td><div class="client-directory-person"><div class="avatar">${esc(initials(c.name))}</div><div><b>${esc(clientName(c))}</b><small>${esc(contact)}</small></div></div></td><td><div class="manager-avatar ${p.own ? '' : 'partner'}" title="${esc((p.company || '') + ' · ' + p.name)}">${esc(initials(p.name))}</div></td><td>${esc(c.cooperationScope || 'Neuvedeno')}</td><td><b>${num(s.products)}</b><span class="client-contact-age">produktů · ${esc([...areas].map(areaLabel).join(', '))}</span></td><td>${s.open ? `<span class="badge blue">${num(s.open)} v řešení</span>` : '<span class="note">0</span>'}</td><td><b>${esc(last)}</b><span class="client-contact-age ${s.contactDays === null || s.contactDays > 180 ? 'stale' : ''}">${s.contactDays === null ? 'kontakt chybí' : s.contactDays > 180 ? 'zkontrolovat kontakt' : 'kontakt evidován'}</span></td><td>${esc(created)}${s.createdDays !== null ? `<span class="client-contact-age">před ${num(s.createdDays)} dny</span>` : ''}</td><td><button class="btn slim" onclick="event.stopPropagation();selectClient(${c.id})">Otevřít</button></td></tr>`;
+    return `<tr class="client-directory-row client-row ${providerImportNeedsReview(c.id) ? 'provider-needs-review' : ''}" onclick="selectClient(${c.id})"><td><div class="client-directory-person"><div class="avatar">${esc(initials(c.name))}</div><div><b>${esc(clientName(c))}</b>${providerImportBadge(c.id)}<small>${esc(contact)}</small></div></div></td><td><div class="manager-avatar ${p.own ? '' : 'partner'}" title="${esc((p.company || '') + ' · ' + p.name)}">${esc(initials(p.name))}</div></td><td>${esc(c.cooperationScope || 'Neuvedeno')}</td><td><b>${num(s.products)}</b><span class="client-contact-age">produktů · ${esc([...areas].map(areaLabel).join(', '))}</span></td><td>${s.open ? `<span class="badge blue">${num(s.open)} v řešení</span>` : '<span class="note">0</span>'}</td><td><b>${esc(last)}</b><span class="client-contact-age ${s.contactDays === null || s.contactDays > 180 ? 'stale' : ''}">${s.contactDays === null ? 'kontakt chybí' : s.contactDays > 180 ? 'zkontrolovat kontakt' : 'kontakt evidován'}</span></td><td>${esc(created)}${s.createdDays !== null ? `<span class="client-contact-age">před ${num(s.createdDays)} dny</span>` : ''}</td><td><button class="btn slim" onclick="event.stopPropagation();selectClient(${c.id})">Otevřít</button></td></tr>`;
   }).join('') || '<tr><td colspan="8" class="note">Tomuto výběru neodpovídá žádný klient.</td></tr>';
   if (!clientDirectoryMode) renderClientDetail();
 }
@@ -3835,7 +3999,7 @@ function renderClientDetail() {
   const age = clientAgeFromBirthId(c.birthId), invSummary = clientInvestmentSummary(c.id), pensionSummary = clientPensionSummary(c.id),
     last = clientLastContact(c), lastDays = clientDaysSince(last), next = clientNextAction(c.id), activeOpps = opps.filter(isOpenOpportunity),
     totalAum = invSummary.total + pensionSummary.total;
-  el.innerHTML = `<div class="client-back-row"><button class="client-back-button" onclick="openClientDirectory()">← Zpět na seznam klientů</button><div class="client-primary-actions">${clientSectionAction(c)}${clientSection !== 'insuranceClaims' ? `<button class="btn" onclick="openInsuranceClaim(${Number(c.id)})">+ Pojistná událost</button>` : ''}<button class="btn" onclick="openNoteModal(${c.id})">+ Poznámka</button><button class="btn" onclick="openClientModal(${c.id})">Upravit klienta</button></div></div><div class="client-hero"><div class="avatar">${esc(initials(c.name))}</div><div class="detail-title"><div class="eyebrow">Karta klienta · ${managementBadge(c)}</div><h2>${esc(clientName(c))}${age !== null ? `<span class="client-age">· ${num(age)} let</span>` : ''}</h2><div class="chips"><span class="badge ${lastDays === null || lastDays > 180 ? 'orange' : 'green'}">${last ? `Poslední kontakt ${dateObj(last).toLocaleDateString('cs-CZ')} · před ${num(lastDays)} dny` : 'Kontakt zatím neevidován'}</span>${c.birthId ? `<span class="chip">RČ/IČO: ${esc(c.birthId)}</span>` : ''}${clientSourceSummary(c)}<span class="chip">Rozsah: ${esc(c.cooperationScope || 'Neuvedeno')}</span></div></div>${contactGrid(c)}</div><div class="client-summary-strip"><div class="client-summary-tile"><small>Aktivní případy</small><b>${num(activeOpps.length)}</b><span>${activeOpps[0] ? esc(activeOpps[0].product || activeOpps[0].category) : 'nic není v řešení'}</span></div><div class="client-summary-tile"><small>Portfolio a penze</small><b>${money(totalAum)}</b><span>${num(invSummary.items.length + pensionSummary.items.length)} evidovaných pozic</span></div><div class="client-summary-tile"><small>Smlouvy</small><b>${num(contracts.length)}</b><span>${num(deals.length)} uzavřených obchodů</span></div><div class="client-summary-tile"><small>Další krok</small><b>${next ? dateObj(next.date).toLocaleDateString('cs-CZ') : 'Není'}</b><span>${next ? esc([next.title,next.text].filter(Boolean).join(' · ')) : 'naplánujte další kontakt'}</span></div></div><div class="subnav"></div>`;
+  el.innerHTML = `<div class="client-back-row"><button class="client-back-button" onclick="openClientDirectory()">← Zpět na seznam klientů</button><div class="client-primary-actions">${clientSectionAction(c)}${clientSection !== 'insuranceClaims' ? `<button class="btn" onclick="openInsuranceClaim(${Number(c.id)})">+ Pojistná událost</button>` : ''}<button class="btn" onclick="openNoteModal(${c.id})">+ Poznámka</button><button class="btn" onclick="openClientModal(${c.id})">Upravit klienta</button></div></div><div class="client-hero ${providerImportNeedsReview(c.id) ? 'provider-needs-review' : ''}"><div class="avatar">${esc(initials(c.name))}</div><div class="detail-title"><div class="eyebrow">Karta klienta · ${managementBadge(c)}</div><h2>${esc(clientName(c))}${age !== null ? `<span class="client-age">· ${num(age)} let</span>` : ''}</h2><div class="chips"><span class="badge ${lastDays === null || lastDays > 180 ? 'orange' : 'green'}">${last ? `Poslední kontakt ${dateObj(last).toLocaleDateString('cs-CZ')} · před ${num(lastDays)} dny` : 'Kontakt zatím neevidován'}</span>${c.birthId ? `<span class="chip">RČ/IČO: ${esc(c.birthId)}</span>` : ''}${clientSourceSummary(c)}<span class="chip">Rozsah: ${esc(c.cooperationScope || 'Neuvedeno')}</span></div></div>${contactGrid(c)}</div>${providerImportNotice(c.id)}<div class="client-summary-strip"><div class="client-summary-tile"><small>Aktivní případy</small><b>${num(activeOpps.length)}</b><span>${activeOpps[0] ? esc(activeOpps[0].product || activeOpps[0].category) : 'nic není v řešení'}</span></div><div class="client-summary-tile"><small>Portfolio a penze</small><b>${money(totalAum)}</b><span>${num(invSummary.items.length + pensionSummary.items.length)} evidovaných pozic</span></div><div class="client-summary-tile"><small>Smlouvy</small><b>${num(contracts.length)}</b><span>${num(deals.length)} uzavřených obchodů</span></div><div class="client-summary-tile"><small>Další krok</small><b>${next ? dateObj(next.date).toLocaleDateString('cs-CZ') : 'Není'}</b><span>${next ? esc([next.title,next.text].filter(Boolean).join(' · ')) : 'naplánujte další kontakt'}</span></div></div><div class="subnav"></div>`;
   const labels = {
     overview: 'Přehled',
     portfolio: 'Portfolio',
@@ -7077,42 +7241,15 @@ function codyaFkiMatches(clientId,fundName) {
   const scored=investmentRecordsForClient(clientId).filter(r=>!invIsWithdrawal(r)&&invProductGroup(r)==='FKI').map(r=>({r,score:codyaFundScore(fundName,invFund(r))})),best=scored.reduce((m,x)=>Math.max(m,x.score),0);
   return best>=0.5?scored.filter(x=>x.score===best).map(x=>x.r):[];
 }
-function importCodyaRows(rows,area,reportDate=today()) {
-  const result={clients:0,updated:0,created:0,zeroed:0,unmatchedClients:[]};state.investmentRecords=state.investmentRecords||[];state.investmentSnapshots=state.investmentSnapshots||[];
-  (rows||[]).forEach(row=>{
-    const first=edwardCsvField(row,'JMÉNO'),last=edwardCsvField(row,'PŘIJMENÍ'),client=codyaRowClient(row);
-    if(!client){result.unmatchedClients.push([first,last].filter(Boolean).join(' ')||'neznámý klient');return;} result.clients++;
-    Object.entries(row).forEach(([header,raw])=>{
-      if(codyaMetaHeader(header)||codyaFundArea(header)!==area)return;
-      const current=parseMoney(raw),positive=current>0;
-      if(area==='investice'){
-        state.investmentSnapshots=state.investmentSnapshots.filter(s=>!(String(s.clientId)===String(client.id)&&s.codyaImported&&codyaFundScore(header,s.product)>=0.5));
-        const found=codyaBestClassic(client.id,header),existing=found&&found.score>=0.5?found.x:null;
-        if(!positive&&!existing)return;
-        const product=existing?.product||codyaFundDisplay(header),company=existing?.company||codyaClassicCompany(header),isin=existing?.isin||existing?.snapshot?.isin||'',mergeKey=existing?(existing.mergeKey||existing.snapshot?.mergeKey||''):('codya-'+norm(codyaFundDisplay(header))),invested=existing?investmentInvestedAmount(existing):0,gain=current-invested;
-        upsertImportedInvestmentSnapshot({clientId:client.id,company,product,isin,mergeKey,fundType:'Retail / OPF',date:reportDate,current,currentBeforeRedemption:current,invested,investedBeforeRedemption:invested,gainAmount:gain,gainPct:invested?gain/invested*100:0,source:'Codya export · Investice',note:'Hodnota fondu z producentova XLSX.',codyaImported:true});
-        result.updated++;if(!existing&&positive)result.created++;if(!positive)result.zeroed++;
-      }else{
-        let matches=codyaFkiMatches(client.id,header);
-        if(!positive&&!matches.length)return;
-        if(!matches.length){const rc=normalizeStrongId(client.birthId);const rec={Investor:clientName(client),'RČ':rc,ClientID:rc?'RC_'+rc:String(client.id),'Investiční společnost':'Codya',Fond:codyaFundDisplay(header),'Typ produktu':'FKI','Typ transakce':'Platba','Čistá investice':0,'Aktuální hodnota investice':current,'Datum připsání platby':reportDate,'Datum emise':reportDate,_source:'codya-import'};state.investmentRecords.push(rec);matches=[rec];result.created++;}
-        const weights=matches.map(r=>Math.max(0,invCurrent(r)||invDeposit(r))),total=weights.reduce((s,x)=>s+x,0);
-        matches.forEach((r,i)=>{r.codyaImportedCurrent=total?current*weights[i]/total:current/matches.length;r.codyaImportDate=reportDate;r.codyaImportFund=header;r.fkiValuationMode='statement';r._updatedAt=new Date().toISOString();});
-        result.updated++;if(!positive)result.zeroed++;
-      }
-    });
-  });
-  dedupeInvestmentRecordsInState(state);dedupeInvestmentSnapshotsInState(state);return result;
+function importCodyaRows(rows,area,reportDate='') {
+  // Compatibility entry point now prepares a review only. No implicit destructive import.
+  return providerImportBuildPlan(state,providerImportParseCodya(rows,{area,reportDate}));
 }
+
 async function importCodyaWorkbook(file,area) {
-  if(!file)return;if(typeof XLSX==='undefined')return alert('Čtečka Excelu se nenačetla. Obnov CRM a zkus to znovu.');
-  try{
-    const wb=XLSX.read(await file.arrayBuffer(),{type:'array',raw:true}),ws=wb.Sheets[wb.SheetNames[0]],rows=XLSX.utils.sheet_to_json(ws,{defval:'',raw:true});
-    if(!rows.length||!Object.keys(rows[0]).some(k=>norm(k)===norm('RODNÉ ČÍSLO')))throw new Error('Soubor neobsahuje očekávaný sloupec RODNÉ ČÍSLO.');
-    const result=importCodyaRows(rows,area,today());persist();renderAll();
-    alert(`Codya ${area==='fki'?'FKI':'Investice'} aktualizováno.\nKlientů v exportu nalezeno: ${result.clients}\nFondů aktualizováno: ${result.updated}\nNových pozic: ${result.created}\nVynulovaných pozic: ${result.zeroed}${result.unmatchedClients.length?'\nNenalezení klienti: '+[...new Set(result.unmatchedClients)].slice(0,12).join(', '):''}`);
-  }catch(error){alert('Codya XLSX se nepodařilo načíst: '+(error?.message||error));}
+  return providerImportOpenFile(file, 'codya', area);
 }
+
 function upsertContractFromDeal(d,forceNew=false) {
   if(d.portfolioReplacedBy)return null; // Historical commissions must not overwrite the current contract.
   let s = forceNew?null:linkedContractForDeal(d);
@@ -7820,7 +7957,7 @@ function mergeIncomingStateCore(incoming) {
     Object.entries(incoming.settings.commissionLegacyArchive).forEach(([key,rows])=>{const existing=archive[key]||(archive[key]=[]);rows.forEach(x=>{if(!existing.some(y=>JSON.stringify(y)===JSON.stringify(x)))existing.push(JSON.parse(JSON.stringify(x)));});});
   }
   dedupeInvestmentRecordsInState(state);
-  const map = new Map(), contractMap = new Map(), dealMap = new Map(), opportunityMap = new Map(), activityMap = new Map(), pilotMap = new Map(), outputMap = new Map(),
+  const map = new Map(), contractMap = new Map(), dealMap = new Map(), opportunityMap = new Map(), activityMap = new Map(), pilotMap = new Map(), outputMap = new Map(), investmentMap = new Map(), investmentLinks = [],
     count = {
       clients: 0,
       contracts: 0,
@@ -8027,6 +8164,12 @@ function mergeIncomingStateCore(incoming) {
   });
   (incoming.investmentRecords || []).forEach(ir => {
     const next = {...ir};
+    if (Object.prototype.hasOwnProperty.call(ir, '_providerClientId')) {
+      const clientId = mappedClient(ir._providerClientId);
+      next._providerClientId = clientId;
+      if (!clientId) next.importReference = {...ir.importReference, sourceClientId:ir._providerClientId, origin:incoming.createdAt || ''};
+      else if (!String(invClientId(ir)).startsWith('RC_') && String(invClientId(ir)) === String(ir._providerClientId)) next.ClientID = String(clientId);
+    }
     if (ir._crmScenarioLinkKey) {
       const source = ir._crmSourceType === 'contract' ? incoming.contracts.find(x => String(x.id) === String(ir._crmSourceId)) : incoming.deals.find(x => String(x.id) === String(ir._crmSourceId));
       const clientId = source ? mappedClient(source.clientId) : mappedClient(ir.clientId || invClientId(ir));
@@ -8039,22 +8182,57 @@ function mergeIncomingStateCore(incoming) {
       if (clientId && !String(invClientId(ir)).startsWith('RC_')) next.ClientID = String(clientId);
       if (ir.clientId != null) next.clientId = clientId;
     }
-    const key = invRecordKey(next);
-    if (key && state.investmentRecords.some(r => invRecordKey(r) === key)) {
+    const legacyKey = invRecordLegacyKey(next), localLegacy = state.investmentRecords.filter(r => !r._providerTransactionKey && invRecordLegacyKey(r) === legacyKey);
+    const providerCandidates = [...state.investmentRecords,...incoming.investmentRecords].filter(r => r._providerTransactionKey && invRecordLegacyKey(r) === legacyKey);
+    const orders = new Set(providerCandidates.map(r => r._providerTransactionKey));
+    const alreadyLinked = next._providerTransactionKey && state.investmentRecords.some(r => r._providerTransactionKey === next._providerTransactionKey && String(r._providerClientId ?? '') === String(next._providerClientId ?? ''));
+    if (orders.size > 1 && ((!next._providerTransactionKey) || (localLegacy.length && !alreadyLinked))) {
+      const owners = [...new Set(providerCandidates.map(r => state.investmentRecords.includes(r) ? r._providerClientId : mappedClient(r._providerClientId)).filter(x => x != null).map(String))];
+      const clientId = next._providerClientId ?? (owners.length === 1 ? findClient(owners[0])?.id : null);
+      if (providerStorageReviewAmbiguousRecord(next,clientId,providerCandidates[0]?.providerValuation?.provider || providerCandidates[0]?._providerSource?.provider,incoming.createdAt,localLegacy.length === 1 ? localLegacy[0] : null)) count.providerImportReviews = (count.providerImportReviews || 0) + 1;
       count.skipped++;
       return;
     }
-    state.investmentRecords.push({
-      ...next,
-      _importedAt: today()
-    });
+    const key = invRecordKey(next), providerLinked = Object.prototype.hasOwnProperty.call(next,'_providerClientId');
+    const sameOwner = r => !providerLinked || String(r._providerClientId ?? '') === String(next._providerClientId ?? '');
+    const existing = state.investmentRecords.find(r => sameOwner(r) && ((next._providerTransactionKey && r._providerTransactionKey === next._providerTransactionKey) || invRecordKey(r) === key));
+    if (existing) {
+      const oldKey = invRecordKey(existing);
+      if ((next._providerTransactionKey && existing._providerTransactionKey === next._providerTransactionKey) || (next.providerValuation && existing.providerValuation && next.providerValuation.provider === existing.providerValuation.provider)) {
+        const merged = providerStorageMergeInvestmentRecord(existing,next);
+        if (merged !== existing) { Object.assign(existing,merged); investmentLinks.push({source:ir,record:existing}); }
+      }
+      investmentMap.set(invRecordKey(ir),invRecordKey(existing));
+      providerStorageRemapRecordReferences(oldKey,invRecordKey(existing));
+      count.skipped++;
+      return;
+    }
+    const inserted = {...next,_importedAt:today()};
+    state.investmentRecords.push(inserted);
+    if (inserted._providerTransactionKey) investmentLinks.push({source:ir,record:inserted});
+    investmentMap.set(invRecordKey(ir),key);
     count.investments++;
   });
+  // Backups can originate from another local ID space; remap producer redemption links only after every position is known.
+  investmentLinks.forEach(({source,record}) => {
+    ['redemptionSourceRecordKey','Odkup z nákupu'].forEach(field => {
+      if (!source[field]) return;
+      const key = investmentMap.get(source[field]);
+      if (key) record[field] = key;
+      else { record.importReference = {...record.importReference,[field]:source[field]}; record[field] = ''; }
+    });
+  });
   dedupeInvestmentRecordsInState(state);
-  state.fundValues = {
-    ...state.fundValues,
-    ...(incoming.fundValues || {})
-  };
+  incoming.investmentRecords.forEach(source => {
+    const previous = investmentMap.get(invRecordKey(source));
+    if (!previous || state.investmentRecords.some(r => invRecordKey(r) === previous)) return;
+    const candidate = state.investmentRecords.filter(r => !r._providerLinkUnverified && invRecordLegacyKey(r) === invRecordLegacyKey(source));
+    if (candidate.length === 1) investmentMap.set(invRecordKey(source),invRecordKey(candidate[0]));
+  });
+  Object.entries(incoming.fundValues || {}).forEach(([key,value]) => {
+    const current = state.fundValues[key];
+    state.fundValues[key] = current && String(current.date || '') > String(value?.date || '') ? {...value,...current} : {...current,...value};
+  });
   state.lockedFunds = {
     ...state.lockedFunds,
     ...(incoming.lockedFunds || {})
@@ -8225,7 +8403,7 @@ function mergeIncomingStateCore(incoming) {
     }
   });
   relinkAllStrongIdentities();
-  Object.defineProperty(count, '_mergeIds', {value:{clients:map, contracts:contractMap, deals:dealMap, opportunities:opportunityMap, activities:activityMap, workPilots:pilotMap, workOutputs:outputMap}, enumerable:false});
+  Object.defineProperty(count, '_mergeIds', {value:{clients:map, contracts:contractMap, deals:dealMap, opportunities:opportunityMap, activities:activityMap, workPilots:pilotMap, workOutputs:outputMap, investments:investmentMap}, enumerable:false});
   return count;
 }
 function previewGoogleBackup() {
@@ -8258,6 +8436,7 @@ function loadGoogleBackup() {
 }
 function backupCountValue(s, key) {
   if (key === 'investments') return (s.investmentRecords || []).length;
+  if (key === 'providerImportEntries') return (s.providerImports || []).reduce((n,batch) => n+(batch.entries?.length || 0),0);
   if (key === 'claimHistory' || key === 'claimAttachments') return (s.insuranceClaims || []).reduce((n, claim) => n + (claim[key === 'claimHistory' ? 'history' : 'attachments']?.length || 0), 0);
   if (key === 'workActivities') return (s.activities || []).filter(a => a.work && typeof a.work === 'object' && Object.keys(a.work).length).length;
   if (key === 'workTimeEntries') return (s.activities || []).filter(a => ['actual','estimate'].includes(a.work?.timeKind) && a.duration != null && a.duration !== '' && Number.isFinite(+a.duration) && +a.duration >= 0).length;
@@ -9406,7 +9585,7 @@ function fkiEditor_fkSetFundValueForKey(key, nav, date, base = {}) {
     r['Poslední schválená hodnota CP'] = nav;
     r['Poslední schválená hodnota do'] = date || today();
     if (!invIsWithdrawal(r) && invEffectiveQty(r) > 0) {
-      if (r.fkiValuationMode !== 'manual' && (!r.codyaImportDate || String(date || today()) >= String(r.codyaImportDate))) r.fkiValuationMode = 'nav';
+      if (r.fkiValuationMode !== 'manual' && (!r.codyaImportDate || String(date || today()) >= String(r.codyaImportDate)) && (!r.providerValuation?.date || String(date || today()) > String(r.providerValuation.date))) r.fkiValuationMode = 'nav';
       r['Aktuální hodnota investice'] = invCurrentValue(r);
     }
     changed++;
@@ -10394,36 +10573,24 @@ function liquidity_clientLiquidityStats(row) {
   };
 }
 function liquidity_redemptionAllocations(rows) {
-  const buys = (rows || []).filter(r => !invIsWithdrawal(r)),
-    outs = (rows || []).filter(r => invIsWithdrawal(r));
-  const base = new Map(),
-    used = new Map();
-  buys.forEach(r => {
-    const k = invRecordKey(r),
-      cur = invPositionValue(r);
-    base.set(k, Math.max(0, cur));
-    used.set(k, 0);
-  });
+  const buys = (rows || []).filter(r => !invIsWithdrawal(r)), outs = (rows || []).filter(invIsWithdrawal), base = new Map(), used = new Map(), cash = new Map();
+  buys.forEach(r => { const key = invRecordKey(r); base.set(key, Math.max(0,invPositionValue(r))); used.set(key,0); cash.set(key,0); });
   outs.forEach(w => {
-    let amount = invWithdrawalValue(w);
-    const linked = w.redemptionSourceRecordKey || w['Odkup z nákupu'] || '';
-    if (linked && used.has(linked)) {
-      used.set(linked, (used.get(linked) || 0) + amount);
-      return;
-    }
-    for (const b of buys) {
+    if (w.providerValuation && invIsFutureWithdrawal(w)) return;
+    let amount = invWithdrawalCurrentValue(w), paid = invWithdrawalValue(w);
+    const original = amount, linked = w.redemptionSourceRecordKey || w['Odkup z nákupu'] || '';
+    if (linked && used.has(linked)) { used.set(linked,used.get(linked)+amount); cash.set(linked,cash.get(linked)+paid); return; }
+    for (const row of buys) {
       if (amount <= 0) break;
-      const k = invRecordKey(b),
-        left = Math.max(0, (base.get(k) || 0) - (used.get(k) || 0));
-      if (!left) continue;
-      const part = Math.min(left, amount);
-      used.set(k, (used.get(k) || 0) + part);
-      amount -= part;
+      const key = invRecordKey(row), available = Math.max(0,base.get(key)-used.get(key)), part = Math.min(available,amount);
+      if (!part) continue;
+      used.set(key,used.get(key)+part); cash.set(key,cash.get(key)+(original ? paid*part/original : 0)); amount -= part;
     }
   });
   return {
-    redeemed: r => used.get(invRecordKey(r)) || 0,
-    remaining: r => Math.max(0, (base.get(invRecordKey(r)) || 0) - (used.get(invRecordKey(r)) || 0))
+    redeemed:r => cash.get(invRecordKey(r)) || 0,
+    reduced:r => used.get(invRecordKey(r)) || 0,
+    remaining:r => Math.max(0,(base.get(invRecordKey(r)) || 0)-(used.get(invRecordKey(r)) || 0))
   };
 }
 function liquidity_redemptionSourceLabel(r, i, remaining) {
@@ -10512,7 +10679,7 @@ function liquidity_originalFkiCard(item, clientId) {
     main = records.find(r => !invIsWithdrawal(r)) || records[0] || item.source || {},
     inv = records.reduce((s, r) => s + (invIsWithdrawal(r) ? 0 : invDeposit(r)), 0) || +item.invested || 0,
     realized = records.reduce((s, r) => s + (invIsWithdrawal(r) ? invWithdrawalValue(r) : 0), 0) || investmentRealizedAmount(item),
-    cur = Math.max(0, records.reduce((s, r) => s + (invIsWithdrawal(r) ? -invWithdrawalValue(r) : invPositionValue(r)), 0)) || +item.rawAmount || 0,
+    cur = records.length ? Math.max(0, records.reduce((s, r) => s + (invIsWithdrawal(r) ? invCurrentValue(r) : invPositionValue(r)), 0)) : +item.rawAmount || 0,
     gain = investmentPerformanceGain(cur, inv, realized),
     pct = investmentPerformancePct(cur, inv, realized),
     issue = invEmissionDate(main),
@@ -10920,49 +11087,32 @@ function fundPerformance_classicCard(f, clientId) {
     locked = isInvestmentFundLocked(f.key),
     comment = fundPerformance_fundComment('investice', f.key, f.isin),
     tax = liquidity_taxSummary((f.items || []).map(x => liquidity_liquidityInfo('investice', f.key, x.isin || f.isin, liquidity_investmentTaxStart(x))));
-  return `<details class="fki-work-card ${gain < 0 ? 'loss' : ''} ${locked ? 'locked' : ''}"><summary class="fki-work-head"><div class="fki-work-name"><b>${esc(f.label)}</b><div class="chips"><span class="chip">${esc(f.company)}</span><span class="badge blue">Investice</span><span class="chip">${num(f.items.length)} pozic</span>${tax ? tax.html : '<span class="badge orange">datum nákupu chybí</span>'}${locked ? '<span class="badge orange">zamčeno</span>' : ''}</div></div><div class="fki-work-metric"><small>Vloženo</small><strong>${money(f.invested)}</strong></div><div class="fki-work-metric"><small>Aktuální</small><strong class="${gain >= 0 ? 'green' : 'red'}">${money(f.amount)}</strong><small class="date-highlight">k ${esc(valueDate || '-')}</small></div><div class="fki-work-metric"><small>Výnos celkem</small><strong class="${gain >= 0 ? 'green' : 'red'}">${pct.toFixed(1)} %</strong></div><div class="actions"><button class="btn slim primary" onclick="event.preventDefault();openInvestmentScenarioModal(${clientId},'Investice')">+ Nová investice</button><button class="btn slim" onclick="event.preventDefault();openInvestmentSnapshotModal(${clientId},'${esc(encodeURIComponent(String(clientId) + '|' + f.key))}')">Pozice klienta</button><button class="btn slim" onclick="event.preventDefault();openInvestmentFundModal('${esc(key)}')">Hodnota fondu</button><button class="icon-btn ${locked ? 'primary' : ''}" onclick="event.preventDefault();toggleInvestmentFundLock('${esc(key)}')" title="Zámek reportu">${locked ? '🔒' : '🔓'}</button><span class="fund-transactions-label">Transakce ▾</span></div></summary><div class="fki-work-detail"><div class="fki-detail-grid"><div><small>Investováno</small><b>${money(f.invested)}</b></div><div><small>Výnos Kč</small><b class="${gain >= 0 ? 'green' : 'red'}">${money(gain)}</b></div><div><small>Celkový výnos</small><b class="${gain >= 0 ? 'green' : 'red'}">${pct.toFixed(1)} %</b></div><div><small>Časový test všech pozic</small><b>${tax ? liquidity_fmtDate(tax.latest.taxReady) : 'datum nákupu chybí'}</b></div><div><small>Hodnota CP / NAV</small><b>${fv.nav ? num(fv.nav) : '-'}</b></div><div><small>Hodnota fondu k datu</small><b class="date-highlight">${esc(valueDate || '-')}</b></div><div><small>ISIN</small><b>${esc(f.isin || '-')}</b></div><div><small>Typ</small><b>${esc(f.typ || '-')}</b></div><div><small>Pozic</small><b>${num(f.items.length)}</b></div></div>${comment ? `<div class="notice small"><b>Komentář fondu:</b> ${esc(comment)}</div>` : ''}${fundPerformance_classicPositionRows(f, clientId)}</div></details>`;
+  return `<details class="fki-work-card ${providerImportNeedsReview(clientId,f.isin) ? 'provider-needs-review' : ''} ${gain < 0 ? 'loss' : ''} ${locked ? 'locked' : ''}"><summary class="fki-work-head"><div class="fki-work-name"><b>${esc(f.label)}</b><div class="chips"><span class="chip">${esc(f.company)}</span><span class="badge blue">Investice</span>${providerImportBadge(clientId,f.isin)}<span class="chip">${num(f.items.length)} pozic</span>${tax ? tax.html : '<span class="badge orange">datum nákupu chybí</span>'}${locked ? '<span class="badge orange">zamčeno</span>' : ''}</div></div><div class="fki-work-metric"><small>Vloženo</small><strong>${money(f.invested)}</strong></div><div class="fki-work-metric"><small>Aktuální</small><strong class="${gain >= 0 ? 'green' : 'red'}">${money(f.amount)}</strong><small class="date-highlight">k ${esc(valueDate || '-')}</small></div><div class="fki-work-metric"><small>Výnos celkem</small><strong class="${gain >= 0 ? 'green' : 'red'}">${pct.toFixed(1)} %</strong></div><div class="actions"><button class="btn slim primary" onclick="event.preventDefault();openInvestmentScenarioModal(${clientId},'Investice')">+ Nová investice</button><button class="btn slim" onclick="event.preventDefault();openInvestmentSnapshotModal(${clientId},'${esc(encodeURIComponent(String(clientId) + '|' + f.key))}')">Pozice klienta</button><button class="btn slim" onclick="event.preventDefault();openInvestmentFundModal('${esc(key)}')">Hodnota fondu</button><button class="icon-btn ${locked ? 'primary' : ''}" onclick="event.preventDefault();toggleInvestmentFundLock('${esc(key)}')" title="Zámek reportu">${locked ? '🔒' : '🔓'}</button><span class="fund-transactions-label">Transakce ▾</span></div></summary><div class="fki-work-detail"><div class="fki-detail-grid"><div><small>Investováno</small><b>${money(f.invested)}</b></div><div><small>Výnos Kč</small><b class="${gain >= 0 ? 'green' : 'red'}">${money(gain)}</b></div><div><small>Celkový výnos</small><b class="${gain >= 0 ? 'green' : 'red'}">${pct.toFixed(1)} %</b></div><div><small>Časový test všech pozic</small><b>${tax ? liquidity_fmtDate(tax.latest.taxReady) : 'datum nákupu chybí'}</b></div><div><small>Hodnota CP / NAV</small><b>${fv.nav ? num(fv.nav) : '-'}</b></div><div><small>Hodnota fondu k datu</small><b class="date-highlight">${esc(valueDate || '-')}</b></div><div><small>ISIN</small><b>${esc(f.isin || '-')}</b></div><div><small>Typ</small><b>${esc(f.typ || '-')}</b></div><div><small>Pozic</small><b>${num(f.items.length)}</b></div></div>${comment ? `<div class="notice small"><b>Komentář fondu:</b> ${esc(comment)}</div>` : ''}${fundPerformance_classicPositionRows(f, clientId)}</div></details>`;
 }
 function fundPerformance_fkiRowsFor(clientId, key) {
   return (typeof investmentRecordsForClient === 'function' ? investmentRecordsForClient(clientId) : []).filter(r => invPositionKey(r) === key && isFkiReportRecord(r)).sort((a, b) => String(invEmissionDate(a) || invPaymentDate(a)).localeCompare(String(invEmissionDate(b) || invPaymentDate(b))));
 }
 function fundPerformance_redemptionSummary(rows) {
-  const used = new Map(),
-    buys = rows.filter(r => !invIsWithdrawal(r));
-  buys.forEach(r => used.set(invRecordKey(r), 0));
-  rows.filter(invIsWithdrawal).forEach(w => {
-    let amount = typeof invWithdrawalValue === 'function' ? invWithdrawalValue(w) : Math.abs(invCurrentValue(w));
-    const linked = w.redemptionSourceRecordKey || w['Odkup z nákupu'] || '';
-    if (linked && used.has(linked)) {
-      used.set(linked, (used.get(linked) || 0) + amount);
-      return;
-    }
-    for (const b of buys) {
-      if (amount <= 0) break;
-      const k = invRecordKey(b),
-        left = Math.max(0, (invPositionValue(b)) - (used.get(k) || 0));
-      const part = Math.min(left, amount);
-      used.set(k, (used.get(k) || 0) + part);
-      amount -= part;
-    }
-  });
-  return r => used.get(invRecordKey(r)) || 0;
+  const allocation = liquidity_redemptionAllocations(rows);
+  return allocation.redeemed;
 }
 function fundPerformance_fkiPositionRowsPa(clientId, item) {
   const rows = fundPerformance_fkiRowsFor(clientId, item.key),
-    redeemedFor = fundPerformance_redemptionSummary(rows);
+    allocation = liquidity_redemptionAllocations(rows),
+    redeemedFor = allocation.redeemed;
   return `<div class="table-wrap" style="margin-top:12px"><table class="compact-table"><thead><tr><th>Pozice / emise</th><th>Investováno</th><th>Aktuální</th><th>Celkový výnos</th><th>Výnos p.a.</th><th>Odkup / peníze</th><th>Akce</th></tr></thead><tbody>${rows.map((r, i) => {
     const isOut = invIsWithdrawal(r),
       redeemed = isOut ? 0 : redeemedFor(r),
       inv = isOut ? 0 : invDeposit(r),
-      cur = isOut ? typeof invWithdrawalValue === 'function' ? invWithdrawalValue(r) : Math.abs(invCurrentValue(r)) : Math.max(0, (invPositionValue(r)) - redeemed),
+      cur = isOut ? invWithdrawalValue(r) : allocation.remaining(r),
       gain = isOut ? cur : cur + redeemed - inv,
       issue = invEmissionDate(r),
       taxStart = liquidity_fkiTaxStart(r),
-      valueDate = typeof fundValueDateText === 'function' ? fundValueDateText('fki', item.key, invIsin(r) || item.isin, r['Poslední schválená hodnota do']) : r['Poslední schválená hodnota do'] || '',
+      valueDate = invProviderValueDate(r) || (typeof fundValueDateText === 'function' ? fundValueDateText('fki', item.key, invIsin(r) || item.isin, r['Poslední schválená hodnota do']) : r['Poslední schválená hodnota do'] || ''),
       pa = isOut ? null : fundPerformance_annualizedPct(inv, cur, redeemed, fundPerformance_cashFlowDate(r), valueDate || new Date()),
       info = liquidity_liquidityInfo('fki', item.key, invIsin(r) || item.isin, taxStart),
       rk = encodeURIComponent(invRecordKey(r));
-    return `<tr><td><b>${esc(r['Typ transakce'] || 'Platba')} #${i + 1}</b><br><span class="note">Připsání ${esc(invPaymentDate(r) || '-')} · emise ${esc(issue || '-')}</span></td><td class="money">${money(inv)}</td><td class="money">${money(cur)}<br><span class="date-highlight">k ${esc(valueDate || '-')}</span></td><td class="money ${gain >= 0 ? 'green' : 'red'}">${isOut ? 'realizováno ' + money(gain) : money(gain)}</td><td class="money ${pa === null || pa >= 0 ? 'green' : 'red'}">${fundPerformance_pctText(pa)}</td><td>${isOut ? '<span class="badge green">odkup zadán</span>' : `${liquidity_taxBadge(info)}<br><span class="note">${info ? `${num(info.rules.taxMonths)} měsíců od ${liquidity_fmtDate(taxStart)} · ` : ''}${redeemed ? `odkoupeno ${money(redeemed)} · ` : ''}zbývá ${money(cur)}</span>`}</td><td><button class="btn slim" onclick="openFkRecordModal(${clientId},'${esc(encodeURIComponent(item.key))}','${esc(rk)}')">Upravit</button></td></tr>`;
+    return `<tr class="${providerImportRecordNeedsReview(clientId,r) ? 'provider-position-review' : ''}"><td><b>${esc(r['Typ transakce'] || 'Platba')} #${i + 1}</b><br><span class="note">Připsání ${esc(invPaymentDate(r) || '-')} · emise ${esc(issue || '-')}</span></td><td class="money">${money(inv)}</td><td class="money">${money(cur)}<br><span class="date-highlight">k ${esc(valueDate || '-')}</span></td><td class="money ${gain >= 0 ? 'green' : 'red'}">${isOut ? 'realizováno ' + money(gain) : money(gain)}</td><td class="money ${pa === null || pa >= 0 ? 'green' : 'red'}">${fundPerformance_pctText(pa)}</td><td>${isOut ? '<span class="badge green">odkup zadán</span>' : `${liquidity_taxBadge(info)}<br><span class="note">${info ? `${num(info.rules.taxMonths)} měsíců od ${liquidity_fmtDate(taxStart)} · ` : ''}${redeemed ? `odkoupeno ${money(redeemed)} · ` : ''}zbývá ${money(cur)}</span>`}</td><td><button class="btn slim" onclick="openFkRecordModal(${clientId},'${esc(encodeURIComponent(item.key))}','${esc(rk)}')">Upravit</button></td></tr>`;
   }).join('') || '<tr><td colspan="7" class="note">Pod fondem není žádná konkrétní pozice.</td></tr>'}</tbody></table></div>`;
 }
 function fundPerformance_fkiCardPa(item, clientId) {
@@ -10970,15 +11120,15 @@ function fundPerformance_fkiCardPa(item, clientId) {
     main = rows.find(r => !invIsWithdrawal(r)) || rows[0] || item.source || {},
     inv = rows.reduce((s, r) => s + (invIsWithdrawal(r) ? 0 : invDeposit(r)), 0) || +item.invested || 0,
     realized = rows.reduce((s, r) => s + (invIsWithdrawal(r) ? typeof invWithdrawalValue === 'function' ? invWithdrawalValue(r) : Math.abs(invCurrentValue(r)) : 0), 0) || investmentRealizedAmount(item),
-    cur = Math.max(0, rows.reduce((s, r) => s + (invIsWithdrawal(r) ? -(typeof invWithdrawalValue === 'function' ? invWithdrawalValue(r) : Math.abs(invCurrentValue(r))) : invPositionValue(r)), 0)) || +item.rawAmount || 0,
+    cur = rows.length ? Math.max(0, rows.reduce((s, r) => s + (invIsWithdrawal(r) ? invCurrentValue(r) : invPositionValue(r)), 0)) : +item.rawAmount || 0,
     gain = investmentPerformanceGain(cur, inv, realized),
     pct = investmentPerformancePct(cur, inv, realized),
     issue = invEmissionDate(main),
     tax = liquidity_taxSummary(rows.filter(r => !invIsWithdrawal(r)).map(r => liquidity_liquidityInfo('fki', item.key, invIsin(r) || item.isin, liquidity_fkiTaxStart(r)))),
     key = encodeURIComponent(item.key),
     comment = fundPerformance_fundComment('fki', item.key, item.isin || invIsin(main)),
-    valueDate = typeof fundValueDateText === 'function' ? fundValueDateText('fki', item.key, item.isin || invIsin(main), main['Poslední schválená hodnota do']) : '';
-  return `<details class="fki-work-card ${gain < 0 ? 'loss' : ''} ${item.locked ? 'locked' : ''}"><summary class="fki-work-head"><div class="fki-work-name"><b>${esc(cleanInvFundName(item.product || invFund(main), item.company))}</b><div class="chips"><span class="chip">${esc(item.company || invCompany(main) || '')}</span><span class="badge purple">FKI</span><span class="chip">${num(rows.length)} pozic</span>${tax ? tax.html : '<span class="badge orange">datum nákupu chybí</span>'}</div></div><div class="fki-work-metric"><small>Vloženo</small><strong>${money(inv)}</strong></div><div class="fki-work-metric"><small>Aktuální</small><strong class="${gain >= 0 ? 'green' : 'red'}">${money(cur)}</strong><small class="date-highlight">k ${esc(valueDate || '-')}</small></div><div class="fki-work-metric"><small>Výnos celkem</small><strong class="${gain >= 0 ? 'green' : 'red'}">${pct.toFixed(1)} %</strong></div><div class="actions"><button class="btn slim primary" onclick="event.preventDefault();openInvestmentScenarioModal(${clientId},'FKI')">+ Dokup</button><button class="btn slim" onclick="event.preventDefault();openFkRecordModal(${clientId},'${esc(key)}','${esc(encodeURIComponent(invRecordKey(main)))}')">Upravit</button><button class="icon-btn ${item.locked ? 'primary' : ''}" onclick="event.preventDefault();toggleFkFundLock('${esc(key)}')" title="Zámek AUM">${item.locked ? '🔒' : '🔓'}</button><span class="fund-transactions-label">Transakce ▾</span></div></summary><div class="fki-work-detail"><div class="fki-detail-grid"><div><small>Investováno</small><b>${money(inv)}</b></div><div><small>Výnos Kč</small><b class="${gain >= 0 ? 'green' : 'red'}">${money(gain)}</b></div><div><small>Celkový výnos</small><b class="${gain >= 0 ? 'green' : 'red'}">${pct.toFixed(1)} %</b></div><div><small>Časový test všech pozic</small><b>${tax ? liquidity_fmtDate(tax.latest.taxReady) : 'datum nákupu chybí'}</b></div><div><small>Datum emise</small><b>${esc(issue || '-')}</b></div><div><small>Hodnota fondu k datu</small><b class="date-highlight">${esc(valueDate || '-')}</b></div><div><small>ISIN</small><b>${esc(item.isin || invIsin(main) || '-')}</b></div></div>${comment ? `<div class="notice small"><b>Komentář fondu:</b> ${esc(comment)}</div>` : ''}${fundPerformance_fkiPositionRowsPa(clientId, item)}</div></details>`;
+    valueDate = invProviderValueDate(main) || (typeof fundValueDateText === 'function' ? fundValueDateText('fki', item.key, item.isin || invIsin(main), main['Poslední schválená hodnota do']) : '');
+  return `<details class="fki-work-card ${providerImportNeedsReview(clientId,item.isin || invIsin(main)) ? 'provider-needs-review' : ''} ${gain < 0 ? 'loss' : ''} ${item.locked ? 'locked' : ''}"><summary class="fki-work-head"><div class="fki-work-name"><b>${esc(cleanInvFundName(item.product || invFund(main), item.company))}</b><div class="chips"><span class="chip">${esc(item.company || invCompany(main) || '')}</span><span class="badge purple">FKI</span><span class="chip">${num(rows.length)} pozic</span>${providerImportBadge(clientId,item.isin || invIsin(main))}${tax ? tax.html : '<span class="badge orange">datum nákupu chybí</span>'}</div></div><div class="fki-work-metric"><small>Vloženo</small><strong class="${providerImportFieldClass(clientId,item.isin || invIsin(main),'invested')}">${money(inv)}</strong></div><div class="fki-work-metric"><small>Aktuální</small><strong class="${gain >= 0 ? 'green' : 'red'} ${providerImportFieldClass(clientId,item.isin || invIsin(main),'current')}">${money(cur)}</strong><small class="date-highlight">k ${esc(valueDate || '-')}</small></div><div class="fki-work-metric"><small>Výnos celkem</small><strong class="${gain >= 0 ? 'green' : 'red'} ${providerImportFieldClass(clientId,item.isin || invIsin(main),'gain')}">${pct.toFixed(1)} %</strong></div><div class="actions"><button class="btn slim primary" onclick="event.preventDefault();openInvestmentScenarioModal(${clientId},'FKI')">+ Dokup</button><button class="btn slim" onclick="event.preventDefault();openFkRecordModal(${clientId},'${esc(key)}','${esc(encodeURIComponent(invRecordKey(main)))}')">Upravit</button><button class="icon-btn ${item.locked ? 'primary' : ''}" onclick="event.preventDefault();toggleFkFundLock('${esc(key)}')" title="Zámek AUM">${item.locked ? '🔒' : '🔓'}</button><span class="fund-transactions-label">Transakce ▾</span></div></summary><div class="fki-work-detail"><div class="fki-detail-grid"><div><small>Investováno</small><b>${money(inv)}</b></div><div><small>Výnos Kč</small><b class="${gain >= 0 ? 'green' : 'red'}">${money(gain)}</b></div><div><small>Celkový výnos</small><b class="${gain >= 0 ? 'green' : 'red'}">${pct.toFixed(1)} %</b></div><div><small>Časový test všech pozic</small><b>${tax ? liquidity_fmtDate(tax.latest.taxReady) : 'datum nákupu chybí'}</b></div><div><small>Datum emise</small><b>${esc(issue || '-')}</b></div><div><small>Hodnota fondu k datu</small><b class="date-highlight">${esc(valueDate || '-')}</b></div><div><small>ISIN</small><b>${esc(item.isin || invIsin(main) || '-')}</b></div></div>${comment ? `<div class="notice small"><b>Komentář fondu:</b> ${esc(comment)}</div>` : ''}${fundPerformance_fkiPositionRowsPa(clientId, item)}</div></details>`;
 }
 function fundPerformance_scenarioSeries(rateKind) {
   const years = Math.max(1, fundPerformance_n(val('scenarioYears')) || 10),
@@ -11600,6 +11750,7 @@ function clientOutput_xRowCurrentDirect(r) {
   if (r?.snapshot) return investmentSnapshotLiveCurrent(r.snapshot);
   const manual = invManualValue(r);
   if (manual !== null) return manual;
+  if (invProviderNumber(r, 'current') !== null) return invCurrentValue(r);
   const direct = typeof invCurrentValue === 'function' ? clientOutput_xN(invCurrentValue(r)) : typeof invCurrent === 'function' ? clientOutput_xN(invCurrent(r)) : 0;
   return direct || clientOutput_xN(clientOutput_xPick(r, ['Aktuální hodnota investice', 'Aktualni hodnota investice', 'current', 'value', 'amount']));
 }
@@ -11615,17 +11766,18 @@ function clientOutput_xFundRows(f) {
   const rows = (Array.isArray(f.rows) && f.rows.length ? f.rows : [f]).filter(Boolean),
     positive = rows.filter(r => !(typeof invIsWithdrawal === 'function' && invIsWithdrawal(r))),
     baseRows = positive.length ? positive : rows,
+    providerAllocation = f.area === 'FKI' && rows.some(r => r.providerValuation) ? liquidity_redemptionAllocations(rows) : null,
     totalInvested = baseRows.reduce((s, r) => s + clientOutput_xRowInvested(r), 0);
   return baseRows.map((r, i) => {
     const invested = clientOutput_xRowInvested(r),
       direct = clientOutput_xRowCurrentDirect(r),
       share = totalInvested > 0 ? invested / totalInvested : 0,
-      current = r?.snapshot || invManualValue(r) !== null ? direct : direct > 0 ? direct : clientOutput_xN(f.amount) * share,
-      realized = typeof investmentRealizedAmount === 'function' ? clientOutput_xN(investmentRealizedAmount(r)) : clientOutput_xN(r?.realized || r?.redemptionAmount || 0),
+      current = providerAllocation && !invIsWithdrawal(r) ? providerAllocation.remaining(r) : r?.snapshot || invManualValue(r) !== null || invProviderNumber(r,'current') !== null ? direct : direct > 0 ? direct : clientOutput_xN(f.amount) * share,
+      realized = providerAllocation && !invIsWithdrawal(r) ? providerAllocation.redeemed(r) : typeof investmentRealizedAmount === 'function' ? clientOutput_xN(investmentRealizedAmount(r)) : clientOutput_xN(r?.realized || r?.redemptionAmount || 0),
       date = clientOutput_xRowPurchaseDate(r),
       taxStart = clientOutput_xRowTaxStart(r, f.area),
       taxInfo = liquidity_liquidityInfo(f.area === 'FKI' ? 'fki' : 'investice', f.key, f.isin, taxStart),
-      valueDate = f.area === 'Investice' && r.snapshot ? liquidity_fmtDate(investmentItemValueDate(r)) : clientOutput_xValueDate(f.area === 'FKI' ? 'fki' : 'investice', f.key, f.isin, f.valueDate || date),
+      valueDate = invProviderValueDate(r) || (f.area === 'Investice' && r.snapshot ? liquidity_fmtDate(investmentItemValueDate(r)) : clientOutput_xValueDate(f.area === 'FKI' ? 'fki' : 'investice', f.key, f.isin, f.valueDate || date)),
       perf = f.area === 'Investice' && r.snapshot ? {gain:investmentReportedGain(r),pct:investmentReportedPct(r)} : clientOutput_xPerf(current, invested, realized),
       reportedPa = typeof investmentReportedAnnualPct === 'function' ? investmentReportedAnnualPct(r) : null,
       pa = reportedPa == null ? (investmentHasRegularPayments(r) ? null : clientOutput_xAnnualized(invested, current, realized, date, valueDate || f.valueDate)) : reportedPa;
@@ -12244,6 +12396,7 @@ function mergeIncomingStateWithSnapshots(incoming) {
   const incomingState = normalizeState(incoming),
     count = mergeIncomingStateCore(incomingState),
     existing = new Set((state.investmentSnapshots || []).map(investmentSnapshotMergeKey));
+  count._mergeIds.snapshots = new Map();
   let added = 0,
     skipped = 0;
   (incomingState.investmentSnapshots || []).forEach(s => {
@@ -12267,15 +12420,15 @@ function mergeIncomingStateWithSnapshots(incoming) {
     }
     const key = investmentSnapshotMergeKey(next);
     if (existing.has(key)) {
+      const local = state.investmentSnapshots.find(x => investmentSnapshotMergeKey(x) === key);
+      if (local) count._mergeIds.snapshots.set(String(s.id),String(local.id));
       skipped++;
       return;
     }
     existing.add(key);
-    state.investmentSnapshots.push({
-      ...next,
-      id: uid(),
-      importedAt: today()
-    });
+    const local = {...next,id:uid(),importedAt:today()};
+    state.investmentSnapshots.push(local);
+    count._mergeIds.snapshots.set(String(s.id),String(local.id));
     added++;
   });
   count.investmentSnapshots = added;
@@ -12306,13 +12459,14 @@ function mergeIncomingState(incoming) {
     if (state.delegationProcesses.some(x => p.syncId ? x.syncId === p.syncId : x.title === p.title && x.route === p.route && x.minutes === p.minutes && x.count === p.count && x.retained === p.retained)) return;
     state.delegationProcesses.push({...p, id:uid()});
   });
+  Object.assign(count,mergeProviderImportStorage(incomingState,count._mergeIds));
   count.referrerPayouts = added;
   count.skipped = (count.skipped || 0) + skipped;
   return count;
 }
 function stateCountsText(s = state) {
   s = normalizeState(s);
-  return `${num((s.clients || []).length)} klientů · ${num((s.contracts || []).length)} smluv · ${num((s.deals || []).length)} obchodů · ${num((s.opportunities || []).length)} obchodních případů · ${num((s.insuranceClaims || []).length)} pojistných událostí · ${num((s.notes || []).length)} poznámek · ${num((s.analysisEntries || []).length)} analytických aktivit · ${num((s.weeklyGoals || []).length)} týdenních cílů · ${num((s.weeklyReviews || []).length)} uzavřených týdnů · ${num((s.delegationProcesses || []).length)} činností k delegování · ${num((s.investmentRecords || []).length)} investičních záznamů · ${num((s.investmentSnapshots || []).length)} aktualizací investic · ${num((s.externalInvestments || []).length)} investic mimo správu · ${num((s.investmentForecasts || []).length)} prognóz · ${num((s.activities || []).length)} aktivit · ${num(s.workPilots.length)} pracovních pilotů · ${num(s.workOutputs.length)} pracovních výstupů · ${num((s.commissionImports || []).length)} provizních importů · ${num((s.referrerPayouts || []).length)} výplat tipařům`;
+  return `${num((s.clients || []).length)} klientů · ${num((s.contracts || []).length)} smluv · ${num((s.deals || []).length)} obchodů · ${num((s.opportunities || []).length)} obchodních případů · ${num((s.insuranceClaims || []).length)} pojistných událostí · ${num((s.notes || []).length)} poznámek · ${num((s.analysisEntries || []).length)} analytických aktivit · ${num((s.weeklyGoals || []).length)} týdenních cílů · ${num((s.weeklyReviews || []).length)} uzavřených týdnů · ${num((s.delegationProcesses || []).length)} činností k delegování · ${num((s.investmentRecords || []).length)} investičních záznamů · ${num((s.investmentSnapshots || []).length)} aktualizací investic · ${num(s.providerImports.length)} importů producentů · ${num((s.externalInvestments || []).length)} investic mimo správu · ${num((s.investmentForecasts || []).length)} prognóz · ${num((s.activities || []).length)} aktivit · ${num(s.workPilots.length)} pracovních pilotů · ${num(s.workOutputs.length)} pracovních výstupů · ${num((s.commissionImports || []).length)} provizních importů · ${num((s.referrerPayouts || []).length)} výplat tipařům`;
 }
 function criticalBackupCounts(s = state) {
   s = normalizeState(s);
@@ -12327,6 +12481,8 @@ function criticalBackupCounts(s = state) {
     notes: s.notes.length,
     investments: s.investmentRecords.length,
     investmentSnapshots: s.investmentSnapshots.length,
+    providerImports: s.providerImports.length,
+    providerImportEntries: backupCountValue(s,'providerImportEntries'),
     externalInvestments: s.externalInvestments.length,
     investmentForecasts: s.investmentForecasts.length,
     activities: s.activities.length,
@@ -12807,17 +12963,17 @@ function liquidity_prevSaveFkRecord2() {
   else if (manual) {rec.fkiValuationMode = 'manual';rec.fkiManualCurrent = current;}
   else rec.fkiValuationMode = 'statement';
   const oldIndex = (state.investmentRecords || []).findIndex(r => fkiEditor_fkRecKey(r) === fkiEditor_editingFkRecordKey);
-  if (oldIndex >= 0) state.investmentRecords[oldIndex] = {
-    ...state.investmentRecords[oldIndex],
-    ...rec
-  };else state.investmentRecords.push(rec);
-  const newRecordKey = invRecordKey(oldIndex >= 0 ? state.investmentRecords[oldIndex] : rec);
-  if (fkiEditor_editingFkRecordKey && newRecordKey !== fkiEditor_editingFkRecordKey) {
-    state.investmentRecords.forEach(r => {
-      if (r.redemptionSourceRecordKey === fkiEditor_editingFkRecordKey) r.redemptionSourceRecordKey = newRecordKey;
-      if (r['Odkup z nákupu'] === fkiEditor_editingFkRecordKey) r['Odkup z nákupu'] = newRecordKey;
-    });
+  if (oldIndex >= 0 && state.investmentRecords[oldIndex]._providerTransactionKey) {
+    const old = state.investmentRecords[oldIndex];
+    rec._providerClientId = client.id;
+    rec._updatedAt = new Date().toISOString();
+    rec._providerEditedAt = rec._updatedAt;
+    if (isWithdrawal && old.providerValuation) rec.providerValuation = {...old.providerValuation,date:rec['Poslední schválená hodnota do'],current:-Math.abs(current),redemptionValue:Math.abs(deposit),nav:nav || old.providerValuation.nav};
   }
+  if (oldIndex >= 0) state.investmentRecords[oldIndex] = {...state.investmentRecords[oldIndex],...rec};
+  else state.investmentRecords.push(rec);
+  const newRecordKey = invRecordKey(oldIndex >= 0 ? state.investmentRecords[oldIndex] : rec);
+  providerStorageRemapRecordReferences(fkiEditor_editingFkRecordKey,newRecordKey);
   const key = invPositionKey(rec);
   if (nav) fkiEditor_fkSetFundValueForKey(key, nav, val('fkRecNavDate') || today(), {
     company,
@@ -13400,7 +13556,7 @@ function renderFk() {
     const gain = investmentPerformanceGain(r.aum, r.invested, r.realized),
       pct = investmentPerformancePct(r.aum, r.invested, r.realized),
       stats = liquidity_clientLiquidityStats(r);
-    return `<button class="investment-client ${String(r.client?.id) === String(selectedFkClientId) ? 'active' : ''}" onclick="selectFkClient(${r.client?.id})"><div class="row"><b>${esc(clientName(r.client))}</b><span class="badge purple">${num(r.products)}</span></div><div class="row"><span class="note">FK AUM</span><span class="money">${money(r.aum)}</span></div><div class="row"><span class="note">${esc(r.providers.slice(0, 2).join(' · ') || 'bez společnosti')}</span><span class="${gain >= 0 ? 'green' : 'red'}">${pct.toFixed(1)} %</span></div><div class="row"><span class="badge ${stats.readyCount ? 'green' : 'red'}">${num(stats.readyCount)}/${num(stats.total)} odkup</span><span class="note">${stats.next ? 'od ' + liquidity_fmtDate(stats.next) : 'připraveno'}</span></div></button>`;
+    return `<button class="investment-client ${providerImportNeedsReview(r.client?.id) ? 'provider-needs-review' : ''} ${String(r.client?.id) === String(selectedFkClientId) ? 'active' : ''}" onclick="selectFkClient(${r.client?.id})"><div class="row"><b>${esc(clientName(r.client))}${providerImportBadge(r.client?.id,'',false)}</b><span class="badge purple">${num(r.products)}</span></div><div class="row"><span class="note">FK AUM</span><span class="money">${money(r.aum)}</span></div><div class="row"><span class="note">${esc(r.providers.slice(0, 2).join(' · ') || 'bez společnosti')}</span><span class="${gain >= 0 ? 'green' : 'red'}">${pct.toFixed(1)} %</span></div><div class="row"><span class="badge ${stats.readyCount ? 'green' : 'red'}">${num(stats.readyCount)}/${num(stats.total)} odkup</span><span class="note">${stats.next ? 'od ' + liquidity_fmtDate(stats.next) : 'připraveno'}</span></div></button>`;
   }).join('') || '<div class="investment-empty">Zatím tu nejsou FK data.</div>';
   liquidity_q('fkTabClient')?.classList.toggle('active', fkMode === 'client');
   liquidity_q('fkTabFunds')?.classList.toggle('active', fkMode === 'funds');
@@ -13577,13 +13733,13 @@ function renderInvestmentDetail(row) {
   const items=row.items.filter(x=>!selected||(x.company||'Bez společnosti')===selected);
   const invested=items.reduce((s,x)=>s+investmentInvestedAmount(x),0),gain=items.reduce((s,x)=>s+investmentReportedGain(x),0),annualItems=items.filter(x=>investmentReportedAnnualPct(x)!=null),annualWeight=annualItems.reduce((s,x)=>s+(+x.amount||0),0);
   const filtered={...row,items,current:items.reduce((s,x)=>s+(+x.amount||0),0),invested,realized:items.reduce((s,x)=>s+investmentRealizedAmount(x),0),gain,gainPct:invested?items.reduce((sum,x)=>sum+investmentReportedPct(x)*investmentInvestedAmount(x),0)/invested:0,annualReturnPct:annualWeight?annualItems.reduce((s,x)=>s+investmentReportedAnnualPct(x)*(+x.amount||0),0)/annualWeight:null};
-  return bar+renderInvestmentDetailContent(filtered);
+  return providerImportNotice(row.client.id)+bar+renderInvestmentDetailContent(filtered);
 }
 function renderFkClientDetail(row) {
   if(!row?.client)return renderFkClientDetailContent(row);
   const bar=clientProviderBar('fki',row.client.id,row.items),selected=clientProviderSelection('fki',row.client.id);
   const items=row.items.filter(x=>!selected||(x.company||'Bez společnosti')===selected);
-  return bar+renderFkClientDetailContent({...row,items,aum:items.reduce((s,x)=>s+(+x.amount||0),0),invested:items.reduce((s,x)=>s+(+x.invested||0),0),realized:items.reduce((s,x)=>s+investmentRealizedAmount(x),0)});
+  return providerImportNotice(row.client.id)+bar+renderFkClientDetailContent({...row,items,aum:items.reduce((s,x)=>s+(+x.amount||0),0),invested:items.reduce((s,x)=>s+(+x.invested||0),0),realized:items.reduce((s,x)=>s+investmentRealizedAmount(x),0)});
 }
 function pensions_pRenderClientDetail(row) {
   const bar=clientProviderBar('penze',row.clientId,row.items),selected=clientProviderSelection('penze',row.clientId),items=row.items.filter(x=>!selected||(x.company||'Bez společnosti')===selected);
@@ -13606,7 +13762,7 @@ function renderInvestmentDetailContent(row) {
     last = snaps[0],
     funds = fundPerformance_classicGroups(items);
   if (!c) return typeof fundPerformance_prevRenderInvestmentDetail === 'function' ? fundPerformance_prevRenderInvestmentDetail.apply(this, arguments) : '<div class="investment-empty"><h2>Vyber klienta</h2></div>';
-  return `<div class="investment-detail-head"><div class="avatar">${esc(initials(c.name))}</div><div><div class="eyebrow">Investiční karta klienta</div><h2>${esc(clientName(c))}</h2><div class="chips"><span class="badge blue">${num(funds.length)} fondů</span><span class="chip">${row.providers.length ? esc(row.providers.join(' · ')) : 'bez společnosti'}</span>${last ? `<span class="badge green">ověřeno ${esc(last.date || '')}</span>` : '<span class="badge orange">čeká na aktualizaci</span>'}</div></div><div class="actions"><button class="btn slim" onclick="selectedClientId=${c.id};showView('clients');clientSection='portfolio';renderClients()">Klient</button><button class="btn slim" onclick="openInvestmentSnapshotModal(${c.id})">Upravit pozici</button><button class="btn slim primary" onclick="openInvestmentScenarioModal(${c.id},'Investice')">+ Nová investice</button></div></div><div class="investment-summary"><div class="metric"><span class="note">AUM / hodnota</span><b>${money(current)}</b></div><div class="metric"><span class="note">Vloženo</span><b>${money(invested)}</b></div><div class="metric"><span class="note">Výnos Kč</span><b class="${gain >= 0 ? 'green' : 'red'}">${money(gain)}</b></div><div class="metric"><span class="note">Zhodnocení celkem</span><b class="${gain >= 0 ? 'green' : 'red'}">${gainPct.toFixed(1)} %</b></div></div>${clientPortfolioTimeline(c.id,'Investice',items)}<div class="mini-card"><div class="toolbar"><div><div class="eyebrow">Detail investičních fondů</div><h3>Fondy klienta, pozice a hodnoty</h3></div><button class="btn" onclick="openInvestmentFundModal()">Fondy</button></div><div class="fki-work-list">${funds.map(f => fundPerformance_classicCard(f, c.id)).join('') || '<p class="note">Klient zatím nemá evidované investice.</p>'}</div></div>`;
+  return `<div class="investment-detail-head ${providerImportNeedsReview(c.id) ? 'provider-needs-review' : ''}"><div class="avatar">${esc(initials(c.name))}</div><div><div class="eyebrow">Investiční karta klienta</div><h2>${esc(clientName(c))}</h2>${providerImportBadge(c.id)}<div class="chips"><span class="badge blue">${num(funds.length)} fondů</span><span class="chip">${row.providers.length ? esc(row.providers.join(' · ')) : 'bez společnosti'}</span>${last ? `<span class="badge green">ověřeno ${esc(last.date || '')}</span>` : '<span class="badge orange">čeká na aktualizaci</span>'}</div></div><div class="actions"><button class="btn slim" onclick="selectedClientId=${c.id};showView('clients');clientSection='portfolio';renderClients()">Klient</button><button class="btn slim" onclick="openInvestmentSnapshotModal(${c.id})">Upravit pozici</button><button class="btn slim primary" onclick="openInvestmentScenarioModal(${c.id},'Investice')">+ Nová investice</button></div></div><div class="investment-summary"><div class="metric"><span class="note">AUM / hodnota</span><b>${money(current)}</b></div><div class="metric"><span class="note">Vloženo</span><b>${money(invested)}</b></div><div class="metric"><span class="note">Výnos Kč</span><b class="${gain >= 0 ? 'green' : 'red'}">${money(gain)}</b></div><div class="metric"><span class="note">Zhodnocení celkem</span><b class="${gain >= 0 ? 'green' : 'red'}">${gainPct.toFixed(1)} %</b></div></div>${clientPortfolioTimeline(c.id,'Investice',items)}<div class="mini-card"><div class="toolbar"><div><div class="eyebrow">Detail investičních fondů</div><h3>Fondy klienta, pozice a hodnoty</h3></div><button class="btn" onclick="openInvestmentFundModal()">Fondy</button></div><div class="fki-work-list">${funds.map(f => fundPerformance_classicCard(f, c.id)).join('') || '<p class="note">Klient zatím nemá evidované investice.</p>'}</div></div>`;
 }
 function renderFkClientDetailContent(row) {
   const c = row?.client,
@@ -13623,7 +13779,7 @@ function renderFkClientDetailContent(row) {
     total: items.length,
     next: ''
   };
-  return `<div class="investment-detail-head"><div class="avatar">${esc(initials(c.name))}</div><div><div class="eyebrow">FK karta klienta</div><h2>${esc(clientName(c))}</h2><div class="chips"><span class="badge purple">${num(items.length)} fondů</span><span class="badge ${stats.readyCount ? 'green' : 'red'}">${num(stats.readyCount)} / ${num(stats.total)} k odkupu</span>${stats.next ? `<span class="badge red">nejbližší ${esc(stats.next)}</span>` : ''}<span class="chip">${esc(row.providers.join(' · ') || 'bez společnosti')}</span>${locked.length ? `<span class="badge orange">${num(locked.length)} zamčeno mimo AUM</span>` : '<span class="badge green">AUM aktivní</span>'}</div></div><div class="actions"><button class="btn slim" onclick="selectedClientId=${c.id};showView('clients');clientSection='portfolio';renderClients()">Klient</button><button class="btn slim" onclick="setFkMode('funds')">Fondy</button><button class="btn slim" onclick="openFkRecordModal(${c.id})">+ FKI záznam</button><button class="btn slim primary" onclick="openInvestmentScenarioModal(${c.id},'FKI')">+ Nová investice</button></div></div><div class="investment-summary"><div class="metric"><span class="note">Aktuálně vloženo netto</span><b>${money(invested)}</b></div><div class="metric"><span class="note">Aktuální hodnota</span><b>${money(aum)}</b></div><div class="metric"><span class="note">Aktuální výnos</span><b class="${gain >= 0 ? 'green' : 'red'}">${money(gain)}</b><small>${gainPct.toFixed(1)} % celkem</small></div><div class="metric"><span class="note">Odkupy připravené</span><b class="${stats.readyCount ? 'green' : 'red'}">${num(stats.readyCount)} / ${num(stats.total)}</b></div></div>${clientPortfolioTimeline(c.id,'FKI',items)}<div class="mini-card"><div class="toolbar"><div><div class="eyebrow">Detail investičních fondů</div><h3>Fondy klienta, daňový test a odkup</h3></div><button class="btn" onclick="openFkClientReportModal(${c.id})">Report FKI + investice</button></div><div class="fki-work-list">${items.map(x => fundPerformance_fkiCardPa(x, c.id)).join('') || '<p class="note">Klient zatím nemá FKI fondy.</p>'}</div></div>`;
+  return `<div class="investment-detail-head ${providerImportNeedsReview(c.id) ? 'provider-needs-review' : ''}"><div class="avatar">${esc(initials(c.name))}</div><div><div class="eyebrow">FK karta klienta</div><h2>${esc(clientName(c))}</h2>${providerImportBadge(c.id)}<div class="chips"><span class="badge purple">${num(items.length)} fondů</span><span class="badge ${stats.readyCount ? 'green' : 'red'}">${num(stats.readyCount)} / ${num(stats.total)} k odkupu</span>${stats.next ? `<span class="badge red">nejbližší ${esc(stats.next)}</span>` : ''}<span class="chip">${esc(row.providers.join(' · ') || 'bez společnosti')}</span>${locked.length ? `<span class="badge orange">${num(locked.length)} zamčeno mimo AUM</span>` : '<span class="badge green">AUM aktivní</span>'}</div></div><div class="actions"><button class="btn slim" onclick="selectedClientId=${c.id};showView('clients');clientSection='portfolio';renderClients()">Klient</button><button class="btn slim" onclick="setFkMode('funds')">Fondy</button><button class="btn slim" onclick="openFkRecordModal(${c.id})">+ FKI záznam</button><button class="btn slim primary" onclick="openInvestmentScenarioModal(${c.id},'FKI')">+ Nová investice</button></div></div><div class="investment-summary"><div class="metric"><span class="note">Aktuálně vloženo netto</span><b>${money(invested)}</b></div><div class="metric"><span class="note">Aktuální hodnota</span><b>${money(aum)}</b></div><div class="metric"><span class="note">Aktuální výnos</span><b class="${gain >= 0 ? 'green' : 'red'}">${money(gain)}</b><small>${gainPct.toFixed(1)} % celkem</small></div><div class="metric"><span class="note">Odkupy připravené</span><b class="${stats.readyCount ? 'green' : 'red'}">${num(stats.readyCount)} / ${num(stats.total)}</b></div></div>${clientPortfolioTimeline(c.id,'FKI',items)}<div class="mini-card"><div class="toolbar"><div><div class="eyebrow">Detail investičních fondů</div><h3>Fondy klienta, daňový test a odkup</h3></div><button class="btn" onclick="openFkClientReportModal(${c.id})">Report FKI + investice</button></div><div class="fki-work-list">${items.map(x => fundPerformance_fkiCardPa(x, c.id)).join('') || '<p class="note">Klient zatím nemá FKI fondy.</p>'}</div></div>`;
 }
 function addInvestmentScenarioFund() {
   const before = (investmentScenario?.rows || []).length,
@@ -15066,8 +15222,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.28-1';
-const VERSION_NOTE = 'Volitelné měření práce v aktivitách a dvoutýdenní pilot v Analýze. Skutečný čas, odhady, návazné úkoly a porovnání celých výstupů včetně kontroly a oprav.';
+const VERSION = '2026.10.28-2';
+const VERSION_NOTE = 'Import Avant XLSX a bezpečná kontrola reportů Avant/Codya. Novější ocenění, červené rozdíly k ověření a ochrana ručních údajů i investic chybějících ve výpisu.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
@@ -15181,6 +15337,8 @@ const BACKUP_COUNT_LABELS = {
   analysisEntries: 'analytických aktivit',
   investments: 'investičních záznamů',
   investmentSnapshots: 'aktualizací investic',
+  providerImports: 'importů producentů',
+  providerImportEntries: 'kontrolovaných řádků producentů',
   externalInvestments: 'investic mimo správu',
   investmentForecasts: 'investičních prognóz',
   commissionImports: 'provizních importů',
@@ -15194,7 +15352,7 @@ const BACKUP_COUNT_LABELS = {
   delegationProcesses: 'činností k delegování',
   wealthRecords: 'majetkových podkladů'
 };
-const BACKUP_PROTECTED_KEYS = ['clients', 'contracts', 'deals', 'opportunities', 'insuranceClaims', 'claimHistory', 'claimAttachments', 'notes', 'activities', 'workPilots', 'workOutputs', 'workActivities', 'workTimeEntries', 'analysisEntries', 'campaigns', 'investments', 'investmentSnapshots', 'externalInvestments', 'investmentForecasts', 'commissionImports', 'referrerPayouts', 'referrals', 'weeklyGoals', 'weeklyReviews', 'dailyPriorities', 'focusSnapshots', 'delegationProcesses', 'wealthRecords'];
+const BACKUP_PROTECTED_KEYS = ['clients', 'contracts', 'deals', 'opportunities', 'insuranceClaims', 'claimHistory', 'claimAttachments', 'notes', 'activities', 'workPilots', 'workOutputs', 'workActivities', 'workTimeEntries', 'analysisEntries', 'campaigns', 'investments', 'investmentSnapshots', 'providerImports', 'providerImportEntries', 'externalInvestments', 'investmentForecasts', 'commissionImports', 'referrerPayouts', 'referrals', 'weeklyGoals', 'weeklyReviews', 'dailyPriorities', 'focusSnapshots', 'delegationProcesses', 'wealthRecords'];
 let scenario_editableScope = '';
 let fkiEditor_editingFkRecordKey = '',
   fkiEditor_editingFkClientId = null;

@@ -1,3 +1,12 @@
+## 2026.10.28-2
+
+- Transakční import Avant XLSX ve FKI: náhled, párování podle silné identity klienta, ISIN a pokynu, bezpečné novější ocenění a ruční řešení nejasností.
+- Společná kontrola Avant/Codya s porovnáním CRM/report, červeným označením klienta, fondu a hodnot, potvrzením CRM nebo převzetím jednoznačné změny.
+- Zachování pozic chybějících ve výpisu, ručních a novějších údajů. Nové pozice a změny základu investice vyžadují potvrzení; převody a konverze zůstávají k ručnímu zpracování.
+- Opakovaný import nepřidává stejné transakce; stejný soubor lze po úpravě CRM znovu porovnat. Změna dat mezi náhledem a uložením brání převzetí zastaralého návrhu.
+- Odkupy rozlišují vyplacené peníze a aktuální hodnotu odkoupených CP. Zbývající AUM, celkový výnos a klientský report používají odpovídající hodnoty.
+- Importní historie a rozhodnutí se ukládají, obnovují a slučují se zálohami. Neúspěšné uložení vrací předchozí stav. Pevné pořadí dashboardu zachováno.
+
 ## 2026.10.28-1
 
 - Volitelné měření práce v rychlé i podrobné aktivitě: oblast, skutečnost/odhad/nezjištěno, běžný/nový postup, překážka a explicitní obchodní případ. Délka aktivity zůstává jediným časovým údajem.

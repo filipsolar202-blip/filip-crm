@@ -2,7 +2,21 @@
 
 Lokální CRM pro klienty, smlouvy, obchody, pojistné události, investice, FKI, poznámky, reporty a zálohu.
 
-## Verze 2026.10.28-1
+## Verze 2026.10.28-2
+
+### Import reportů Avant a Codya
+
+Ve **FKI → Avant XLSX** vyber transakční export Avantu. Náhled nic nemění; tlačítko **Převzít bezpečné změny a uložit kontroly** převezme jednoznačné novější ocenění a uloží ostatní rozdíly k rozhodnutí. Párování používá RČ/IČO, ISIN a identitu pokynu/transakce. Samotné jméno nestačí. Ocenění respektuje datum uvedené u každého řádku reportu.
+
+Klient, dotčený fond a sporné hodnoty se označí červeně. Přes upozornění nebo **Kontrola reportů** zobrazíš hodnotu CRM vedle reportu a vybereš **Potvrdit správnost CRM**, **Přijmout údaje reportu**, případně **Otevřít klienta a upravit**. Přijetí je dostupné jen při jednoznačné vazbě. Po ruční opravě lze potvrdit CRM; při změně vazby znovu nahraj report pro nové porovnání.
+
+- Nové pozice, změny vkladu/počtu CP, ruční ocenění, starší výpis a nulová hodnota vyžadují kontrolu. Převody a konverze se zpracují ručně po ověření obou stran.
+- Investice chybějící v reportu zůstávají uložené a zobrazí se k ověření. Report nezakládá klienta podle podobnosti jména a nemaže novější nákup.
+- Stejný report nevytváří duplicitní transakce. Po změně CRM lze stejný soubor znovu načíst a porovnat s aktuálními údaji.
+- **Codya XLSX** v Investicích i FKI používá stejnou kontrolu. Doplň skutečné datum stavu výpisu; prázdná buňka není nula. Souhrn fondu se automaticky nerozděluje mezi více nákupů a různé třídy se nepárují podle podobnosti názvu.
+- U odkupů se odděluje skutečně vyplacená částka od aktuální hodnoty odkoupených CP, aby AUM i výnos odpovídaly zbylé investici a vyplaceným penězům.
+
+Importní historie a rozhodnutí jsou součástí záloh. Soubor se čte místně v prohlížeči, neposílá se nové externí službě. Import výpisu aktualizuje investiční evidenci; nevytváří další obchody ani provize.
 
 ### Měření práce a dvoutýdenní pilot
 
@@ -30,7 +44,7 @@ Uložený návrh najdeš na kartě klienta v **Portfolio → Prognózy portfolia
 
 Dashboard má pevné pořadí: **Dnešní 3 priority → Tento týden 3 cíle → Grafy → Statistiky, grafy a kontrola dat → Úkoly a připomínky**. Změny dat, filtrů ani rozbalení přehledů pořadí nemění. Nedokončené priority jsou součástí poslední sekce; rychlé odkazy zůstávají v denní kartě.
 
-Hlavní CRM má jednu aplikační logiku a společný modrý glass vzhled. Investiční plán porovnává aktuální portfolio s nejvýše dvěma alternativami A a B. Odprodej lze rozdělit do více nových nákupů. Pro klienta lze stáhnout podrobný investiční návrh ve stylu původní kalkulačky nebo stručné srovnání variant. Přehled změn je v `CHANGELOG.md`, ověření aktuálního vydání v `QA-2026-10-28-1.md`.
+Hlavní CRM má jednu aplikační logiku a společný modrý glass vzhled. Investiční plán porovnává aktuální portfolio s nejvýše dvěma alternativami A a B. Odprodej lze rozdělit do více nových nákupů. Pro klienta lze stáhnout podrobný investiční návrh ve stylu původní kalkulačky nebo stručné srovnání variant. Přehled změn je v `CHANGELOG.md`, ověření aktuálního vydání v `QA-2026-10-28-2.md`.
 
 V klientském HTML reportu jsou podrobnosti a popis fondu pod tlačítkem **Bližší info o fondu**. Název, společnost, ISIN, ocenění a hodnoty investice jsou viditelné hned; transakce se rozbalují zvlášť. Klientský detail odkazuje jen na oficiální stránku fondu. V interním přehledu informací o fondech zůstávají všechny ověřovací podklady. Fondy se v CRM i reportech řadí podle společnosti a potom podle názvu. Pro nové rozložení vytvoř report znovu — již stažené HTML soubory se automaticky nemění.
 
@@ -57,6 +71,8 @@ Datum obchodu je nezávislé na účinnosti. Obchod je evidovaný hned. Pokud je
 - `assets/css/insurance-claims.css` — přehled a detail pojistných událostí.
 - `assets/js/work-measurement.js` — volitelné měření aktivit, pilot, porovnání výstupů a kontrola návaznosti.
 - `assets/css/work-measurement.css` — formuláře a analýza měření práce pro počítač i telefon.
+- `assets/js/provider-import.js` — parsery reportů, porovnání a potvrzení změn.
+- `assets/js/provider-import-ui.js` a `assets/css/provider-import.css` — náhled, kontroly a červená upozornění.
 - `assets/css/crm.css` — společný vzhled včetně rozložení pro tablet.
 - `assets/vendor/` — lokální knihovny pro grafy a tabulky.
 - `index.html` — přesměrování na aktuální verzi.
