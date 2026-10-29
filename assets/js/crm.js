@@ -10,6 +10,9 @@ function renderAll() {
   renderActiveView();
 }
 function renderActiveView() {
+  return withPortfolioReadContext(renderActiveViewContent);
+}
+function renderActiveViewContent() {
   const active = document.querySelector('.view.active')?.id || 'dashboard',
     renders = {
       dashboard: [['Dashboard', renderDashboard]],
@@ -435,10 +438,9 @@ function managementBadge(clientOrId) {
   return `<span class="badge ${p.own ? 'blue' : 'purple'}">${esc(p.company || p.name)}</span>`;
 }
 function persist() {
+  invalidatePortfolioReadContext();
   state = normalizeState(state);
   clientDirectoryStatsCache = null;
-  clientInvestmentSummaryCache.clear();
-  clientPensionSummaryCache.clear();
   try {
     localStorage.setItem(STORE, JSON.stringify(state));
     window.__lastPersistOk = true;
@@ -903,7 +905,8 @@ function allOpenOpportunities() {
     .map(o => ({...o, status: caseStage(o.status)}));
 }
 function clientOpenOpportunities(id) {
-  return allOpenOpportunities().filter(o => String(o.clientId) === String(id));
+  return (state.opportunities || []).filter(o => String(o.clientId) === String(id) && isOpenOpportunity(o))
+    .map(o => ({...o, status: caseStage(o.status)}));
 }
 function clientNotes(id) {
   return state.notes.filter(n => String(n.clientId) === String(id)).sort((a, b) => String(b.date).localeCompare(String(a.date)));
@@ -1253,29 +1256,113 @@ function clientAreaStats(clientId) {
 function investmentAreaOfItem(x) {
   return x?.area || x?.group || (x?.kind === 'FKI' ? 'fki' : 'investice');
 }
+// Read indexes live for one synchronous render only. Saving or replacing state
+// invalidates them; ordinary calculator/import calls always read current data.
+var portfolioReadContext = null;
+function withPortfolioReadContext(callback) {
+  if (portfolioReadContext?.state === state) return callback();
+  const previous = portfolioReadContext;
+  portfolioReadContext = {state, values:new Map()};
+  try { return callback(); }
+  finally { portfolioReadContext = previous?.state === state ? previous : null; }
+}
+function invalidatePortfolioReadContext() {
+  if (portfolioReadContext) {
+    portfolioReadContext.state = state;
+    portfolioReadContext.values.clear();
+  }
+}
+function portfolioReadMemo(key, compute) {
+  const context = portfolioReadContext;
+  if (!context || context.state !== state) return compute();
+  if (!context.values.has(key)) context.values.set(key,compute());
+  return context.values.get(key);
+}
+function portfolioReadClientIndex() {
+  return portfolioReadMemo('portfolio:clients',() => {
+    const ids = new Map(), strong = new Map(), names = new Map();
+    const add = (map,key,client) => {
+      if (!map.has(key)) map.set(key,new Set());
+      map.get(key).add(client);
+    };
+    (state.clients || []).forEach(client => {
+      const id = String(client.id), birthId = normalizeStrongId(client.birthId);
+      if (!ids.has(id)) ids.set(id,client);
+      if (birthId) add(strong,birthId,client);
+      clientAliasNames(client).forEach(name => {
+        add(names,'exact:'+norm(name),client);
+        const person = personNameKey(name);
+        if (person) add(names,'person:'+person,client);
+      });
+    });
+    return {ids,strong,names};
+  });
+}
+function portfolioReadClientRows(collection, clientId) {
+  if (clientId == null) return state[collection] || [];
+  if (!portfolioReadContext || portfolioReadContext.state !== state) return (state[collection] || []).filter(row => String(row.clientId) === String(clientId));
+  const index = portfolioReadMemo('portfolio:rows:'+collection,() => {
+    const map = new Map();
+    (state[collection] || []).forEach(row => {
+      const id = String(row.clientId);
+      if (!map.has(id)) map.set(id,[]);
+      map.get(id).push(row);
+    });
+    return map;
+  });
+  return index.get(String(clientId)) || [];
+}
+function portfolioReadOwnedRecords(clientId) {
+  if (clientId == null) return state.investmentRecords || [];
+  if (!portfolioReadContext || portfolioReadContext.state !== state) return (state.investmentRecords || []).filter(record => portfolioRecordClientId(record) === String(clientId));
+  const index = portfolioReadMemo('portfolio:owned-records',() => {
+    const map = new Map();
+    (state.investmentRecords || []).forEach(record => {
+      const id = portfolioRecordClientId(record);
+      if (!map.has(id)) map.set(id,[]);
+      map.get(id).push(record);
+    });
+    return map;
+  });
+  return index.get(String(clientId)) || [];
+}
 function investmentSourceHasSnapshot(source, kind) {
   const sameClient = snapshot => String(snapshot.clientId) === String(source.clientId),
     matchesDeal = (snapshot,id) => snapshot.sourceDealId != null && String(snapshot.sourceDealId) === String(id);
-  return (state.investmentSnapshots || []).some(snapshot => sameClient(snapshot) && (
+  return portfolioReadClientRows('investmentSnapshots',source.clientId).some(snapshot => sameClient(snapshot) && (
     kind === 'deal' && matchesDeal(snapshot,source.id) ||
     kind === 'contract' && (snapshot.sourceContractId != null && String(snapshot.sourceContractId) === String(source.id) ||
       source.fromDealId != null && matchesDeal(snapshot,source.fromDealId) ||
-      (state.deals || []).some(deal => String(deal.clientId) === String(source.clientId) && String(deal.contractId || deal.fromContractId || '') === String(source.id) && matchesDeal(snapshot,deal.id))) ||
+      portfolioReadClientRows('deals',source.clientId).some(deal => String(deal.contractId || deal.fromContractId || '') === String(source.id) && matchesDeal(snapshot,deal.id))) ||
     source.scenarioLinkKey && snapshot.sourceScenarioLinkKey === source.scenarioLinkKey
   ));
 }
 function investmentSourceHasRecord(source) {
-  return (state.investmentRecords || []).some(record => !record.portfolioReplacedBy && !invIsWithdrawal(record) &&
+  if (!portfolioReadContext || portfolioReadContext.state !== state) return (state.investmentRecords || []).some(record => !record.portfolioReplacedBy && !invIsWithdrawal(record) &&
     portfolioRecordClientId(record) === String(source.clientId) && portfolioLinkedSources(record).includes(source));
+  const represented = portfolioReadMemo('portfolio:record-sources:'+String(source.clientId),() => {
+    const sources = new Set();
+    portfolioReadOwnedRecords(source.clientId).forEach(record => {
+      if (!record.portfolioReplacedBy && !invIsWithdrawal(record)) portfolioLinkedSources(record).forEach(item => sources.add(item));
+    });
+    return sources;
+  });
+  return represented.has(source);
 }
 function clientInvestmentItems(clientId) {
+  return portfolioReadMemo('clientInvestmentItems:'+String(clientId), () => clientInvestmentItemsRead(clientId));
+}
+function clientInvestmentItemsRead(clientId) {
   const allowed = ['investice', 'fki'],
     records = investmentPortfolioForClient(clientId).map(x => ({
       ...x,
       sourceType: 'record'
     })),
     recordAreas = new Set(records.map(investmentAreaOfItem));
-  const deals = clientDeals(clientId).filter(d => !d.portfolioReplacedBy && !d.portfolioPending && !d._investmentExcluded && !d._fkiExcluded && !investmentEntityIsPending(d,areaForDeal(d)) && !investmentSourceHasRecord(d) && !(areaForDeal(d) === 'investice' && investmentSourceHasSnapshot(d,'deal')) && allowed.includes(areaForDeal(d)) && !recordAreas.has(areaForDeal(d))).map(d => ({
+  const deals = clientDeals(clientId).filter(d => {
+    const area = areaForDeal(d);
+    return allowed.includes(area) && !recordAreas.has(area) && !d.portfolioReplacedBy && !d.portfolioPending && !d._investmentExcluded && !d._fkiExcluded && !investmentEntityIsPending(d,area) && !investmentSourceHasRecord(d) && !(area === 'investice' && investmentSourceHasSnapshot(d,'deal'));
+  }).map(d => ({
     kind: areaForDeal(d) === 'fki' ? 'FKI obchod' : 'Obchod',
     area: areaForDeal(d),
     clientId: d.clientId,
@@ -1293,7 +1380,7 @@ function clientInvestmentItems(clientId) {
   }));
   const contracts = clientContracts(clientId).filter(s => {
     const area = areaForContract(s), isin = norm(s.fundIsin || s.isin || '');
-    if (s._investmentExcluded || s._fkiExcluded || investmentEntityIsPending(s,area) || investmentSourceHasRecord(s) || area === 'investice' && investmentSourceHasSnapshot(s,'contract') || !allowed.includes(area)) return false;
+    if (!allowed.includes(area) || s._investmentExcluded || s._fkiExcluded || investmentEntityIsPending(s,area) || investmentSourceHasRecord(s) || area === 'investice' && investmentSourceHasSnapshot(s,'contract')) return false;
     const representedByRecord = records.some(x => investmentAreaOfItem(x) === area && (isin ? norm(x.isin) === isin : norm(x.company) === norm(s.company) && norm(x.product) === norm(s.product || s.type)));
     const representedByDeal = deals.some(x => String(x.source?.contractId || x.source?.fromContractId || '') === String(s.id) || (s.fromDealId && String(x.sourceId) === String(s.fromDealId)));
     return !representedByRecord && !representedByDeal;
@@ -1455,9 +1542,12 @@ function investmentCoveredPurchaseIds(snapshot, source = state) {
     investmentSnapshotCoversFund(snapshot,s) && (covered.has(investmentPurchaseId(s)) || !investmentSnapshotIsPending(s) && date && investmentSettlementDate(s.purchaseDate) <= date)).map(investmentPurchaseId).filter(Boolean))];
 }
 function investmentPendingRows(clientId = null, area = '') {
+  return portfolioReadMemo('portfolio:pending:'+JSON.stringify([clientId == null ? null : String(clientId),area]),() => investmentPendingRowsRead(clientId,area));
+}
+function investmentPendingRowsRead(clientId = null, area = '') {
   const rows = [], clientMatches = id => clientId == null || String(id) === String(clientId), representedDeals = new Set(), representedContracts = new Set();
   const remember = (id,dealId,contractId) => {if(dealId)representedDeals.add(String(id)+'|'+dealId);if(contractId)representedContracts.add(String(id)+'|'+contractId);};
-  (state.investmentRecords || []).filter(r => !r.portfolioReplacedBy).forEach(record => {
+  portfolioReadOwnedRecords(clientId).filter(r => !r.portfolioReplacedBy).forEach(record => {
     const owner = portfolioRecordClientId(record), recordArea = investmentRecordArea(record);
     remember(owner,record._crmDealId || (record._crmSourceType === 'deal' ? record._crmSourceId : ''),record._crmContractId || (record._crmSourceType === 'contract' ? record._crmSourceId : ''));
     if (!owner || !clientMatches(owner) || area && recordArea !== area || !investmentRecordIsPending(record)) return;
@@ -1467,18 +1557,18 @@ function investmentPendingRows(clientId = null, area = '') {
       amount:Math.abs(invDeposit(record)),tradeDate:record.tradeDate || '',...info,fundKey:invPositionKey(record),recordKey});
   });
   const latest = latestInvestmentSnapshots(clientId,true);
-  (state.investmentSnapshots || []).filter(s => !s.portfolioReplacedBy).forEach(snapshot => remember(snapshot.clientId,snapshot.sourceDealId,snapshot.sourceContractId));
+  portfolioReadClientRows('investmentSnapshots',clientId).filter(s => !s.portfolioReplacedBy).forEach(snapshot => remember(snapshot.clientId,snapshot.sourceDealId,snapshot.sourceContractId));
   latest.filter(s => clientMatches(s.clientId) && !isPensionReportItem(s) && investmentSnapshotIsPending(s)).forEach(snapshot => {
     if (area && area !== 'investice') return;
     rows.push({id:snapshot.id,kind:'snapshot',source:snapshot,clientId:snapshot.clientId,area:'investice',company:snapshot.company,product:snapshot.product,isin:snapshot.isin || '',
       amount:+(snapshot.investedBeforeRedemption ?? snapshot.invested) || 0,tradeDate:snapshot.tradeDate || '',...investmentSettlementInfo(snapshot),fundKey:investmentFundKey(snapshot)});
   });
-  for (const kind of ['deal','contract']) (state[kind === 'deal' ? 'deals' : 'contracts'] || []).forEach(entity => {
+  for (const kind of ['deal','contract']) portfolioReadClientRows(kind === 'deal' ? 'deals' : 'contracts',clientId).forEach(entity => {
     const entityArea = kind === 'deal' ? areaForDeal(entity) : areaForContract(entity), represented = kind === 'deal' ? representedDeals : representedContracts;
     if (!clientMatches(entity.clientId) || !findClient(entity.clientId) || !['fki','investice'].includes(entityArea) || area && entityArea !== area ||
       entity.portfolioReplacedBy || entity.portfolioPending || entity._fkiExcluded || entity._investmentExcluded || represented.has(String(entity.clientId)+'|'+entity.id) || !investmentEntityIsPending(entity,entityArea)) return;
     // A linked contract and deal describe the same unsettled purchase.
-    if (kind === 'contract' && (state.deals || []).some(d => String(d.clientId) === String(entity.clientId) && (String(d.id) === String(entity.fromDealId || '') || String(d.contractId || d.fromContractId || '') === String(entity.id)))) return;
+    if (kind === 'contract' && portfolioReadClientRows('deals',entity.clientId).some(d => String(d.id) === String(entity.fromDealId || '') || String(d.contractId || d.fromContractId || '') === String(entity.id))) return;
     rows.push({id:entity.id,kind,source:entity,clientId:entity.clientId,area:entityArea,company:entity.company,product:entity.product || entity.type,isin:entity.fundIsin || entity.isin || '',
       amount:kind === 'deal' ? dealVolume(entity) : parseMoney(entity.amount),tradeDate:entity.date || entity.dealDate || '',...investmentSettlementInfo(entity,entityArea,'entity'),
       fundKey:entityArea === 'fki' ? invPositionKey({Fond:entity.product,company:entity.company,ISIN:entity.fundIsin || entity.isin}) : investmentFundKey({...entity,isin:entity.fundIsin || entity.isin})});
@@ -1539,14 +1629,26 @@ function fundNavIdentity(key, value = {}) {
   return fundNavIsin(value.isin || (/^(?:investment-)?isin\|/i.test(key || '') ? String(key).split('|')[1] : ''));
 }
 function fundNavQuote(key, isin = '', source = state) {
-  const wanted = fundNavIsin(isin) || fundNavIdentity(key,source.fundValues?.[key]), quotes = [];
-  Object.entries(source.fundValues || {}).forEach(([candidate,value]) => {
-    if (wanted ? fundNavIdentity(candidate,value) !== wanted : candidate !== key) return;
-    const nav = invNum(value.nav);
-    if (nav > 0) quotes.push({nav,date:String(value.date || value.navDate || ''),updatedAt:String(value._navUpdatedAt || ''),source:'fund',key:candidate});
-  });
-  quotes.sort((a,b) => b.date.localeCompare(a.date) || b.updatedAt.localeCompare(a.updatedAt) || (a.key === key ? -1 : b.key === key ? 1 : a.key.localeCompare(b.key)));
-  return quotes[0] || {nav:0,date:'',updatedAt:'',source:'fund',key};
+  const wanted = fundNavIsin(isin) || fundNavIdentity(key,source.fundValues?.[key]);
+  const compute = () => {
+    const index = source === state && portfolioReadContext?.state === state ? portfolioReadMemo('portfolio:nav-index',() => Object.entries(source.fundValues || {}).reduce((map,[candidate,value]) => {
+      const identity = fundNavIdentity(candidate,value), nav = invNum(value.nav);
+      if (!(nav > 0)) return map;
+      const quote = {nav,date:String(value.date || value.navDate || ''),updatedAt:String(value._navUpdatedAt || ''),source:'fund',key:candidate};
+      if (!map.has(identity)) map.set(identity,[]);
+      map.get(identity).push(quote);
+      return map;
+    },new Map())) : null;
+    const quotes = index ? (index.get(wanted) || []).filter(quote => wanted || quote.key === key).slice() : Object.entries(source.fundValues || {}).flatMap(([candidate,value]) => {
+      if (wanted ? fundNavIdentity(candidate,value) !== wanted : candidate !== key) return [];
+      const nav = invNum(value.nav);
+      return nav > 0 ? [{nav,date:String(value.date || value.navDate || ''),updatedAt:String(value._navUpdatedAt || ''),source:'fund',key:candidate}] : [];
+    });
+    quotes.sort((a,b) => b.date.localeCompare(a.date) || b.updatedAt.localeCompare(a.updatedAt) || (a.key === key ? -1 : b.key === key ? 1 : a.key.localeCompare(b.key)));
+    return quotes[0] || {nav:0,date:'',updatedAt:'',source:'fund',key};
+  };
+  const result = source === state ? portfolioReadMemo('portfolio:nav:'+JSON.stringify([key,wanted]),compute) : compute();
+  return {...result};
 }
 function fundNavValue(key, isin = '', source = state) {
   const value = source.fundValues?.[key] || {}, quote = fundNavQuote(key,isin,source);
@@ -3745,6 +3847,8 @@ function renderClients() {
   const directory = byId('clientDirectory'), detail = byId('clientDetail');
   if (directory) directory.classList.toggle('hidden', !clientDirectoryMode);
   if (detail) detail.classList.toggle('active', !clientDirectoryMode);
+  // The directory is hidden on a client card; rebuilding every row blocks navigation.
+  if (!clientDirectoryMode) return renderClientDetail();
   const q = norm(val('clientSearch')), selectedManager = val('clientManagementFilter'), contactFilter = val('clientContactFilter'),
     productFilter = val('clientProductFilter'), scopeFilter = val('clientScopeFilter'), areaFilter = val('clientAreaFilter'), sort = val('clientSort') || 'name';
   fillManagementSelect('clientManagementFilter', selectedManager, true);
@@ -4182,6 +4286,9 @@ function clientSectionAction(c) {
   return `<button class="btn primary" onclick="openQuickActivity(${c.id})">Zaznamenat kontakt</button>`;
 }
 function renderClientDetail() {
+  return withPortfolioReadContext(renderClientDetailContent);
+}
+function renderClientDetailContent() {
   const c = findClient(selectedClientId),
     el = byId('clientDetail');
   if (!c) {
@@ -4215,8 +4322,9 @@ function renderClientDetail() {
   if (clientSection === 'overview') el.insertAdjacentHTML('beforeend', clientFamilyHtml(c) + clientReferralOverview(c));
 }
 function clientInvestmentSummary(clientId) {
-  const cacheKey = String(clientId);
-  if (clientInvestmentSummaryCache.has(cacheKey)) return clientInvestmentSummaryCache.get(cacheKey);
+  return portfolioReadMemo('client:investment-summary:'+String(clientId), () => clientInvestmentSummaryRead(clientId));
+}
+function clientInvestmentSummaryRead(clientId) {
   const items = clientDisplayInvestmentItems(clientId),
     classic = items.filter(x => investmentAreaOfItem(x) === 'investice').reduce((s, x) => s + (+x.amount || 0), 0),
     fki = items.filter(x => investmentAreaOfItem(x) === 'fki').reduce((s, x) => s + (+x.amount || 0), 0),
@@ -4229,17 +4337,16 @@ function clientInvestmentSummary(clientId) {
     invested,
     gain: classic + fki - invested
   };
-  clientInvestmentSummaryCache.set(cacheKey, summary);
   return summary;
 }
 function clientPensionSummary(clientId) {
-  const id = String(clientId);
-  if (clientPensionSummaryCache.has(id)) return clientPensionSummaryCache.get(id);
+  return portfolioReadMemo('client:pension-summary:'+String(clientId), () => clientPensionSummaryRead(clientId));
+}
+function clientPensionSummaryRead(clientId) {
   const
-    items = typeof pensions_pItems === 'function' ? pensions_pItems().filter(x => String(x.clientId) === id) : [],
+    items = typeof pensions_pItems === 'function' ? pensions_pItems(clientId) : [],
     total = items.reduce((sum, x) => sum + (+x.amount || 0), 0);
   const summary = {items, total};
-  clientPensionSummaryCache.set(id, summary);
   return summary;
 }
 function clientExternalInvestments(clientId) {
@@ -4764,8 +4871,11 @@ function investmentItemKey(x) {
   return [String(x.clientId || x.client?.id || ''), investmentFundKey(x)].join('|');
 }
 function latestInvestmentSnapshots(clientId = null, includePending = false) {
+  return portfolioReadMemo('portfolio:latest-snapshots:'+JSON.stringify([clientId ? String(clientId) : null,!!includePending]),() => latestInvestmentSnapshotsRead(clientId,includePending)).slice();
+}
+function latestInvestmentSnapshotsRead(clientId = null, includePending = false) {
   const map = {};
-  (state.investmentSnapshots || []).filter(s=>!s.portfolioReplacedBy).filter(s => !clientId || String(s.clientId) === String(clientId)).forEach(s => {
+  portfolioReadClientRows('investmentSnapshots',clientId || null).filter(s=>!s.portfolioReplacedBy).forEach(s => {
     const key = investmentSnapshotKeyForSnapshot(s);
     if (!map[key] || String(s.date || '').localeCompare(String(map[key].date || '')) >= 0) map[key] = s;
   });
@@ -5485,8 +5595,7 @@ function toggleInvestmentFundLock(encodedKey) {
   saveToast(state.lockedFunds[lockKey] ? 'Fond zamčený mimo reporty' : 'Fond odemčený do reportů');
 }
 function clientClassicInvestmentReportItems(clientId) {
-  const id = String(clientId);
-  return classicInvestmentItems().filter(x => String(x.clientId || x.client?.id) === id).map(x => ({
+  return classicInvestmentItemsForClient(clientId).map(x => ({
     product: x.product || x.kind || 'Investice',
     company: x.company || '',
     isin: x.isin || x.snapshot?.isin || '',
@@ -10028,6 +10137,28 @@ function fkiPortfolio_fkiProposalRows(clientId) {
   return clientOpenOpportunities(clientId).filter(o => opportunityArea(o) === 'fki' || o.category === 'FKI');
 }
 function portfolioRecordClientId(record) {
+  if (portfolioReadContext?.state === state) {
+    const owners = portfolioReadMemo('portfolio:record-owners',() => new WeakMap());
+    if (record && typeof record === 'object' && owners.has(record)) return owners.get(record);
+    const index = portfolioReadClientIndex(), strong = normalizeStrongId(invBirthId(record)) || (/^RC[_-]/i.test(invClientId(record)) ? normalizeStrongId(invClientId(record).replace(/^RC[_-]?/i,'')) : '');
+    let owner = '';
+    if (Object.prototype.hasOwnProperty.call(record || {},'_providerClientId')) {
+      owner = record._providerClientId != null && index.ids.has(String(record._providerClientId)) ? String(record._providerClientId) : '';
+    } else if (strong) {
+      const matches = index.strong.get(strong);
+      owner = matches?.size === 1 ? String(matches.values().next().value.id) : '';
+    } else if (index.ids.has(invClientId(record))) {
+      owner = String(index.ids.get(invClientId(record)).id);
+    } else {
+      const name = invInvestor(record), person = personNameKey(name), matches = new Set([
+        ...(index.names.get('exact:'+norm(name)) || []),
+        ...(person ? index.names.get('person:'+person) || [] : [])
+      ]);
+      owner = matches.size === 1 ? String(matches.values().next().value.id) : '';
+    }
+    if (record && typeof record === 'object') owners.set(record,owner);
+    return owner;
+  }
   const clients = state.clients || [];
   if (Object.prototype.hasOwnProperty.call(record || {}, '_providerClientId')) {
     return record._providerClientId != null && clients.some(c => String(c.id) === String(record._providerClientId)) ? String(record._providerClientId) : '';
@@ -10097,11 +10228,11 @@ function portfolioExcludeSources(sources) {
 }
 function portfolioLinkedSources(record) {
   const clientId = portfolioRecordClientId(record);
-  const deals = (state.deals || []).filter(d => portfolioSourceBelongsToClient(d,clientId) &&
+  const deals = portfolioReadClientRows('deals',clientId).filter(d => portfolioSourceBelongsToClient(d,clientId) &&
     ((record._crmSourceType === 'deal' && String(d.id) === String(record._crmSourceId)) ||
       (record._crmDealId && String(d.id) === String(record._crmDealId)) ||
       (record._crmScenarioLinkKey && d.scenarioLinkKey === record._crmScenarioLinkKey)));
-  const contracts = (state.contracts || []).filter(s => portfolioSourceBelongsToClient(s,clientId) &&
+  const contracts = portfolioReadClientRows('contracts',clientId).filter(s => portfolioSourceBelongsToClient(s,clientId) &&
     ((record._crmSourceType === 'contract' && String(s.id) === String(record._crmSourceId)) ||
       (record._crmContractId && String(s.id) === String(record._crmContractId)) ||
       deals.some(d => String(s.fromDealId || '') === String(d.id) || String(d.contractId || d.fromContractId || '') === String(s.id))));
@@ -11799,8 +11930,9 @@ function pensions_pIdentityBase(x) {
   const number = pensions_pNorm(x.number || x.contractNumber || '');
   return [client, company, product, number].join('|');
 }
-function pensions_pItems() {
-  const contracts = (state.contracts || []).filter(s => pensions_pIsPensionContract(s) && pensions_pIsActive(s)).map(s => ({
+function pensions_pItems(clientId = null) {
+  const matchesClient = x => clientId == null || String(x.clientId) === String(clientId);
+  const contracts = (state.contracts || []).filter(s => matchesClient(s) && pensions_pIsPensionContract(s) && pensions_pIsActive(s)).map(s => ({
     kind: 'contract',
     id: s.id,
     clientId: s.clientId,
@@ -11814,7 +11946,7 @@ function pensions_pItems() {
     source: s
   }));
   const contractKeys = new Set(contracts.map(x => pensions_pIdentityBase(x.source)));
-  const deals = (typeof visibleDeals === 'function' ? visibleDeals() : state.deals || []).filter(d => pensions_pIsPensionDeal(d) && pensions_pIsActive(d)).filter(d => !contractKeys.has(pensions_pIdentityBase(d)) && !contracts.some(c=>String(c.id)===String(d.contractId||d.fromContractId)||String(c.source.fromDealId)===String(d.id))).map(d => ({
+  const deals = (typeof visibleDeals === 'function' ? visibleDeals() : state.deals || []).filter(d => matchesClient(d) && pensions_pIsPensionDeal(d) && pensions_pIsActive(d)).filter(d => !contractKeys.has(pensions_pIdentityBase(d)) && !contracts.some(c=>String(c.id)===String(d.contractId||d.fromContractId)||String(c.source.fromDealId)===String(d.id))).map(d => ({
     kind: 'deal',
     id: d.id,
     clientId: d.clientId,
@@ -11923,6 +12055,9 @@ function clientOutput_xInvestmentKey(x) {
   return typeof investmentFundKey === 'function' ? investmentFundKey(x) : [x.company, x.product, x.isin].filter(Boolean).join('|');
 }
 function clientOutput_xClientInvestments(c) {
+  return withPortfolioReadContext(() => clientOutput_xClientInvestmentsRead(c));
+}
+function clientOutput_xClientInvestmentsRead(c) {
   const classic = (typeof clientClassicInvestmentReportItems === 'function' ? clientClassicInvestmentReportItems(c.id) : []).filter(x => !(typeof isPensionReportItem === 'function' && isPensionReportItem(x))).filter(x => !(typeof isInvestmentFundLocked === 'function' && isInvestmentFundLocked(clientOutput_xInvestmentKey(x)))).map(x => {
     const key = clientOutput_xInvestmentKey(x),
       fv = clientOutput_xFundValue('investice', key, x.isin);
@@ -11946,8 +12081,7 @@ function clientOutput_xClientInvestments(c) {
       rows: [x]
     };
   });
-  const row = (typeof fkClientRows === 'function' ? fkClientRows() : []).find(r => String(r.client?.id) === String(c.id));
-  const fki = (row?.items || []).filter(x => !x.locked).map(x => {
+  const fki = fkItemsForClient(c.id).filter(x => !x.locked).map(x => {
     const source = x.source || {},
       isin = x.isin || (typeof invIsin === 'function' ? invIsin(source) : ''),
       key = x.key || (typeof invPositionKey === 'function' ? invPositionKey(source) : '');
@@ -15738,8 +15872,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.29-3';
-const VERSION_NOTE = 'Nakoupené investice bez skutečného data nákupu a u FKI také emise se evidují samostatně mimo AUM. Přehled čekajících prostředků je u klienta, v AUM i reportu; doplnění údajů nezakládá další obchod.';
+const VERSION = '2026.10.29-4';
+const VERSION_NOTE = 'Rychlejší otevření klienta a portfolia. Karta už nepřekresluje skrytý seznam klientů a opakované investiční výpočty sdílí pouze během jednoho vykreslení. Změny ocenění se zobrazují hned po uložení.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
@@ -15778,8 +15912,6 @@ let state = loadState(),
   caseDetailReturnView = 'pipeline',
   clientDirectoryMode = true,
   clientDirectoryStatsCache = null,
-  clientInvestmentSummaryCache = new Map(),
-  clientPensionSummaryCache = new Map(),
   selectedInvestmentClientId = null,
   selectedInvestmentFundKey = null,
   selectedFkClientId = null,

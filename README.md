@@ -2,7 +2,11 @@
 
 Lokální CRM pro klienty, smlouvy, obchody, pojistné události, investice, FKI, poznámky, reporty a zálohu.
 
-## Verze 2026.10.29-3
+## Verze 2026.10.29-4
+
+### Rychlejší klientské karty
+
+Otevření klienta a jeho portfolia zpracovává jen potřebné údaje. Skrytý seznam klientů se nepřekresluje; vrátíš-li se na seznam, obnoví se podle aktuálních filtrů. Přepočty sdílené při jednom vykreslení se po něm zahodí, takže další otevření i uložení používá aktuální hodnoty.
 
 ### Nakoupeno a čekání na připsání
 

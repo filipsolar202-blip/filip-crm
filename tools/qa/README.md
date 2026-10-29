@@ -4,6 +4,8 @@ Spouštět z kořene repozitáře:
 
 ```sh
 node tools/qa/static.cjs
+node tools/qa/portfolio-read-context.cjs
+node tools/qa/client-performance.cjs
 node tools/qa/google-sync.cjs
 python3 tools/qa/storage.py
 node tools/qa/regression.cjs
@@ -74,3 +76,7 @@ insurance-claims.cjs ověřuje založení a úpravy pojistných událostí, hist
 `portfolio-deletion.cjs` ověřuje mazání nákupu/odkupu/fondu/aktualizace/smlouvy/obchodu/případu, navázané i nejasné odkupy, zachování ostatních klientů, chybně klasifikované starší řádky, uzavření importních kontrol, zrušení a rollback, obnovení stránky a historii pojistné události. `provider-deletion.cjs` kontroluje přesné cíle importních kontrol, klientské identity a idempotenci. Používají pouze syntetická data.
 
 `investment-settlement.cjs` kontroluje skutečné editory, prázdná a doplněná data, opakované potvrzení, NAV bez aktivace nákupu, obchodní produkci, zůstatky po dokupu a následném celkovém ocenění, souhrn Edward, rollback, reload, klientské a globální UI i mobil. `investment-settlement-core.cjs` chrání především průniky zdrojového obchodu/smlouvy a autoritativní pozice. `investment-settlement-restore.cjs` kontroluje stabilní identitu nákupu a novější metadata při sloučení zálohy. `report-pending.cjs` ověřuje oddělený čekající oddíl mimo AUM/grafy, výběr položek a tisk. Všechny používají pouze syntetické údaje.
+
+`portfolio-read-context.cjs` porovnává indexované a přímé čtení: nejednoznačná jména/RČ, výslovně nepřiřazené záznamy, vazby smluv a obchodů, výběr NAV včetně shodného data, čekající částky a souhrny zahrnující nákupy. Ověřuje zneplatnění, výměnu stavu, čtení alternativního stavu, kopii pole snapshotů a uvolnění kontextu po výjimce.
+
+`client-performance.cjs` používá 300 syntetických klientů, 3 900 investičních záznamů a 600 snapshotů. Měří skutečné kliknutí v seznamu a na Portfolio, opakované otevření a uložení přes editor. Kontroluje aktivní AUM, čekající nákup, izolaci klientů a čerstvé hodnoty po změně existujícího objektu. `CRM_QA_CLIENTS=100` změní velikost; `CRM_QA_SCRIPT_REF=1683bba` přehraje stejnou fixture proti předchozí verzi. Výchozím vstupem je seznam klientů, `CRM_QA_FULL_STARTUP=1` ponechá dashboard. Časy jsou orientační pro stejné testovací prostředí, nikoli garantovaná odezva uživatelského zařízení.

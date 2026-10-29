@@ -467,7 +467,7 @@ try{
    state.managementPayouts.push({id:99932,partnerId:'mantra',date:'2026-10-04',amount:3000,type:'acquisition'});
    showView('management');renderManagement();
    const result={defaultPartner:normalizeState({...def(),clients:[{id:91,name:'Starý klient'}]}).clients[0].managementPartnerId,ownAum:managementInvestmentItems(ownManagementId()).reduce((s,x)=>s+(+x.amount||0),0),mantraAum:managementInvestmentItems('mantra').reduce((s,x)=>s+(+x.amount||0),0),claim:managementClaimForDeal(state.deals.at(-1),partner),received:(state.managementPayouts||[]).filter(x=>x.partnerId==='mantra').reduce((s,x)=>s+(+x.amount||0),0),clientRows:document.querySelectorAll('#managementClientsTable tbody tr').length,dealRows:document.querySelectorAll('#managementDealsTable tbody tr').length};
-   showView('clients');setVal('clientManagementFilter','mantra');renderClients();result.filteredClientRows=document.querySelectorAll('#clientList .client-row').length;result.filterValue=val('clientManagementFilter');
+   openClientDirectory();setVal('clientManagementFilter','mantra');renderClients();result.filteredClientRows=document.querySelectorAll('#clientList .client-row').length;result.filterValue=val('clientManagementFilter');
    state=JSON.parse(original);renderAll();return result;
  });
  assert.equal(management.defaultPartner,'filip');assert.equal(management.claim,4000);assert.equal(management.received,3000);assert(management.clientRows>=1);assert(management.dealRows>=1);assert.equal(management.filteredClientRows,1);assert.equal(management.filterValue,'mantra');assert(management.mantraAum>=0);assert(management.ownAum>=0);

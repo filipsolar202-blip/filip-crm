@@ -1,6 +1,6 @@
 # Architektura hlavního CRM
 
-Stav k verzi 2026.10.29-3. Starší ARCHITECTURE_AUDIT.md popisuje stav před sjednocením aplikační logiky.
+Stav k verzi 2026.10.29-4. Starší ARCHITECTURE_AUDIT.md popisuje stav před sjednocením aplikační logiky.
 
 ## Jedna aplikace
 
@@ -13,6 +13,14 @@ Pojistné události používají kolekci `state.insuranceClaims`. Modul `assets/
 Investice mimo správu jsou uloženy samostatně v `externalInvestments` a prognózy v `investmentForecasts`. Výpočty AUM, produkce a provizí tyto externí položky nečtou. Prognóza si ukládá vlastní snímek spravovaných i externích pozic a návrhu, aby šla později znovu otevřít beze změny historického výstupu.
 
 Samostatné historické HTML nástroje zůstávají zachované. Nejsou součástí běhu hlavní aplikace a nebyly tímto vydáním funkčně sloučeny ani odstraněny.
+
+## Rozsah investičních čtení
+
+`withPortfolioReadContext` obaluje synchronní vykreslení aktivní stránky, detailu klienta a sestavení jeho investičního výstupu. Vnořené volání sdílí kontext, v `finally` se kontext uvolní. Indexy klientských identit, vlastnictví záznamů, zdrojových vazeb, NAV a posledních snapshotů se ukládají jen do tohoto dočasného kontextu; neukládají se do dat ani mezi vykresleními. `persist` je zneplatní před normalizací; odlišná reference `state` obchází staré indexy. Volání kalkulaček a importů mimo kontext čtou přímo stav.
+
+Přímá změna dat uvnitř stejného synchronního kontextu musí před dalším čtením zavolat `invalidatePortfolioReadContext`. Kontext není určen pro asynchronní operace. Při běžné změně a následném novém vykreslení se vytvoří nový. Výběr vlastníka nadále zachovává jednoznačné silné identity, výslovně nepřiřazené importy i nejednoznačná jména. Ruční hodnoty, výpisy, NAV a čekající nákupy používají původní výpočetní pravidla.
+
+`renderClients` v režimu detailu vynechává skrytý adresář. Klientské reporty volají `classicInvestmentItemsForClient` a `fkItemsForClient`, nikoli výpočty všech klientů. Neinvestiční smlouvy se vyřazují před hledáním investičních vazeb. Souhrny klienta se již neuchovávají v trvalé cache.
 
 ## Investiční návrh a obchodní případy
 

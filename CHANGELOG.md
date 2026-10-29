@@ -1,3 +1,10 @@
+## 2026.10.29-4
+
+- Otevření klienta už nepřekresluje celý skrytý seznam klientů. Záložky karty a klientský report zpracovávají údaje daného klienta bez výpočtu portfolií ostatních.
+- Kontroly investičních vazeb se neprovádějí u neinvestičních smluv a obchodů. Opakovaná čtení vlastníků, NAV, posledních ocenění a čekajících nákupů sdílejí výsledky pouze během jednoho synchronního vykreslení.
+- Nové vykreslení čte aktuální data. Uložení a výměna stavu zneplatní pomocné indexy; ruční ocenění, nejasné identity, čekající nákupy a oddělení klientů zůstávají zachované.
+- Výkonnostní test na 300 syntetických klientech a 3 900 investičních záznamech ověřuje skutečné kliknutí, editaci, přepínání klientů a stejné AUM.
+
 ## 2026.10.29-3
 
 - Volitelné skutečné datum nákupu a emise. Podepsaný obchod už tato data automaticky nepředvyplňuje datem obchodu.
