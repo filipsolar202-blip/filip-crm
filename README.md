@@ -2,7 +2,13 @@
 
 Lokální CRM pro klienty, smlouvy, obchody, pojistné události, investice, FKI, poznámky, reporty a zálohu.
 
-## Verze 2026.10.29-1
+## Verze 2026.10.29-2
+
+### Mazání nesprávných záznamů
+
+Na kartě klientského fondu je **Smazat fond klienta**, u jednotlivých transakcí **Smazat**. U běžných investic lze odstranit pouze jednu aktualizaci — v takovém případě se může znovu zobrazit předchozí hodnota. Úplné odstranění fondu klienta odstraní také jeho aktualizace a zabrání obnovení ze zachovaných obchodů/smluv. Katalog fondu, cena CP i ostatní klienti zůstávají.
+
+Před potvrzením CRM vysvětlí rozsah odstranění. Nákup s výslovně navázanými odkupy se odstraní společně; u nejasně přiřazených odkupů je potřeba nejprve upřesnit vazbu nebo odstranit celý fond klienta. Smlouvy, obchody a případy mají také přímé tlačítko mazání. Smazání smlouvy ponechá pojistné události, přílohy a výplaty v historii klienta.
 
 ### Společná cena CP a aktuální AUM
 

@@ -1,3 +1,10 @@
+## 2026.10.29-2
+
+- Přímé mazání jednotlivých investičních transakcí, aktualizací a celého fondu u klienta, včetně starších karet bez dostupných řádků. Společný katalog fondů a ostatní klienti se nemění.
+- Odstraněná pozice se znovu nevytvoří z navázaného obchodu či smlouvy. Výslovně přiřazené odkupy se odstraní s nákupem; nejasná vazba vyžaduje její upřesnění nebo smazání celého klientského fondu.
+- Smlouvy, obchody a případy lze mazat i přímo z jejich přehledů. Pojistné události při smazání smlouvy zůstávají včetně plnění a příloh, s označením odstraněné smlouvy v historii.
+- Před odstraněním se zobrazí rozsah změny. Zrušení a selhání uložení zachovají původní data; kontroly importu odstraněné pozice se uzavřou, historie kontrol zůstává.
+
 ## 2026.10.29-1
 
 - Sjednocené ocenění FKI v editoru, klientské kartě, AUM a HTML reportu. Starší importovaná částka již neblokuje výpočet z CP kvůli datu nahrání souboru.

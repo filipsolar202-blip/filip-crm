@@ -1,6 +1,6 @@
 # Architektura hlavního CRM
 
-Stav k verzi 2026.10.29-1. Starší ARCHITECTURE_AUDIT.md popisuje stav před sjednocením aplikační logiky.
+Stav k verzi 2026.10.29-2. Starší ARCHITECTURE_AUDIT.md popisuje stav před sjednocením aplikační logiky.
 
 ## Jedna aplikace
 

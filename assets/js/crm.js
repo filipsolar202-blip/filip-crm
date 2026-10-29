@@ -1239,7 +1239,7 @@ function clientInvestmentItems(clientId) {
       sourceType: 'record'
     })),
     recordAreas = new Set(records.map(investmentAreaOfItem));
-  const deals = clientDeals(clientId).filter(d => !d.portfolioReplacedBy && !d.portfolioPending && allowed.includes(areaForDeal(d)) && !recordAreas.has(areaForDeal(d))).map(d => ({
+  const deals = clientDeals(clientId).filter(d => !d.portfolioReplacedBy && !d.portfolioPending && !d._investmentExcluded && !d._fkiExcluded && allowed.includes(areaForDeal(d)) && !recordAreas.has(areaForDeal(d))).map(d => ({
     kind: areaForDeal(d) === 'fki' ? 'FKI obchod' : 'Obchod',
     area: areaForDeal(d),
     clientId: d.clientId,
@@ -1257,7 +1257,7 @@ function clientInvestmentItems(clientId) {
   }));
   const contracts = clientContracts(clientId).filter(s => {
     const area = areaForContract(s), isin = norm(s.fundIsin || s.isin || '');
-    if (!allowed.includes(area)) return false;
+    if (s._investmentExcluded || s._fkiExcluded || !allowed.includes(area)) return false;
     const representedByRecord = records.some(x => investmentAreaOfItem(x) === area && (isin ? norm(x.isin) === isin : norm(x.company) === norm(s.company) && norm(x.product) === norm(s.product || s.type)));
     const representedByDeal = deals.some(x => String(x.source?.contractId || x.source?.fromContractId || '') === String(s.id) || (s.fromDealId && String(x.sourceId) === String(s.fromDealId)));
     return !representedByRecord && !representedByDeal;
@@ -1527,6 +1527,33 @@ function invValuation(r, source = state) {
 }
 function invCurrentValue(r, source = state) {
   return invValuation(r,source).value;
+}
+function crmDeleteCloseProviderTargets(targets) {
+  const targetKey = target => target && ['record','snapshot'].includes(target.kind) && target.key != null && String(target.key) !== '' ? JSON.stringify([target.kind,String(target.key)]) : '';
+  const byKey = new Map();
+  (Array.isArray(targets) ? targets : []).forEach(target => {
+    const key = targetKey(target);
+    if (!key) return;
+    if (!byKey.has(key)) byKey.set(key,[]);
+    byKey.get(key).push(target);
+  });
+  if (!byKey.size) return 0;
+  const stamp = new Date().toISOString();
+  let closed = 0;
+  (state.providerImports || []).forEach(batch => {
+    let changed = false;
+    (batch.entries || []).forEach(entry => {
+      if (!['pending','auto'].includes(entry.status)) return;
+      const target = entry.targetKey || (entry.recordKey ? {kind:'record',key:entry.recordKey} : null);
+      const matches = byKey.get(targetKey(target)) || [];
+      if (!matches.some(request => !Object.prototype.hasOwnProperty.call(request,'clientId') || String(request.clientId ?? '') === String(entry.clientId ?? ''))) return;
+      Object.assign(entry,{status:'kept',canAccept:false,reason:'Záznam byl odstraněn uživatelem.',resolvedAt:stamp,updatedAt:stamp});
+      closed++;
+      changed = true;
+    });
+    if (changed) batch.updatedAt = stamp;
+  });
+  return closed;
 }
 function providerStorageCurrentValue(record, source = state) {
   return invCurrentValue(record,source);
@@ -3370,7 +3397,7 @@ function renderCaseDetail() {
   const c = findClient(o.clientId), stages = caseStages(), current = caseStage(o.status), currentIndex = stages.indexOf(current), closed = !isOpenOpportunity(o),
     history = [...(o.history || [])].sort((a,b)=>String(b.d || '').localeCompare(String(a.d || ''))), commission = caseExpectedCommission(o),
     next = opportunityNextContactDate(o), replacement = o.replacesContractId ? state.contracts.find(x=>String(x.id)===String(o.replacesContractId)) : null;
-  root.innerHTML = `<div class="case-detail-shell"><section class="case-detail-top"><div class="case-detail-breadcrumb"><button class="client-back-button" onclick="closeCaseDetail()">← Zpět na seznam</button><div class="actions"><button class="btn" onclick="openQuickActivity(${Number(o.clientId)},'phone',${Number(o.id)})">Zaznamenat kontakt</button><button class="btn primary" onclick="openOpportunityModal(${Number(o.clientId)},${Number(o.id)})">Upravit případ</button></div></div><div class="case-detail-title"><div><div class="chips"><span class="badge blue">${esc(o.category || 'Obchodní případ')}</span>${opportunityBadge(current)}${replacementBadge(o)}</div><h2>${esc(o.product || o.category || 'Obchodní případ')}</h2><p class="note">${esc(clientName(c))} · ${esc(o.company || 'bez společnosti')} · poslední změna ${esc(caseLastUpdate(o) ? dateObj(caseLastUpdate(o)).toLocaleDateString('cs-CZ') : 'bez data')}</p></div><div class="client-summary-tile"><small>${closed ? 'Původní odhad provize' : 'Očekávaná provize'}</small><b>${money(commission)}</b><span>objem ${money(o.amount)} · ${num(o.bj)} BJ</span></div></div><div class="case-stage-track">${(o.status === 'Podepsáno' ? [] : [...stages,'Klient nemá zájem','Zrušeno']).map((stage,i)=>`<button class="case-stage-step ${stage === current ? 'active' : i < currentIndex ? 'done' : ''}" onclick="updateOpportunityStatus('${esc(o.id)}','${esc(stage)}')">${esc(stage)}</button>`).join('')}</div></section><div class="case-detail-grid"><div class="case-detail-shell"><section class="case-detail-panel"><div class="toolbar"><div><div class="eyebrow">Aktuální fáze</div><h3>${esc(current)}</h3></div></div><div class="case-history-list">${caseDetailChecklist(o)}</div></section><section class="case-detail-panel"><div class="toolbar"><div><div class="eyebrow">Podrobnosti</div><h3>Parametry případu</h3></div><button class="btn slim" onclick="openOpportunityModal(${Number(o.clientId)},${Number(o.id)})">Upravit</button></div><div class="case-detail-facts"><div class="case-detail-fact"><span>Klient</span><button class="case-title" onclick="openClientWorkspace(${Number(o.clientId)},'opportunities')">${esc(clientName(c))}</button></div><div class="case-detail-fact"><span>Kategorie</span><b>${esc(o.category || '-')}</b></div><div class="case-detail-fact"><span>Společnost</span><b>${esc(o.company || '-')}</b></div><div class="case-detail-fact"><span>Produkt</span><b>${esc(o.product || '-')}</b></div><div class="case-detail-fact"><span>Objem</span><b>${money(o.amount)}</b></div><div class="case-detail-fact"><span>BJ</span><b>${num(o.bj)}</b></div><div class="case-detail-fact"><span>Termín dokončení</span><b>${esc(o.expectedDate || '-')}</b></div><div class="case-detail-fact"><span>Původní smlouva</span><b>${esc(replacement ? [replacement.company,replacement.product,replacement.number].filter(Boolean).join(' · ') : '-')}</b></div></div>${o.note ? `<div class="notice small" style="margin-top:12px"><b>Poznámky k jednání</b><div style="white-space:pre-wrap;margin-top:5px">${esc(o.note)}</div></div>` : ''}</section></div><aside class="case-detail-shell"><section class="case-detail-panel"><div class="eyebrow">Další krok</div><div class="case-next-action"><b>${closed ? 'Případ je uzavřený' : next ? dateObj(next).toLocaleDateString('cs-CZ') : 'Termín není naplánovaný'}</b><p class="note">${closed ? 'Historie a podklady zůstávají uložené.' : esc(o.lastContactMethod || (current === 'Opportunity' ? 'Klienta je potřeba kontaktovat.' : 'Doplňte další návaznost.'))}</p></div>${closed ? '' : `<button class="btn primary" onclick="openQuickActivity(${Number(o.clientId)},'phone',${Number(o.id)});setVal('qaOutcome','agreed')">+ Naplánovat aktivitu</button>`}</section><section class="case-detail-panel"><div class="eyebrow">Historie případu</div><h3>Posuny a kontakty</h3><div class="case-history-list">${history.map(x=>`<div class="case-history-row"><b>${esc(x.t || 'Aktualizace')}</b><small>${esc(x.d || '')}</small></div>`).join('') || '<p class="note">Zatím bez zaznamenané změny.</p>'}</div></section><section class="case-detail-panel"><div class="eyebrow">Provize</div><h3>${money(commission)}</h3><p class="note">${pipelineStageCommissionEnabled(current) ? 'Tato fáze se počítá do očekávané provize.' : 'Tato fáze je z očekávané provize vypnutá.'}</p></section></aside></div></div>`;
+  root.innerHTML = `<div class="case-detail-shell"><section class="case-detail-top"><div class="case-detail-breadcrumb"><button class="client-back-button" onclick="closeCaseDetail()">← Zpět na seznam</button><div class="actions"><button class="btn" onclick="openQuickActivity(${Number(o.clientId)},'phone',${Number(o.id)})">Zaznamenat kontakt</button><button class="btn primary" onclick="openOpportunityModal(${Number(o.clientId)},${Number(o.id)})">Upravit případ</button><button class="btn red" onclick="deleteOpportunity(${Number(o.id)})">Smazat případ</button></div></div><div class="case-detail-title"><div><div class="chips"><span class="badge blue">${esc(o.category || 'Obchodní případ')}</span>${opportunityBadge(current)}${replacementBadge(o)}</div><h2>${esc(o.product || o.category || 'Obchodní případ')}</h2><p class="note">${esc(clientName(c))} · ${esc(o.company || 'bez společnosti')} · poslední změna ${esc(caseLastUpdate(o) ? dateObj(caseLastUpdate(o)).toLocaleDateString('cs-CZ') : 'bez data')}</p></div><div class="client-summary-tile"><small>${closed ? 'Původní odhad provize' : 'Očekávaná provize'}</small><b>${money(commission)}</b><span>objem ${money(o.amount)} · ${num(o.bj)} BJ</span></div></div><div class="case-stage-track">${(o.status === 'Podepsáno' ? [] : [...stages,'Klient nemá zájem','Zrušeno']).map((stage,i)=>`<button class="case-stage-step ${stage === current ? 'active' : i < currentIndex ? 'done' : ''}" onclick="updateOpportunityStatus('${esc(o.id)}','${esc(stage)}')">${esc(stage)}</button>`).join('')}</div></section><div class="case-detail-grid"><div class="case-detail-shell"><section class="case-detail-panel"><div class="toolbar"><div><div class="eyebrow">Aktuální fáze</div><h3>${esc(current)}</h3></div></div><div class="case-history-list">${caseDetailChecklist(o)}</div></section><section class="case-detail-panel"><div class="toolbar"><div><div class="eyebrow">Podrobnosti</div><h3>Parametry případu</h3></div><button class="btn slim" onclick="openOpportunityModal(${Number(o.clientId)},${Number(o.id)})">Upravit</button></div><div class="case-detail-facts"><div class="case-detail-fact"><span>Klient</span><button class="case-title" onclick="openClientWorkspace(${Number(o.clientId)},'opportunities')">${esc(clientName(c))}</button></div><div class="case-detail-fact"><span>Kategorie</span><b>${esc(o.category || '-')}</b></div><div class="case-detail-fact"><span>Společnost</span><b>${esc(o.company || '-')}</b></div><div class="case-detail-fact"><span>Produkt</span><b>${esc(o.product || '-')}</b></div><div class="case-detail-fact"><span>Objem</span><b>${money(o.amount)}</b></div><div class="case-detail-fact"><span>BJ</span><b>${num(o.bj)}</b></div><div class="case-detail-fact"><span>Termín dokončení</span><b>${esc(o.expectedDate || '-')}</b></div><div class="case-detail-fact"><span>Původní smlouva</span><b>${esc(replacement ? [replacement.company,replacement.product,replacement.number].filter(Boolean).join(' · ') : '-')}</b></div></div>${o.note ? `<div class="notice small" style="margin-top:12px"><b>Poznámky k jednání</b><div style="white-space:pre-wrap;margin-top:5px">${esc(o.note)}</div></div>` : ''}</section></div><aside class="case-detail-shell"><section class="case-detail-panel"><div class="eyebrow">Další krok</div><div class="case-next-action"><b>${closed ? 'Případ je uzavřený' : next ? dateObj(next).toLocaleDateString('cs-CZ') : 'Termín není naplánovaný'}</b><p class="note">${closed ? 'Historie a podklady zůstávají uložené.' : esc(o.lastContactMethod || (current === 'Opportunity' ? 'Klienta je potřeba kontaktovat.' : 'Doplňte další návaznost.'))}</p></div>${closed ? '' : `<button class="btn primary" onclick="openQuickActivity(${Number(o.clientId)},'phone',${Number(o.id)});setVal('qaOutcome','agreed')">+ Naplánovat aktivitu</button>`}</section><section class="case-detail-panel"><div class="eyebrow">Historie případu</div><h3>Posuny a kontakty</h3><div class="case-history-list">${history.map(x=>`<div class="case-history-row"><b>${esc(x.t || 'Aktualizace')}</b><small>${esc(x.d || '')}</small></div>`).join('') || '<p class="note">Zatím bez zaznamenané změny.</p>'}</div></section><section class="case-detail-panel"><div class="eyebrow">Provize</div><h3>${money(commission)}</h3><p class="note">${pipelineStageCommissionEnabled(current) ? 'Tato fáze se počítá do očekávané provize.' : 'Tato fáze je z očekávané provize vypnutá.'}</p></section></aside></div></div>`;
 }
 let closedCaseLimit = 50;
 function showMoreClosedCases() {
@@ -4265,7 +4292,7 @@ function notesMini(rows) {
   return `<div class="table-wrap"><table><thead><tr><th>Název</th><th>Datum</th><th>Štítky</th><th>Typ</th><th></th></tr></thead><tbody>${rows.map(n => `<tr><td><button class="note-title-btn" onclick="openNoteViewModal(${n.id})">▧ ${esc(n.title || 'Poznámka')}</button></td><td>${esc(n.date || '')}</td><td>${noteTags(n).map(t => `<span class="chip">${esc(t)}</span>`).join('')}</td><td><span class="badge blue">${esc(noteType(n))}</span></td><td><button class="icon-btn" onclick="openNoteModal(${n.clientId || 'null'},${n.id})">✎</button></td></tr>`).join('') || '<tr><td colspan="5" class="note">Bez poznámek.</td></tr>'}</tbody></table></div>`;
 }
 function contractsMini(rows, compact = false) {
-  return `<div class="table-wrap"><table><thead><tr><th>Typ</th><th>Produkt</th><th>Společnost</th><th>Výročí/fixace</th><th>Stav</th><th>Akce</th></tr></thead><tbody>${rows.map(s => `<tr class="${rowClassContract(s)}"><td>${esc(s.type)}</td><td><b>${esc(s.product || '')}</b><br><span class="note">${esc(s.number || '')}</span></td><td>${esc(s.company || '')}</td><td>${esc(s.anniv || '')}<br>${daysBadge(contractDays(s))}</td><td>${getStatuses(s).map(statusBadge).join(' ')}${contractEffectiveBadge(s)}${contractAttachmentBadge(s)}</td><td><button class="btn slim" onclick="openContractModal(${s.clientId},${s.id})">Správa</button> <button class="btn slim" onclick="startReplacementCase(${s.id})">Nový obchodní případ</button></td></tr>`).join('') || `<tr><td colspan="6" class="note">Bez smluv.</td></tr>`}</tbody></table></div>`;
+  return `<div class="table-wrap"><table><thead><tr><th>Typ</th><th>Produkt</th><th>Společnost</th><th>Výročí/fixace</th><th>Stav</th><th>Akce</th></tr></thead><tbody>${rows.map(s => `<tr class="${rowClassContract(s)}"><td>${esc(s.type)}</td><td><b>${esc(s.product || '')}</b><br><span class="note">${esc(s.number || '')}</span></td><td>${esc(s.company || '')}</td><td>${esc(s.anniv || '')}<br>${daysBadge(contractDays(s))}</td><td>${getStatuses(s).map(statusBadge).join(' ')}${contractEffectiveBadge(s)}${contractAttachmentBadge(s)}</td><td><button class="btn slim" onclick="openContractModal(${s.clientId},${s.id})">Správa</button> <button class="btn slim" onclick="startReplacementCase(${s.id})">Nový obchodní případ</button> <button class="btn slim red" onclick="deleteContract(${s.id})">Smazat</button></td></tr>`).join('') || `<tr><td colspan="6" class="note">Bez smluv.</td></tr>`}</tbody></table></div>`;
 }
 function clientPerformanceMini(rows, year) {
   const inv = clientDisplayInvestmentItems(selectedClientId),
@@ -4443,7 +4470,7 @@ function renderContracts() {
       cls = contractVisualClass(top.s, top.d),
       tags = [...new Set(g.rows.map(x => sourceForType(x.s.type)))],
       single = g.rows.length === 1 ? g.rows[0].s : null;
-    return '<details class="contract-client-card ' + cls + '"><summary class="contract-client-head"><div class="days-bubble">' + (min >= 99999 ? '--' : num(Math.max(min, 0))) + '<small>DNÍ</small></div><div class="contract-client-name"><b>' + esc(clientName(g.c)) + '</b><span class="note">' + esc(g.c?.phone || 'bez telefonu') + ' · Kontakt: ' + esc(contactLabel(g.c || {})) + ' · ' + num(g.rows.length) + ' smluv</span><div class="chips">' + tags.map(x => '<span class="chip">' + esc(x) + '</span>').join('') + (g.rows.some(x => isWorseMortgageRate(x.s)) ? '<span class="badge red">Horší sazba</span>' : '') + (g.rows.some(x => isContractWork(x.s)) ? '<span class="badge blue">V řešení</span>' : '') + '</div></div><div class="actions"><button class="btn slim" onclick="event.preventDefault();selectedClientId=' + (g.c?.id || 'null') + ';showView(\'clients\')">Klient</button>' + contractEmailButton(g.c, single) + '<button class="btn slim primary" onclick="event.preventDefault();openContractModal(' + (g.c?.id || 'null') + ')">+ Smlouva</button></div></summary><div class="contract-card-body">' + g.rows.map(x => '<div class="contract-line ' + contractLineClass(x.s) + '"><div><div class="contract-line-title">' + esc(x.s.type) + ' · ' + esc(x.s.product || 'bez produktu') + '</div><div class="contract-line-sub">' + esc(x.s.company || 'bez společnosti') + ' · č. ' + esc(x.s.number || '—') + (x.s.amount ? ' · ' + esc(x.s.amount) : '') + (x.s.rate ? ' · sazba ' + esc(x.s.rate) : '') + '</div><div class="chips">' + daysBadge(x.d) + getStatuses(x.s).map(statusBadge).join('') + '<span class="chip">' + esc(contractLogicLabel(x.s)) + '</span>' + (isWorseMortgageRate(x.s) ? '<span class="badge red">sazba nad trhem</span>' : '') + '</div></div><div class="contract-line-actions"><button class="btn slim" onclick="selectedClientId=' + x.s.clientId + ';showView(\'clients\');clientSection=\'contracts\';renderClients()">Klient</button>' + contractEmailButton(g.c, x.s) + '<button class="btn slim" onclick="openContractModal(' + x.s.clientId + ',' + x.s.id + ')">Správa</button></div></div>').join('') + '</div></details>';
+    return '<details class="contract-client-card ' + cls + '"><summary class="contract-client-head"><div class="days-bubble">' + (min >= 99999 ? '--' : num(Math.max(min, 0))) + '<small>DNÍ</small></div><div class="contract-client-name"><b>' + esc(clientName(g.c)) + '</b><span class="note">' + esc(g.c?.phone || 'bez telefonu') + ' · Kontakt: ' + esc(contactLabel(g.c || {})) + ' · ' + num(g.rows.length) + ' smluv</span><div class="chips">' + tags.map(x => '<span class="chip">' + esc(x) + '</span>').join('') + (g.rows.some(x => isWorseMortgageRate(x.s)) ? '<span class="badge red">Horší sazba</span>' : '') + (g.rows.some(x => isContractWork(x.s)) ? '<span class="badge blue">V řešení</span>' : '') + '</div></div><div class="actions"><button class="btn slim" onclick="event.preventDefault();selectedClientId=' + (g.c?.id || 'null') + ';showView(\'clients\')">Klient</button>' + contractEmailButton(g.c, single) + '<button class="btn slim primary" onclick="event.preventDefault();openContractModal(' + (g.c?.id || 'null') + ')">+ Smlouva</button></div></summary><div class="contract-card-body">' + g.rows.map(x => '<div class="contract-line ' + contractLineClass(x.s) + '"><div><div class="contract-line-title">' + esc(x.s.type) + ' · ' + esc(x.s.product || 'bez produktu') + '</div><div class="contract-line-sub">' + esc(x.s.company || 'bez společnosti') + ' · č. ' + esc(x.s.number || '—') + (x.s.amount ? ' · ' + esc(x.s.amount) : '') + (x.s.rate ? ' · sazba ' + esc(x.s.rate) : '') + '</div><div class="chips">' + daysBadge(x.d) + getStatuses(x.s).map(statusBadge).join('') + '<span class="chip">' + esc(contractLogicLabel(x.s)) + '</span>' + (isWorseMortgageRate(x.s) ? '<span class="badge red">sazba nad trhem</span>' : '') + '</div></div><div class="contract-line-actions"><button class="btn slim" onclick="selectedClientId=' + x.s.clientId + ';showView(\'clients\');clientSection=\'contracts\';renderClients()">Klient</button>' + contractEmailButton(g.c, x.s) + '<button class="btn slim" onclick="openContractModal(' + x.s.clientId + ',' + x.s.id + ')">Správa</button><button class="btn slim red" onclick="deleteContract(' + x.s.id + ')">Smazat</button></div></div>').join('') + '</div></details>';
   }).join('') || '<div class="note">V sekci ' + esc(contractSectionTitle(sec)) + ' zatím nic není.</div>';
   const wrap = byId('contractsTable')?.closest('.table-wrap');
   if (wrap) wrap.outerHTML = '<div class="contracts-list" id="contractsList">' + html + '</div>';else {
@@ -4529,7 +4556,7 @@ function renderDeals() {
   const newClients = newClientsInMonth(y, selectedMonth),
     table = byId('dealsTable');
   table.className = 'compact-table';
-  table.innerHTML = `<thead><tr><th>Klient / správa</th><th>Kategorie</th><th>Společnost</th><th>Produkt</th><th>Datum</th><th>Objem Kč</th><th>BJ</th><th>Oček. provize</th><th class="paid-col">Zapl.</th><th>Skutečná provize</th><th>Typař / doporučení</th><th>Skrýt</th><th></th></tr></thead><tbody>${rows.map(x => `<tr class="${dealRowClass(x.d)}"><td><b>${esc(clientName(x.c))}</b><br>${managementBadge(x.d)}${x.d.hidden ? '<br><span class="badge">skryto</span>' : isLateUnpaid(x.d) ? '<br><span class="badge red">3+ měsíce bez provize</span>' : ''}</td><td>${esc(x.d.category || areaLabel(areaForDeal(x.d)))}</td><td>${esc(x.d.company || '')}</td><td><b>${esc(x.d.product || '')}</b></td><td>${esc(x.d.date || '')}</td><td class="money">${money(dealVolume(x.d))}</td><td class="num">${num(dealBJ(x.d))}</td><td class="money">${money(dealCash(x.d, y))}</td><td class="paid-col"><input class="paid-check" type="checkbox" ${dealPaid(x.d) ? 'checked' : ''} onchange="toggleDealPaid(${x.d.id},this.checked)"></td><td class="money">${money(dealNetCommission(x.d, y))}</td><td><b>${esc(dealOwnerLabel(x.d) || '')}</b>${dealOwnerType(x.d) === 'tipar' ? `<br><span class="note">${num(dealOwnerPct(x.d))} % · ${money(dealOwnerPayout(x.d, y))} · ${x.d.ownerPaid ? 'vyplaceno' : 'nevyplaceno'}</span>` : ''}</td><td class="paid-col"><input class="paid-check" type="checkbox" ${x.d.hidden ? 'checked' : ''} onchange="toggleDealHidden(${x.d.id},this.checked)"></td><td><button class="icon-btn" title="Upravit obchod" onclick="selectedClientId=${x.c?.id || 'null'};openDealModal(${x.d.clientId},${x.d.id})">✎</button></td></tr>`).join('') || '<tr><td colspan="13" class="note">V tomto měsíci zatím nejsou žádné viditelné obchody.</td></tr>'}<tr><th colspan="5">Celkem za ${MONTHS[selectedMonth]}<br><span class="note">Noví klienti: ${num(newClients)} · skryto: ${num(totalHidden)}</span></th><th class="money">Investice ${money(totals.inv)}<br>Hypotéky ${money(totals.mort)}</th><th class="num">${num(totals.bj)}</th><th class="money">${money(totals.cash)}</th><th></th><th class="money">${money(totals.net)}</th><th colspan="3">Typaři ${money(totals.payout)} · ${num(totals.count)} viditelných obchodů</th></tr></tbody>`;
+  table.innerHTML = `<thead><tr><th>Klient / správa</th><th>Kategorie</th><th>Společnost</th><th>Produkt</th><th>Datum</th><th>Objem Kč</th><th>BJ</th><th>Oček. provize</th><th class="paid-col">Zapl.</th><th>Skutečná provize</th><th>Typař / doporučení</th><th>Skrýt</th><th></th></tr></thead><tbody>${rows.map(x => `<tr class="${dealRowClass(x.d)}"><td><b>${esc(clientName(x.c))}</b><br>${managementBadge(x.d)}${x.d.hidden ? '<br><span class="badge">skryto</span>' : isLateUnpaid(x.d) ? '<br><span class="badge red">3+ měsíce bez provize</span>' : ''}</td><td>${esc(x.d.category || areaLabel(areaForDeal(x.d)))}</td><td>${esc(x.d.company || '')}</td><td><b>${esc(x.d.product || '')}</b></td><td>${esc(x.d.date || '')}</td><td class="money">${money(dealVolume(x.d))}</td><td class="num">${num(dealBJ(x.d))}</td><td class="money">${money(dealCash(x.d, y))}</td><td class="paid-col"><input class="paid-check" type="checkbox" ${dealPaid(x.d) ? 'checked' : ''} onchange="toggleDealPaid(${x.d.id},this.checked)"></td><td class="money">${money(dealNetCommission(x.d, y))}</td><td><b>${esc(dealOwnerLabel(x.d) || '')}</b>${dealOwnerType(x.d) === 'tipar' ? `<br><span class="note">${num(dealOwnerPct(x.d))} % · ${money(dealOwnerPayout(x.d, y))} · ${x.d.ownerPaid ? 'vyplaceno' : 'nevyplaceno'}</span>` : ''}</td><td class="paid-col"><input class="paid-check" type="checkbox" ${x.d.hidden ? 'checked' : ''} onchange="toggleDealHidden(${x.d.id},this.checked)"></td><td><button class="icon-btn" title="Upravit obchod" onclick="selectedClientId=${x.c?.id || 'null'};openDealModal(${x.d.clientId},${x.d.id})">✎</button> <button class="btn slim red" onclick="deleteDeal(${x.d.id})">Smazat</button></td></tr>`).join('') || '<tr><td colspan="13" class="note">V tomto měsíci zatím nejsou žádné viditelné obchody.</td></tr>'}<tr><th colspan="5">Celkem za ${MONTHS[selectedMonth]}<br><span class="note">Noví klienti: ${num(newClients)} · skryto: ${num(totalHidden)}</span></th><th class="money">Investice ${money(totals.inv)}<br>Hypotéky ${money(totals.mort)}</th><th class="num">${num(totals.bj)}</th><th class="money">${money(totals.cash)}</th><th></th><th class="money">${money(totals.net)}</th><th colspan="3">Typaři ${money(totals.payout)} · ${num(totals.count)} viditelných obchodů</th></tr></tbody>`;
   renderOwners(y);
   renderReferrals(y);
 }
@@ -6480,15 +6507,51 @@ function markContractDone() {
   if ((type === 'auto' || type === 'majetek') && anniv) setVal('sAnniv', nextAnnualDateString(anniv));
   saveContract();
 }
-function fkiSync_before_deleteContract() {
-  if (!editingContractId) return;
-  const s = state.contracts.find(x => x.id === editingContractId);
-  if (s && (state.insuranceClaims || []).some(x => String(x.contractId || '') === String(s.id))) return alert('Smlouvu nelze smazat, protože je navázaná na pojistnou událost. Nejprve u události uprav nebo zruš propojení se smlouvou; historie události zůstane zachovaná.');
-  if (!s || !confirm('Smazat smlouvu?')) return;
-  state.contracts = state.contracts.filter(x => x.id !== editingContractId);
-  addActivity(s.clientId, 'Smlouva', 'Smazána smlouva ' + (s.product || s.type), true);
-  closeModal('contractModal');
+function crmDeleteMutation(change) {
+  const before = JSON.parse(JSON.stringify(state));
+  try {
+    change();
+    if (persist() === false) throw new Error('Uložení se nezdařilo.');
+  } catch (error) {
+    state = before;
+    renderActiveView();
+    alert('Záznam nebyl smazán. ' + (error?.message || 'Uložení se nezdařilo.'));
+    return false;
+  }
   renderAll();
+  return true;
+}
+function crmEntityPortfolioDeletion(kind, entity) {
+  const rows = investmentRecordsForClient(entity.clientId).filter(r => portfolioRecordClientId(r) === String(entity.clientId) && r._crmSourceType === kind && String(r._crmSourceId) === String(entity.id)),
+    plan = portfolioDeletionRecords(rows), sourceKey = kind === 'deal' ? 'sourceDealId' : 'sourceContractId';
+  return {...plan,snapshots:(state.investmentSnapshots || []).filter(s => String(s.clientId) === String(entity.clientId) && String(s[sourceKey] || '') === String(entity.id))};
+}
+function crmRemoveEntityPortfolio(plan) {
+  portfolioRemoveRecords(plan.records);
+  crmDeleteCloseProviderTargets(plan.snapshots.map(s => ({kind:'snapshot',key:String(s.id),clientId:s.clientId})));
+  const removed = new Set(plan.snapshots);
+  state.investmentSnapshots = (state.investmentSnapshots || []).filter(s => !removed.has(s));
+}
+function fkiSync_before_deleteContract(id = editingContractId) {
+  const s = state.contracts.find(x => String(x.id) === String(id));
+  if (!s) return false;
+  const plan = crmEntityPortfolioDeletion('contract',s), claims = (state.insuranceClaims || []).filter(x => String(x.contractId || '') === String(s.id) && String(x.clientId) === String(s.clientId));
+  if (plan.blocked) return alert(plan.blocked);
+  if (!confirm(`Smazat smlouvu ${s.product || s.type || ''}?${plan.records.length || plan.snapshots.length ? ` Odstraní se také ${plan.records.length + plan.snapshots.length} navázaných investičních záznamů včetně souvisejících odkupů.` : ''}${claims.length ? ` U ${claims.length} pojistných událostí se odpojí smlouva; její označení i historie událostí zůstanou uložené.` : ''} Samostatné obchody zůstanou v evidenci.`)) return false;
+  const saved = crmDeleteMutation(() => {
+    crmRemoveEntityPortfolio(plan);
+    const stamp = new Date().toISOString(), label = [s.company,s.product || s.type,s.number].filter(Boolean).join(' · ');
+    claims.forEach(claim => {claim.contractId=null;claim.updatedAt=stamp;claim.history ||= [];claim.history.push({id:'deleted-contract-'+s.id+'-'+stamp,at:stamp,date:today(),status:claim.status,text:'Smlouva odstraněna z evidence: '+label});});
+    state.contracts = state.contracts.filter(x => x !== s);
+    (state.deals || []).filter(d => String(d.clientId) === String(s.clientId)).forEach(d => {
+      if(String(d.contractId || '')===String(s.id) || String(d.fromContractId || '')===String(s.id) || String(s.fromDealId || '')===String(d.id)){d._fkiExcluded=true;d._investmentExcluded=true;}
+      if(String(d.contractId || '')===String(s.id))d.contractId=null;if(String(d.fromContractId || '')===String(s.id))d.fromContractId=null;
+    });
+    (state.opportunities || []).filter(o => String(o.clientId) === String(s.clientId)).forEach(o => {if(String(o.contractId || '')===String(s.id))o.contractId=null;if(String(o.replacesContractId || '')===String(s.id))o.replacesContractId=null;});
+    addActivity(s.clientId,'Smlouva','Smazána smlouva '+label,true);
+  });
+  if (saved) {closeModal('contractModal');saveToast('Smlouva smazána');}
+  return saved;
 }
 function fillDealStatusSelect() {
   byId('dContractStatus').innerHTML = Object.entries(STATUS_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
@@ -6919,6 +6982,7 @@ function fillInvestmentProductSelect(selectedKey = '') {
 function syncInvestmentSnapshotProduct() {
   const modal = byId('investmentSnapshotModal');
   modal.dataset.snapshotId = '';
+  if (byId('deleteInvestmentSnapshotBtn')) byId('deleteInvestmentSnapshotBtn').style.display = 'none';
   ['statementValue','statementInputs','statementDate'].forEach(k => delete modal.dataset[k]);
   const key = val('isProduct'),
     clientId = +val('isClient') || selectedInvestmentClientId || selectedClientId;
@@ -6930,6 +6994,7 @@ function syncInvestmentSnapshotProduct() {
         fv = fundNavValue(state.fundValues?.[fundKey] ? fundKey : rawKey,item.isin || item.source?.isin || ''),
         snap = latestSnapshotForItem(item);
       byId('investmentSnapshotModal').dataset.snapshotId = snap?.id ?? '';
+      if (byId('deleteInvestmentSnapshotBtn')) byId('deleteInvestmentSnapshotBtn').style.display = snap ? 'inline-flex' : 'none';
       setVal('isCompany', fv.company || item.company || '');
       setVal('isProductName', fv.fond || item.product || item.kind || 'Investice');
       setVal('isIsin', snap?.isin || fv.isin || item.isin || item.source?.isin || '');
@@ -7583,14 +7648,21 @@ function fkiSync_before_saveDeal() {
   saveToast('Obchod uložen');
   return d;
 }
-function fkiSync_before_deleteDeal() {
-  if (!editingDealId) return;
-  const d = state.deals.find(x => x.id === editingDealId);
-  if (!d || !confirm('Smazat obchod?')) return;
-  state.deals = state.deals.filter(x => x.id !== editingDealId);
-  addActivity(d.clientId, 'Obchod', 'Smazán obchod ' + (d.product || d.category), true);
-  closeModal('dealModal');
-  renderAll();
+function fkiSync_before_deleteDeal(id = editingDealId) {
+  const d = state.deals.find(x => String(x.id) === String(id));
+  if (!d) return false;
+  const plan = crmEntityPortfolioDeletion('deal',d);
+  if (plan.blocked) return alert(plan.blocked);
+  if (!confirm(`Smazat obchod ${d.product || d.category || ''}?${plan.records.length || plan.snapshots.length ? ` Odstraní se také ${plan.records.length + plan.snapshots.length} jím vytvořených investičních záznamů včetně souvisejících odkupů.` : ''} Samostatné smlouvy zůstanou v evidenci.`)) return false;
+  const saved = crmDeleteMutation(() => {
+    crmRemoveEntityPortfolio(plan);
+    state.deals = state.deals.filter(x => x !== d);
+    (state.contracts || []).filter(s => String(s.clientId) === String(d.clientId) && (String(s.fromDealId || '') === String(d.id) || String(d.contractId || '') === String(s.id) || String(d.fromContractId || '') === String(s.id))).forEach(s => {s.fromDealId=null;s.createDeal='no';s._fkiExcluded=true;s._investmentExcluded=true;});
+    (state.opportunities || []).filter(o => String(o.clientId) === String(d.clientId) && String(o.dealId || '') === String(d.id)).forEach(o => {o.dealId=null;});
+    addActivity(d.clientId,'Obchod','Smazán obchod '+(d.product || d.category),true);
+  });
+  if (saved) {closeModal('dealModal');saveToast('Obchod smazán');}
+  return saved;
 }
 function openNoteModal(clientId = null, id = null) {
   editingNoteId = id;
@@ -7879,13 +7951,15 @@ function convertOpportunityToDeal(o) {
   state.opportunities = state.opportunities.filter(x => String(x.id) !== String(o.id));
   return d;
 }
-function deleteOpportunity() {
-  if (!editingOpportunityId) return;
-  const o = state.opportunities.find(x => x.id === editingOpportunityId);
-  if (!o || !confirm('Smazat obchodní případ? Uzavřený obchod ani smlouva se tím nemažou.')) return;
-  state.opportunities = state.opportunities.filter(x => x.id !== editingOpportunityId);
-  closeModal('opportunityModal');
-  renderAll();
+function deleteOpportunity(id = editingOpportunityId) {
+  const o = state.opportunities.find(x => String(x.id) === String(id));
+  if (!o || !confirm('Smazat obchodní případ? Uzavřený obchod ani smlouva se tím nemažou.')) return false;
+  const saved = crmDeleteMutation(() => {
+    state.opportunities = state.opportunities.filter(x => x !== o);
+    addActivity(o.clientId,'Obchod','Smazán obchodní případ '+(o.product || o.category),true);
+  });
+  if (saved) {closeModal('opportunityModal');if(String(selectedCaseId)===String(id))closeCaseDetail();saveToast('Obchodní případ smazán');}
+  return saved;
 }
 function calendarStamp(date, time) {
   return String(date || today()).replaceAll('-', '') + 'T' + String(time || '09:00').replace(':', '') + '00';
@@ -9649,7 +9723,7 @@ function fkiEditor_fkRecKey(r) {
   return typeof invRecordKey === 'function' ? invRecordKey(r) : JSON.stringify(r);
 }
 function fkiEditor_fkRecordsForItem(clientId, key) {
-  return investmentRecordsForClient(clientId).filter(r => invPositionKey(r) === key && isFkiReportRecord(r)).sort((a, b) => String(invEmissionDate(a) || invPaymentDate(a)).localeCompare(String(invEmissionDate(b) || invPaymentDate(b))));
+  return fkiPortfolio_fkiRecordsForClientKey(clientId, key).filter(r => !r.portfolioReplacedBy).sort((a, b) => String(invEmissionDate(a) || invPaymentDate(a)).localeCompare(String(invEmissionDate(b) || invPaymentDate(b))));
 }
 function fkiEditor_fkRecordCurrent(r) {
   return invPositionValue(r);
@@ -9720,7 +9794,10 @@ function investmentPosition_invStatus(x) {
 }
 function investmentPosition_invRowAction(x, clientId) {
   const key = investmentPosition_enc(investmentItemKey(x));
-  return `${investmentEditButton(x)} <button class="btn slim" onclick="openInvestmentSnapshotModal(${clientId},'${esc(key)}')">Pozice</button>`;
+  const remove = x.snapshot
+    ? `<button class="btn slim red" onclick="deleteInvestmentSnapshot('${esc(x.snapshot.id)}')">Smazat aktualizaci</button>`
+    : `<button class="btn slim red" onclick="deleteClassicClientFund(${clientId},'${esc(investmentPosition_enc(investmentFundKey(x)))}')">Smazat z portfolia</button>`;
+  return `${investmentEditButton(x)} <button class="btn slim" onclick="openInvestmentSnapshotModal(${clientId},'${esc(key)}')">Pozice</button> ${remove}`;
 }
 function investmentPosition_invPositionRows(f, clientId) {
   return `<div class="table-wrap" style="margin-top:12px"><table class="compact-table"><thead><tr><th>Pozice / záznam</th><th>Vloženo</th><th>Aktuální</th><th>Výnos</th><th>Datum</th><th>Zdroj</th><th>Stav</th><th>Akce</th></tr></thead><tbody>${f.items.sort((a, b) => String(b.snapshot?.date || b.date || '').localeCompare(String(a.snapshot?.date || a.date || ''))).map((x, i) => {
@@ -9740,7 +9817,7 @@ function investmentPosition_invCard(f, clientId) {
     fv = state.fundValues?.[f.key] || {},
     valueDate = fundValueDateText('investice', f.key, f.isin, fv.date),
     locked = isInvestmentFundLocked(f.key);
-  return `<details class="fki-work-card ${gain < 0 ? 'loss' : ''} ${locked ? 'locked' : ''}"><summary class="fki-work-head"><div class="fki-work-name"><b>${esc(f.label)}</b><div class="chips"><span class="chip">${esc(f.company)}</span><span class="badge blue">Investice</span><span class="chip">${num(f.items.length)} pozic</span>${locked ? '<span class="badge orange">zamčeno</span>' : ''}</div></div><div class="fki-work-metric"><small>Vloženo</small><strong>${money(f.invested)}</strong></div><div class="fki-work-metric"><small>Aktuální</small><strong class="${gain >= 0 ? 'green' : 'red'}">${money(f.amount)}</strong><small>k ${valueDate}</small></div><div class="fki-work-metric"><small>Výnos</small><strong class="${gain >= 0 ? 'green' : 'red'}">${pct.toFixed(1)} %</strong></div><div class="actions"><button class="btn slim primary" onclick="event.preventDefault();openInvestmentScenarioModal(${clientId},'Investice')">+ Nová investice</button><button class="btn slim" onclick="event.preventDefault();openInvestmentSnapshotModal(${clientId},'${esc(investmentPosition_enc(String(clientId) + '|' + f.key))}')">Pozice klienta</button><button class="btn slim" onclick="event.preventDefault();openInvestmentFundModal('${esc(key)}')">Hodnota fondu</button><button class="icon-btn ${locked ? 'primary' : ''}" onclick="event.preventDefault();toggleInvestmentFundLock('${esc(key)}')" title="Zámek reportu">${locked ? '🔒' : '🔓'}</button></div></summary><div class="fki-work-detail"><div class="fki-detail-grid"><div><small>Investováno</small><b>${money(f.invested)}</b></div><div><small>Výnos</small><b class="${gain >= 0 ? 'green' : 'red'}">${money(gain)}</b></div><div><small>Poslední hodnota</small><b>${money(f.amount)}</b></div><div><small>Hodnota CP / NAV</small><b>${fv.nav ? num(fv.nav) : '-'}</b></div><div><small>Hodnota fondu k datu</small><b>${valueDate}</b></div><div><small>ISIN</small><b>${esc(f.isin || '-')}</b></div><div><small>Typ</small><b>${esc(f.typ || '-')}</b></div><div><small>Pozic</small><b>${num(f.items.length)}</b></div></div>${investmentPosition_invPositionRows(f, clientId)}</div></details>`;
+  return `<details class="fki-work-card ${gain < 0 ? 'loss' : ''} ${locked ? 'locked' : ''}"><summary class="fki-work-head"><div class="fki-work-name"><b>${esc(f.label)}</b><div class="chips"><span class="chip">${esc(f.company)}</span><span class="badge blue">Investice</span><span class="chip">${num(f.items.length)} pozic</span>${locked ? '<span class="badge orange">zamčeno</span>' : ''}</div></div><div class="fki-work-metric"><small>Vloženo</small><strong>${money(f.invested)}</strong></div><div class="fki-work-metric"><small>Aktuální</small><strong class="${gain >= 0 ? 'green' : 'red'}">${money(f.amount)}</strong><small>k ${valueDate}</small></div><div class="fki-work-metric"><small>Výnos</small><strong class="${gain >= 0 ? 'green' : 'red'}">${pct.toFixed(1)} %</strong></div><div class="actions"><button class="btn slim primary" onclick="event.preventDefault();openInvestmentScenarioModal(${clientId},'Investice')">+ Nová investice</button><button class="btn slim" onclick="event.preventDefault();openInvestmentSnapshotModal(${clientId},'${esc(investmentPosition_enc(String(clientId) + '|' + f.key))}')">Pozice klienta</button><button class="btn slim" onclick="event.preventDefault();openInvestmentFundModal('${esc(key)}')">Hodnota fondu</button><button class="btn slim red" onclick="event.preventDefault();deleteClassicClientFund(${clientId},'${esc(key)}')">Smazat fond klienta</button><button class="icon-btn ${locked ? 'primary' : ''}" onclick="event.preventDefault();toggleInvestmentFundLock('${esc(key)}')" title="Zámek reportu">${locked ? '🔒' : '🔓'}</button></div></summary><div class="fki-work-detail"><div class="fki-detail-grid"><div><small>Investováno</small><b>${money(f.invested)}</b></div><div><small>Výnos</small><b class="${gain >= 0 ? 'green' : 'red'}">${money(gain)}</b></div><div><small>Poslední hodnota</small><b>${money(f.amount)}</b></div><div><small>Hodnota CP / NAV</small><b>${fv.nav ? num(fv.nav) : '-'}</b></div><div><small>Hodnota fondu k datu</small><b>${valueDate}</b></div><div><small>ISIN</small><b>${esc(f.isin || '-')}</b></div><div><small>Typ</small><b>${esc(f.typ || '-')}</b></div><div><small>Pozic</small><b>${num(f.items.length)}</b></div></div>${investmentPosition_invPositionRows(f, clientId)}</div></details>`;
 }
 function fkiPortfolio_dec(v) {
   return decodeURIComponent(String(v || ''));
@@ -9749,43 +9826,173 @@ function fkiPortfolio_recordKey(r) {
   return typeof invRecordKey === 'function' ? invRecordKey(r) : JSON.stringify(r);
 }
 function fkiPortfolio_fkiRecordsForClientKey(clientId, key) {
-  return investmentRecordsForClient(clientId).filter(r => invPositionKey(r) === key && (isFkiReportRecord(r) || isFkiMirrorRecord(r) || r._crmSourceType === 'deal' || r._crmSourceType === 'contract'));
+  return (state.investmentRecords || []).filter(r => portfolioRecordClientId(r) === String(clientId) && invPositionKey(r) === key);
 }
 function fkiPortfolio_fkiProposalRows(clientId) {
   return clientOpenOpportunities(clientId).filter(o => opportunityArea(o) === 'fki' || o.category === 'FKI');
 }
-function deleteFkiRecordByKey(encodedKey) {
+function portfolioRecordClientId(record) {
+  const clients = state.clients || [];
+  if (Object.prototype.hasOwnProperty.call(record || {}, '_providerClientId')) {
+    return record._providerClientId != null && clients.some(c => String(c.id) === String(record._providerClientId)) ? String(record._providerClientId) : '';
+  }
+  const strong = normalizeStrongId(invBirthId(record)) || (/^RC[_-]/i.test(invClientId(record)) ? normalizeStrongId(invClientId(record).replace(/^RC[_-]?/i,'')) : '');
+  if (strong) {
+    const matches = clients.filter(c => normalizeStrongId(c.birthId) === strong);
+    return matches.length === 1 ? String(matches[0].id) : '';
+  }
+  const direct = clients.find(c => String(c.id) === invClientId(record));
+  if (direct) return String(direct.id);
+  const matches = clients.filter(c => clientMatchesName(c, invInvestor(record)));
+  return matches.length === 1 ? String(matches[0].id) : '';
+}
+function portfolioSourceBelongsToClient(source, clientId) {
+  return clientId !== '' && clientId != null && String(source?.clientId ?? '') === String(clientId);
+}
+function portfolioDeletionRecords(records) {
+  const selected = new Set((records || []).filter(r => (state.investmentRecords || []).includes(r)));
+  const initialCount = selected.size;
+  for (const record of selected) {
+    const clientId = portfolioRecordClientId(record);
+    if (!clientId) return {records:[],linkedCount:0,blocked:'Klienta této pozice nelze jednoznačně ověřit. Nejdřív oprav přiřazení pozice ke klientovi.'};
+    if (invIsWithdrawal(record)) continue;
+    const group = fkiPortfolio_fkiRecordsForClientKey(clientId, invPositionKey(record));
+    const key = invRecordKey(record);
+    for (const withdrawal of group.filter(invIsWithdrawal)) {
+      if (selected.has(withdrawal)) continue;
+      const source = withdrawal.redemptionSourceRecordKey || withdrawal['Odkup z nákupu'] || '';
+      if (source === key) {
+        const matchingBuys = group.filter(r => !invIsWithdrawal(r) && invRecordKey(r) === source);
+        if (matchingBuys.some(r => !selected.has(r))) return {records:[],linkedCount:0,blocked:'Odkup odkazuje na více shodných nákupů. Nejdřív uprav jeho vazbu, nebo smaž celý fond klienta.'};
+        selected.add(withdrawal);
+      } else if (!source || !group.some(r => !invIsWithdrawal(r) && invRecordKey(r) === source)) {
+        return {records:[],linkedCount:0,blocked:'Fond obsahuje odkup bez jednoznačné vazby na nákup. Nejdřív odkup přiřaď nebo smaž; případně použij Smazat fond klienta. Ostatní nákupy zůstanou beze změny.'};
+      }
+    }
+  }
+  // Older imports may suppress a generated deal position without recording an
+  // explicit source link. Do not guess that link or recreate it after deletion.
+  const excludedSources = new Set([...selected].flatMap(portfolioLinkedSources));
+  const remaining = (state.investmentRecords || []).filter(r => !selected.has(r));
+  for (const record of selected) {
+    if (invIsWithdrawal(record)) continue;
+    const clientId = portfolioRecordClientId(record), key = invPositionKey(record);
+    const sources = portfolioFundSources(clientId,key,'fki').filter(source => !excludedSources.has(source) && !source._fkiExcluded &&
+      ((state.deals || []).includes(source) ? !source.portfolioReplacedBy && !source.portfolioPending && dealVolume(source) > 0 : ['podepsano','vyrizeno'].includes(String(source.status || '')) && !source.fromDealId && parseMoney(source.amount) > 0));
+    for (const source of sources) {
+      const type = (state.deals || []).includes(source) ? 'deal' : 'contract', seed = fkiSync_crmFkiRecordSeed(clientId,source,type);
+      const represents = row => (row._crmSourceType === type && String(row._crmSourceId) === String(source.id)) ||
+        (seed._crmScenarioLinkKey && row._crmScenarioLinkKey === seed._crmScenarioLinkKey && invClientIdentity(row) === invClientIdentity(seed)) ||
+        (!seed._crmScenarioLinkKey && isFkiReportRecord(row) && portfolioRecordClientId(row) === clientId && invPositionKey(row) === invPositionKey(seed) && fkiSync_sameMoney(invDeposit(row),invDeposit(seed)));
+      if ([...selected].some(represents) && !remaining.some(represents)) return {records:[],linkedCount:0,blocked:'Pozice odpovídá staršímu obchodu nebo smlouvě, ale nemá ověřenou vazbu. Samotná transakce by se z evidence vytvořila znovu. Použij Smazat fond klienta, nebo nejdřív oprav vazbu zdroje.'};
+    }
+  }
+  return {records:[...selected],linkedCount:selected.size-initialCount,blocked:''};
+}
+function portfolioExcludeSources(sources) {
+  const stamp = new Date().toISOString();
+  (sources || []).forEach(source => {
+    if (!source) return;
+    const area = (state.deals || []).includes(source) ? areaForDeal(source) : areaForContract(source);
+    if (area === 'fki') source._fkiExcluded = true;
+    else source._investmentExcluded = true;
+    source._portfolioExcludedAt = stamp;
+  });
+}
+function portfolioLinkedSources(record) {
+  const clientId = portfolioRecordClientId(record);
+  const deals = (state.deals || []).filter(d => portfolioSourceBelongsToClient(d,clientId) &&
+    ((record._crmSourceType === 'deal' && String(d.id) === String(record._crmSourceId)) ||
+      (record._crmDealId && String(d.id) === String(record._crmDealId)) ||
+      (record._crmScenarioLinkKey && d.scenarioLinkKey === record._crmScenarioLinkKey)));
+  const contracts = (state.contracts || []).filter(s => portfolioSourceBelongsToClient(s,clientId) &&
+    ((record._crmSourceType === 'contract' && String(s.id) === String(record._crmSourceId)) ||
+      (record._crmContractId && String(s.id) === String(record._crmContractId)) ||
+      deals.some(d => String(s.fromDealId || '') === String(d.id) || String(d.contractId || d.fromContractId || '') === String(s.id))));
+  return [...deals,...contracts];
+}
+function portfolioRemoveRecords(records) {
+  const selected = new Set((records || []).filter(r => (state.investmentRecords || []).includes(r)));
+  selected.forEach(r => portfolioExcludeSources(portfolioLinkedSources(r)));
+  crmDeleteCloseProviderTargets([...selected].map(r => ({kind:'record',key:invRecordKey(r),clientId:portfolioRecordClientId(r)})));
+  state.investmentRecords = (state.investmentRecords || []).filter(r => !selected.has(r));
+  return selected.size;
+}
+function portfolioFundKey(clientId, key) {
+  const prefix = String(clientId) + '|';
+  return String(key || '').startsWith(prefix) ? String(key).slice(prefix.length) : String(key || '');
+}
+function portfolioSourceMatchesFund(source, clientId, key, area) {
+  if (!portfolioSourceBelongsToClient(source,clientId)) return false;
+  const sourceArea = (state.deals || []).includes(source) ? areaForDeal(source) : areaForContract(source);
+  if (sourceArea !== area) return false;
+  key = portfolioFundKey(clientId,key);
+  const isin = norm(source.fundIsin || source.isin || '');
+  const direct = String(source.fundKey || source.scenarioKey || '').replace(/^(FKI|Investice)\|/,'');
+  if (/^(?:investment-)?isin\|/.test(key)) return isin ? key.split('|')[1] === isin : /^(?:investment-)?isin\|/.test(direct) && key.split('|')[1] === direct.split('|')[1];
+  if (direct && direct === key) return true;
+  return area === 'fki'
+    ? invPositionKey({Fond:source.product || source.type,company:source.company,'Typ CP':source.fundType || 'Investiční akcie',ISIN:isin}) === key
+    : investmentFundKey({company:source.company,product:source.product || source.type,isin,typ:source.fundType || 'Investice'}) === key;
+}
+function portfolioFundSources(clientId,key,area) {
+  return [...(state.deals || []),...(state.contracts || [])].filter(s => portfolioSourceMatchesFund(s,clientId,key,area));
+}
+function deleteFkiRecordByKey(encodedKey, clientId = null) {
   const key = fkiPortfolio_dec(encodedKey),
-    r = (state.investmentRecords || []).find(x => fkiPortfolio_recordKey(x) === key);
-  if (!r) return alert('Záznam už v CRM nevidím.');
-  if (!confirm('Smazat tuto konkrétní FKI pozici klienta?')) return;
-  state.investmentRecords = state.investmentRecords.filter(x => fkiPortfolio_recordKey(x) !== key);
-  persist();
-  renderAll();
-  saveToast('FKI pozice smazána');
+    matches = (state.investmentRecords || []).filter(r => invRecordKey(r) === key && (clientId == null || portfolioRecordClientId(r) === String(clientId)));
+  if (!matches.length) return alert('Záznam už v CRM nevidím.');
+  if (matches.length !== 1) return alert('Existuje více shodných pozic. Otevři konkrétní fond klienta a zkontroluj jeho transakce.');
+  const plan = portfolioDeletionRecords(matches);
+  if (plan.blocked) return alert(plan.blocked);
+  const extra = plan.linkedCount ? ` Současně se odstraní ${plan.linkedCount} přímo navázaných odkupů.` : '';
+  if (!confirm(`Smazat tuto transakci klienta?${extra} Ostatní pozice a centrální nastavení fondu zůstanou zachované.`)) return;
+  if (crmDeleteMutation(() => portfolioRemoveRecords(plan.records))) {
+    if (fkiEditor_editingFkRecordKey === key) closeModal('fkRecordModal');
+    saveToast('Transakce smazána');
+  }
+}
+function portfolioDeleteClientFund(clientId, encodedKey, area) {
+  const key = portfolioFundKey(clientId,fkiPortfolio_dec(encodedKey)),
+    isin = /^(?:investment-)?isin\|/.test(key) ? key.split('|')[1] : '',
+    records = (state.investmentRecords || []).filter(r => portfolioRecordClientId(r) === String(clientId) && (isin ? norm(invIsin(r)) === isin : invPositionKey(r) === key)),
+    snapshots = (state.investmentSnapshots || []).filter(s => String(s.clientId) === String(clientId) && (isin ? norm(s.isin) === isin : portfolioFundKey(clientId,investmentSnapshotKeyForSnapshot(s)) === key)),
+    sources = portfolioFundSources(clientId,key,area),
+    c = findClient(clientId);
+  if (!records.length && !snapshots.length && !sources.length) return alert('U klienta už tento fond nevidím.');
+  const name = invFund(records[0]) || snapshots[0]?.product || sources[0]?.product || 'vybraný fond';
+  if (!confirm(`Smazat celý fond ${name} u klienta ${clientName(c)}? Odstraní se ${records.length} transakcí a ${snapshots.length} uložených aktualizací včetně odkupů. Obchody a smlouvy zůstanou v historii, ale nebudou tento fond znovu vytvářet v portfoliu. Centrální fond a ostatní klienti zůstanou zachovaní.`)) return;
+  if (crmDeleteMutation(() => {
+    portfolioExcludeSources(sources);
+    portfolioRemoveRecords(records);
+    const selected = new Set(snapshots);
+    crmDeleteCloseProviderTargets(snapshots.map(s => ({kind:'snapshot',key:String(s.id),clientId:s.clientId})));
+    state.investmentSnapshots = (state.investmentSnapshots || []).filter(s => !selected.has(s));
+  })) {
+    closeModal('fkRecordModal');
+    closeModal('investmentSnapshotModal');
+    saveToast('Fond klienta smazán z portfolia');
+  }
 }
 function deleteFkiClientFund(clientId, encodedKey) {
-  const key = fkiPortfolio_dec(encodedKey),
-    rows = fkiPortfolio_fkiRecordsForClientKey(clientId, key),
-    c = findClient(clientId);
-  if (!rows.length) return alert('U klienta už tento fond nevidím.');
-  if (!confirm(`Smazat celý fond ${cleanInvFundName(invFund(rows[0]), invCompany(rows[0]))} u klienta ${clientName(c)}? Smaže se ${rows.length} klientských pozic, centrální fond zůstane zachovaný.`)) return;
-  rows.forEach(r => {
-    if (r._crmSourceType === 'deal') {
-      const d = (state.deals || []).find(x => String(x.id) === String(r._crmSourceId));
-      if (d) d._fkiExcluded = true;
-    }
-    if (r._crmSourceType === 'contract') {
-      const s = (state.contracts || []).find(x => String(x.id) === String(r._crmSourceId));
-      if (s) s._fkiExcluded = true;
-    }
-  });
-  const keys = new Set(rows.map(fkiPortfolio_recordKey));
-  state.investmentRecords = state.investmentRecords.filter(r => !keys.has(fkiPortfolio_recordKey(r)));
-  addActivity(clientId, 'FKI', 'Smazán FKI fond klienta: ' + cleanInvFundName(invFund(rows[0]), invCompany(rows[0])), true);
-  persist();
-  renderAll();
-  saveToast('FKI fond klienta smazán');
+  return portfolioDeleteClientFund(clientId,encodedKey,'fki');
+}
+function deleteClassicClientFund(clientId, encodedKey) {
+  return portfolioDeleteClientFund(clientId,encodedKey,'investice');
+}
+function deleteInvestmentSnapshot(id = null) {
+  const selectedId = id ?? byId('investmentSnapshotModal')?.dataset.snapshotId;
+  const snapshots = (state.investmentSnapshots || []).filter(s => String(s.id) === String(selectedId));
+  if (!selectedId || snapshots.length !== 1) return alert('Uloženou aktualizaci už v CRM nevidím.');
+  const snapshot = snapshots[0];
+  if (!confirm(`Smazat aktualizaci ${snapshot.product || 'investice'} z ${snapshot.date || 'neuvedeného data'}? Předchozí aktualizace nebo původní smlouva mohou znovu zobrazit starší hodnotu. Pro úplné odebrání použij Smazat fond klienta.`)) return;
+  if (crmDeleteMutation(() => {
+    crmDeleteCloseProviderTargets([{kind:'snapshot',key:String(snapshot.id),clientId:snapshot.clientId}]);
+    state.investmentSnapshots = (state.investmentSnapshots || []).filter(s => s !== snapshot);
+  })) {
+    closeModal('investmentSnapshotModal');
+    saveToast('Aktualizace investice smazána');
+  }
 }
 function fkiSync_sameMoney(a, b) {
   return Math.abs((+a || 0) - (+b || 0)) < 1;
@@ -11142,7 +11349,7 @@ function fundPerformance_classicPositionRows(f, clientId) {
       reportedPa = investmentReportedAnnualPct(x),
       pa = reportedPa == null ? (investmentHasRegularPayments(x) ? null : fundPerformance_annualizedPct(put, cur, realized, returnStart, valueDate)) : reportedPa,
       info = liquidity_liquidityInfo('investice', f.key, x.isin || f.isin, start);
-    return `<tr><td><b>${esc(x.product || x.kind || 'Investice')} #${i + 1}</b><br><span class="chip">${esc(investmentScheduleLabel(x.snapshot || x.source || {}))}</span><br><span class="note">${esc([x.company, x.isin, x.typ || x.kind].filter(Boolean).join(' · '))}</span></td><td class="money">${money(put)}</td><td class="money">${money(cur)}<br><span class="date-highlight">k ${esc(valueDate || '-')}</span></td><td class="money ${gain >= 0 ? 'green' : 'red'}">${money(gain)}<br><span>${pct.toFixed(2)} %</span></td><td class="money ${pa === null || pa >= 0 ? 'green' : 'red'}">${pa === null ? '-' : pa.toFixed(2) + ' %'}</td><td>${liquidity_taxBadge(info)}<br><span class="note">${info ? `${num(info.rules.taxMonths)} měsíců od ${liquidity_fmtDate(start)}` : 'Doplň datum nákupu'}</span></td><td>${esc(valueDate || '-')}</td><td>${esc(x.snapshot?.source || x.sourceType || 'CRM')}</td><td>${typeof invStatus === 'function' ? invStatus(x) : ''}</td><td>${typeof invRowAction === 'function' ? invRowAction(x, clientId) : ''}</td></tr>`;
+    return `<tr><td><b>${esc(x.product || x.kind || 'Investice')} #${i + 1}</b><br><span class="chip">${esc(investmentScheduleLabel(x.snapshot || x.source || {}))}</span><br><span class="note">${esc([x.company, x.isin, x.typ || x.kind].filter(Boolean).join(' · '))}</span></td><td class="money">${money(put)}</td><td class="money">${money(cur)}<br><span class="date-highlight">k ${esc(valueDate || '-')}</span></td><td class="money ${gain >= 0 ? 'green' : 'red'}">${money(gain)}<br><span>${pct.toFixed(2)} %</span></td><td class="money ${pa === null || pa >= 0 ? 'green' : 'red'}">${pa === null ? '-' : pa.toFixed(2) + ' %'}</td><td>${liquidity_taxBadge(info)}<br><span class="note">${info ? `${num(info.rules.taxMonths)} měsíců od ${liquidity_fmtDate(start)}` : 'Doplň datum nákupu'}</span></td><td>${esc(valueDate || '-')}</td><td>${esc(x.snapshot?.source || x.sourceType || 'CRM')}</td><td>${investmentPosition_invStatus(x)}</td><td>${investmentPosition_invRowAction(x, clientId)}</td></tr>`;
   }).join('') || '<tr><td colspan="10" class="note">Pod fondem není žádná pozice.</td></tr>'}</tbody></table></div>`;
 }
 function fundPerformance_classicCard(f, clientId) {
@@ -11158,10 +11365,10 @@ function fundPerformance_classicCard(f, clientId) {
     locked = isInvestmentFundLocked(f.key),
     comment = fundPerformance_fundComment('investice', f.key, f.isin),
     tax = liquidity_taxSummary((f.items || []).map(x => liquidity_liquidityInfo('investice', f.key, x.isin || f.isin, liquidity_investmentTaxStart(x))));
-  return `<details class="fki-work-card ${providerImportNeedsReview(clientId,f.isin) ? 'provider-needs-review' : ''} ${gain < 0 ? 'loss' : ''} ${locked ? 'locked' : ''}"><summary class="fki-work-head"><div class="fki-work-name"><b>${esc(f.label)}</b><div class="chips"><span class="chip">${esc(f.company)}</span><span class="badge blue">Investice</span>${providerImportBadge(clientId,f.isin)}<span class="chip">${num(f.items.length)} pozic</span>${tax ? tax.html : '<span class="badge orange">datum nákupu chybí</span>'}${locked ? '<span class="badge orange">zamčeno</span>' : ''}</div></div><div class="fki-work-metric"><small>Vloženo</small><strong>${money(f.invested)}</strong></div><div class="fki-work-metric"><small>Aktuální</small><strong class="${gain >= 0 ? 'green' : 'red'}">${money(f.amount)}</strong><small class="date-highlight">k ${esc(valueDate || '-')}</small></div><div class="fki-work-metric"><small>Výnos celkem</small><strong class="${gain >= 0 ? 'green' : 'red'}">${pct.toFixed(1)} %</strong></div><div class="actions"><button class="btn slim primary" onclick="event.preventDefault();openInvestmentScenarioModal(${clientId},'Investice')">+ Nová investice</button><button class="btn slim" onclick="event.preventDefault();openInvestmentSnapshotModal(${clientId},'${esc(encodeURIComponent(String(clientId) + '|' + f.key))}')">Pozice klienta</button><button class="btn slim" onclick="event.preventDefault();openInvestmentFundModal('${esc(key)}')">Hodnota fondu</button><button class="icon-btn ${locked ? 'primary' : ''}" onclick="event.preventDefault();toggleInvestmentFundLock('${esc(key)}')" title="Zámek reportu">${locked ? '🔒' : '🔓'}</button><span class="fund-transactions-label">Transakce ▾</span></div></summary><div class="fki-work-detail"><div class="fki-detail-grid"><div><small>Investováno</small><b>${money(f.invested)}</b></div><div><small>Výnos Kč</small><b class="${gain >= 0 ? 'green' : 'red'}">${money(gain)}</b></div><div><small>Celkový výnos</small><b class="${gain >= 0 ? 'green' : 'red'}">${pct.toFixed(1)} %</b></div><div><small>Časový test všech pozic</small><b>${tax ? liquidity_fmtDate(tax.latest.taxReady) : 'datum nákupu chybí'}</b></div><div><small>Hodnota CP / NAV</small><b>${fv.nav ? num(fv.nav) : '-'}</b></div><div><small>Hodnota fondu k datu</small><b class="date-highlight">${esc(valueDate || '-')}</b></div><div><small>ISIN</small><b>${esc(f.isin || '-')}</b></div><div><small>Typ</small><b>${esc(f.typ || '-')}</b></div><div><small>Pozic</small><b>${num(f.items.length)}</b></div></div>${comment ? `<div class="notice small"><b>Komentář fondu:</b> ${esc(comment)}</div>` : ''}${fundPerformance_classicPositionRows(f, clientId)}</div></details>`;
+  return `<details class="fki-work-card ${providerImportNeedsReview(clientId,f.isin) ? 'provider-needs-review' : ''} ${gain < 0 ? 'loss' : ''} ${locked ? 'locked' : ''}"><summary class="fki-work-head"><div class="fki-work-name"><b>${esc(f.label)}</b><div class="chips"><span class="chip">${esc(f.company)}</span><span class="badge blue">Investice</span>${providerImportBadge(clientId,f.isin)}<span class="chip">${num(f.items.length)} pozic</span>${tax ? tax.html : '<span class="badge orange">datum nákupu chybí</span>'}${locked ? '<span class="badge orange">zamčeno</span>' : ''}</div></div><div class="fki-work-metric"><small>Vloženo</small><strong>${money(f.invested)}</strong></div><div class="fki-work-metric"><small>Aktuální</small><strong class="${gain >= 0 ? 'green' : 'red'}">${money(f.amount)}</strong><small class="date-highlight">k ${esc(valueDate || '-')}</small></div><div class="fki-work-metric"><small>Výnos celkem</small><strong class="${gain >= 0 ? 'green' : 'red'}">${pct.toFixed(1)} %</strong></div><div class="actions"><button class="btn slim primary" onclick="event.preventDefault();openInvestmentScenarioModal(${clientId},'Investice')">+ Nová investice</button><button class="btn slim" onclick="event.preventDefault();openInvestmentSnapshotModal(${clientId},'${esc(encodeURIComponent(String(clientId) + '|' + f.key))}')">Pozice klienta</button><button class="btn slim" onclick="event.preventDefault();openInvestmentFundModal('${esc(key)}')">Hodnota fondu</button><button class="btn slim red" onclick="event.preventDefault();deleteClassicClientFund(${clientId},'${esc(key)}')">Smazat fond klienta</button><button class="icon-btn ${locked ? 'primary' : ''}" onclick="event.preventDefault();toggleInvestmentFundLock('${esc(key)}')" title="Zámek reportu">${locked ? '🔒' : '🔓'}</button><span class="fund-transactions-label">Transakce ▾</span></div></summary><div class="fki-work-detail"><div class="fki-detail-grid"><div><small>Investováno</small><b>${money(f.invested)}</b></div><div><small>Výnos Kč</small><b class="${gain >= 0 ? 'green' : 'red'}">${money(gain)}</b></div><div><small>Celkový výnos</small><b class="${gain >= 0 ? 'green' : 'red'}">${pct.toFixed(1)} %</b></div><div><small>Časový test všech pozic</small><b>${tax ? liquidity_fmtDate(tax.latest.taxReady) : 'datum nákupu chybí'}</b></div><div><small>Hodnota CP / NAV</small><b>${fv.nav ? num(fv.nav) : '-'}</b></div><div><small>Hodnota fondu k datu</small><b class="date-highlight">${esc(valueDate || '-')}</b></div><div><small>ISIN</small><b>${esc(f.isin || '-')}</b></div><div><small>Typ</small><b>${esc(f.typ || '-')}</b></div><div><small>Pozic</small><b>${num(f.items.length)}</b></div></div>${comment ? `<div class="notice small"><b>Komentář fondu:</b> ${esc(comment)}</div>` : ''}${fundPerformance_classicPositionRows(f, clientId)}</div></details>`;
 }
 function fundPerformance_fkiRowsFor(clientId, key) {
-  return (typeof investmentRecordsForClient === 'function' ? investmentRecordsForClient(clientId) : []).filter(r => invPositionKey(r) === key && isFkiReportRecord(r)).sort((a, b) => String(invEmissionDate(a) || invPaymentDate(a)).localeCompare(String(invEmissionDate(b) || invPaymentDate(b))));
+  return fkiPortfolio_fkiRecordsForClientKey(clientId,key).filter(r => !r.portfolioReplacedBy).sort((a, b) => String(invEmissionDate(a) || invPaymentDate(a)).localeCompare(String(invEmissionDate(b) || invPaymentDate(b))));
 }
 function fundPerformance_redemptionSummary(rows) {
   const allocation = liquidity_redemptionAllocations(rows);
@@ -11183,7 +11390,7 @@ function fundPerformance_fkiPositionRowsPa(clientId, item) {
       pa = isOut ? null : fundPerformance_annualizedPct(inv, cur, redeemed, fundPerformance_cashFlowDate(r), valueDate || new Date()),
       info = liquidity_liquidityInfo('fki', item.key, invIsin(r) || item.isin, taxStart),
       rk = encodeURIComponent(invRecordKey(r));
-    return `<tr class="${providerImportRecordNeedsReview(clientId,r) ? 'provider-position-review' : ''}"><td><b>${esc(r['Typ transakce'] || 'Platba')} #${i + 1}</b><br><span class="note">Připsání ${esc(invPaymentDate(r) || '-')} · emise ${esc(issue || '-')}</span></td><td class="money">${money(inv)}</td><td class="money">${money(cur)}<br><span class="date-highlight">k ${esc(valueDate || '-')}</span></td><td class="money ${gain >= 0 ? 'green' : 'red'}">${isOut ? 'realizováno ' + money(gain) : money(gain)}</td><td class="money ${pa === null || pa >= 0 ? 'green' : 'red'}">${fundPerformance_pctText(pa)}</td><td>${isOut ? '<span class="badge green">odkup zadán</span>' : `${liquidity_taxBadge(info)}<br><span class="note">${info ? `${num(info.rules.taxMonths)} měsíců od ${liquidity_fmtDate(taxStart)} · ` : ''}${redeemed ? `odkoupeno ${money(redeemed)} · ` : ''}zbývá ${money(cur)}</span>`}</td><td><button class="btn slim" onclick="openFkRecordModal(${clientId},'${esc(encodeURIComponent(item.key))}','${esc(rk)}')">Upravit</button></td></tr>`;
+    return `<tr class="${providerImportRecordNeedsReview(clientId,r) ? 'provider-position-review' : ''}"><td><b>${esc(r['Typ transakce'] || 'Platba')} #${i + 1}</b><br><span class="note">Připsání ${esc(invPaymentDate(r) || '-')} · emise ${esc(issue || '-')}</span></td><td class="money">${money(inv)}</td><td class="money">${money(cur)}<br><span class="date-highlight">k ${esc(valueDate || '-')}</span></td><td class="money ${gain >= 0 ? 'green' : 'red'}">${isOut ? 'realizováno ' + money(gain) : money(gain)}</td><td class="money ${pa === null || pa >= 0 ? 'green' : 'red'}">${fundPerformance_pctText(pa)}</td><td>${isOut ? '<span class="badge green">odkup zadán</span>' : `${liquidity_taxBadge(info)}<br><span class="note">${info ? `${num(info.rules.taxMonths)} měsíců od ${liquidity_fmtDate(taxStart)} · ` : ''}${redeemed ? `odkoupeno ${money(redeemed)} · ` : ''}zbývá ${money(cur)}</span>`}</td><td><button class="btn slim" onclick="openFkRecordModal(${clientId},'${esc(encodeURIComponent(item.key))}','${esc(rk)}')">Upravit</button> <button class="btn slim red" onclick="deleteFkiRecordByKey('${esc(rk)}',${clientId})">Smazat transakci</button></td></tr>`;
   }).join('') || '<tr><td colspan="7" class="note">Pod fondem není žádná konkrétní pozice.</td></tr>'}</tbody></table></div>`;
 }
 function fundPerformance_fkiCardPa(item, clientId) {
@@ -11199,7 +11406,7 @@ function fundPerformance_fkiCardPa(item, clientId) {
     key = encodeURIComponent(item.key),
     comment = fundPerformance_fundComment('fki', item.key, item.isin || invIsin(main)),
     valueDate = invProviderValueDate(main) || (typeof fundValueDateText === 'function' ? fundValueDateText('fki', item.key, item.isin || invIsin(main), main['Poslední schválená hodnota do']) : '');
-  return `<details class="fki-work-card ${providerImportNeedsReview(clientId,item.isin || invIsin(main)) ? 'provider-needs-review' : ''} ${gain < 0 ? 'loss' : ''} ${item.locked ? 'locked' : ''}"><summary class="fki-work-head"><div class="fki-work-name"><b>${esc(cleanInvFundName(item.product || invFund(main), item.company))}</b><div class="chips"><span class="chip">${esc(item.company || invCompany(main) || '')}</span><span class="badge purple">FKI</span><span class="chip">${num(rows.length)} pozic</span>${providerImportBadge(clientId,item.isin || invIsin(main))}${tax ? tax.html : '<span class="badge orange">datum nákupu chybí</span>'}</div></div><div class="fki-work-metric"><small>Vloženo</small><strong class="${providerImportFieldClass(clientId,item.isin || invIsin(main),'invested')}">${money(inv)}</strong></div><div class="fki-work-metric"><small>Aktuální</small><strong class="${gain >= 0 ? 'green' : 'red'} ${providerImportFieldClass(clientId,item.isin || invIsin(main),'current')}">${money(cur)}</strong><small class="date-highlight">k ${esc(valueDate || '-')}</small></div><div class="fki-work-metric"><small>Výnos celkem</small><strong class="${gain >= 0 ? 'green' : 'red'} ${providerImportFieldClass(clientId,item.isin || invIsin(main),'gain')}">${pct.toFixed(1)} %</strong></div><div class="actions"><button class="btn slim primary" onclick="event.preventDefault();openInvestmentScenarioModal(${clientId},'FKI')">+ Dokup</button><button class="btn slim" onclick="event.preventDefault();openFkRecordModal(${clientId},'${esc(key)}','${esc(encodeURIComponent(invRecordKey(main)))}')">Upravit</button><button class="icon-btn ${item.locked ? 'primary' : ''}" onclick="event.preventDefault();toggleFkFundLock('${esc(key)}')" title="Zámek AUM">${item.locked ? '🔒' : '🔓'}</button><span class="fund-transactions-label">Transakce ▾</span></div></summary><div class="fki-work-detail"><div class="fki-detail-grid"><div><small>Investováno</small><b>${money(inv)}</b></div><div><small>Výnos Kč</small><b class="${gain >= 0 ? 'green' : 'red'}">${money(gain)}</b></div><div><small>Celkový výnos</small><b class="${gain >= 0 ? 'green' : 'red'}">${pct.toFixed(1)} %</b></div><div><small>Časový test všech pozic</small><b>${tax ? liquidity_fmtDate(tax.latest.taxReady) : 'datum nákupu chybí'}</b></div><div><small>Datum emise</small><b>${esc(issue || '-')}</b></div><div><small>Hodnota fondu k datu</small><b class="date-highlight">${esc(valueDate || '-')}</b></div><div><small>ISIN</small><b>${esc(item.isin || invIsin(main) || '-')}</b></div></div>${comment ? `<div class="notice small"><b>Komentář fondu:</b> ${esc(comment)}</div>` : ''}${fundPerformance_fkiPositionRowsPa(clientId, item)}</div></details>`;
+  return `<details class="fki-work-card ${providerImportNeedsReview(clientId,item.isin || invIsin(main)) ? 'provider-needs-review' : ''} ${gain < 0 ? 'loss' : ''} ${item.locked ? 'locked' : ''}"><summary class="fki-work-head"><div class="fki-work-name"><b>${esc(cleanInvFundName(item.product || invFund(main), item.company))}</b><div class="chips"><span class="chip">${esc(item.company || invCompany(main) || '')}</span><span class="badge purple">FKI</span><span class="chip">${num(rows.length)} pozic</span>${providerImportBadge(clientId,item.isin || invIsin(main))}${tax ? tax.html : '<span class="badge orange">datum nákupu chybí</span>'}</div></div><div class="fki-work-metric"><small>Vloženo</small><strong class="${providerImportFieldClass(clientId,item.isin || invIsin(main),'invested')}">${money(inv)}</strong></div><div class="fki-work-metric"><small>Aktuální</small><strong class="${gain >= 0 ? 'green' : 'red'} ${providerImportFieldClass(clientId,item.isin || invIsin(main),'current')}">${money(cur)}</strong><small class="date-highlight">k ${esc(valueDate || '-')}</small></div><div class="fki-work-metric"><small>Výnos celkem</small><strong class="${gain >= 0 ? 'green' : 'red'} ${providerImportFieldClass(clientId,item.isin || invIsin(main),'gain')}">${pct.toFixed(1)} %</strong></div><div class="actions"><button class="btn slim primary" onclick="event.preventDefault();openInvestmentScenarioModal(${clientId},'FKI')">+ Dokup</button><button class="btn slim" onclick="event.preventDefault();openFkRecordModal(${clientId},'${esc(key)}','${esc(encodeURIComponent(invRecordKey(main)))}')">Upravit</button><button class="btn slim red" onclick="event.preventDefault();deleteFkiClientFund(${clientId},'${esc(key)}')">Smazat fond klienta</button><button class="icon-btn ${item.locked ? 'primary' : ''}" onclick="event.preventDefault();toggleFkFundLock('${esc(key)}')" title="Zámek AUM">${item.locked ? '🔒' : '🔓'}</button><span class="fund-transactions-label">Transakce ▾</span></div></summary><div class="fki-work-detail"><div class="fki-detail-grid"><div><small>Investováno</small><b>${money(inv)}</b></div><div><small>Výnos Kč</small><b class="${gain >= 0 ? 'green' : 'red'}">${money(gain)}</b></div><div><small>Celkový výnos</small><b class="${gain >= 0 ? 'green' : 'red'}">${pct.toFixed(1)} %</b></div><div><small>Časový test všech pozic</small><b>${tax ? liquidity_fmtDate(tax.latest.taxReady) : 'datum nákupu chybí'}</b></div><div><small>Datum emise</small><b>${esc(issue || '-')}</b></div><div><small>Hodnota fondu k datu</small><b class="date-highlight">${esc(valueDate || '-')}</b></div><div><small>ISIN</small><b>${esc(item.isin || invIsin(main) || '-')}</b></div></div>${comment ? `<div class="notice small"><b>Komentář fondu:</b> ${esc(comment)}</div>` : ''}${fundPerformance_fkiPositionRowsPa(clientId, item)}</div></details>`;
 }
 function fundPerformance_scenarioSeries(rateKind) {
   const years = Math.max(1, fundPerformance_n(val('scenarioYears')) || 10),
@@ -11327,7 +11534,7 @@ function pensions_pStatuses(x) {
   return typeof getStatuses === 'function' ? getStatuses(x) : [x?.status].filter(Boolean);
 }
 function pensions_pIsActive(x) {
-  return !x.portfolioReplacedBy && !x.portfolioPending && !pensions_pStatuses(x).some(s => pensions_pActiveStatusSet.has(pensions_pNorm(s)));
+  return !x.portfolioReplacedBy && !x.portfolioPending && !x._investmentExcluded && !x._fkiExcluded && !pensions_pStatuses(x).some(s => pensions_pActiveStatusSet.has(pensions_pNorm(s)));
 }
 function pensionCurrentValue(x, kind='contract') {
   if(x && Object.prototype.hasOwnProperty.call(x,'pensionCurrent'))return x.pensionCurrent===null||x.pensionCurrent===''?null:parseMoney(x.pensionCurrent);
@@ -13098,14 +13305,7 @@ function liquidity_prevSaveFkRecord2() {
 }
 function deleteFkRecord() {
   if (!fkiEditor_editingFkRecordKey) return;
-  const r = (state.investmentRecords || []).find(x => fkiEditor_fkRecKey(x) === fkiEditor_editingFkRecordKey);
-  if (!r) return;
-  if (!confirm('Smazat tento FKI záznam klienta? Centrální fond zůstane zachovaný.')) return;
-  state.investmentRecords = state.investmentRecords.filter(x => fkiEditor_fkRecKey(x) !== fkiEditor_editingFkRecordKey);
-  closeModal('fkRecordModal');
-  persist();
-  renderAll();
-  saveToast('FKI záznam smazán');
+  return deleteFkiRecordByKey(encodeURIComponent(fkiEditor_editingFkRecordKey), fkiEditor_editingFkClientId);
 }
 function showFkFundClients(encodedKey) {
   const key = fkiEditor_fkDec(encodedKey),
@@ -13274,22 +13474,10 @@ function moveDealToOpportunity() {
   return result;
 }
 function deleteDeal() {
-  const result = fkiSync_before_deleteDeal.apply(this, arguments),
-    changed = fkiSync_syncCrmFkiDealsToRecords() + fkiSync_removeOrphanCrmFkiRecords();
-  if (changed) {
-    persist();
-    renderAll();
-  }
-  return result;
+  return fkiSync_before_deleteDeal.apply(this, arguments);
 }
 function deleteContract() {
-  const result = fkiSync_before_deleteContract.apply(this, arguments),
-    changed = fkiSync_syncCrmFkiDealsToRecords() + fkiSync_removeOrphanCrmFkiRecords();
-  if (changed) {
-    persist();
-    renderAll();
-  }
-  return result;
+  return fkiSync_before_deleteContract.apply(this, arguments);
 }
 function fkFundItems() {
   return fundIdentity_previousFkFundItems().filter(f => !state.fundValues?.[f.key]?._aliasTo);
@@ -15327,8 +15515,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.29-1';
-const VERSION_NOTE = 'Jednotné ocenění klienta, AUM a reportu. Změna ceny CP podle ISIN přeceňuje všechny automatické pozice ve FKI i Investicích; ruční hodnoty a potvrzené nulové pozice zůstávají zachované.';
+const VERSION = '2026.10.29-2';
+const VERSION_NOTE = 'Přímé mazání transakcí, klientských fondů, smluv a obchodů. Odstraněné pozice se znovu nevytvářejí z navázané evidence; historie ostatních záznamů a společné ceny CP zůstávají zachované.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';

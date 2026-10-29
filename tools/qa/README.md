@@ -7,6 +7,8 @@ node tools/qa/static.cjs
 node tools/qa/google-sync.cjs
 python3 tools/qa/storage.py
 node tools/qa/regression.cjs
+node tools/qa/portfolio-deletion.cjs
+node tools/qa/provider-deletion.cjs
 node tools/qa/provider-import.cjs
 node tools/qa/provider-storage-calc.cjs
 node tools/qa/fki-nav.cjs
@@ -64,3 +66,5 @@ insurance-claims.cjs ověřuje založení a úpravy pojistných událostí, hist
 `fki-valuation-consistency.cjs` ověřuje stejnou hodnotu a datum v editoru, kartě, AUM a reportu, bez nutnosti dalšího uložení, včetně legacy importů, ověřených výpisů, novějších NAV, nul a odkupů.
 
 `fund-nav-propagation.cjs` ověřuje více klientů stejného ISIN, obě oblasti i editory, starší a stejně datované opravy, ruční hodnoty, nulové a neúplné pozice, sloučení starší zálohy a opětovné otevření reportu. Používá pouze syntetická data.
+
+`portfolio-deletion.cjs` ověřuje mazání nákupu/odkupu/fondu/aktualizace/smlouvy/obchodu/případu, navázané i nejasné odkupy, zachování ostatních klientů, chybně klasifikované starší řádky, uzavření importních kontrol, zrušení a rollback, obnovení stránky a historii pojistné události. `provider-deletion.cjs` kontroluje přesné cíle importních kontrol, klientské identity a idempotenci. Používají pouze syntetická data.
