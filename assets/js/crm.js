@@ -1410,20 +1410,61 @@ function invProviderNumber(r, field) {
   const value = r?.providerValuation?.[field];
   return value !== '' && value != null && Number.isFinite(+value) ? +value : null;
 }
-function invCurrentNav(r, source = state) {
-  const fv = source.fundValues?.[invPositionKey(r)] || {}, rowNav = invNum(r?.['Poslední schválená hodnota CP'] || r?.['Posledni schvalena hodnota CP']);
-  if (!r?.providerValuation) return invNum(fv.nav) || rowNav;
-  const candidates = [
-    {nav:invNum(fv.nav), date:String(fv.date || fv.navDate || '')},
-    {nav:rowNav, date:String(r?.['Poslední schválená hodnota do'] || '')},
-    {nav:invProviderNumber(r,'nav'), date:String(r.providerValuation.date || '')}
+function fundNavIsin(value) {
+  return String(value || '').replace(/\s+/g,'').toUpperCase();
+}
+function fundNavIdentity(key, value = {}) {
+  return fundNavIsin(value.isin || (/^(?:investment-)?isin\|/i.test(key || '') ? String(key).split('|')[1] : ''));
+}
+function fundNavQuote(key, isin = '', source = state) {
+  const wanted = fundNavIsin(isin) || fundNavIdentity(key,source.fundValues?.[key]), quotes = [];
+  Object.entries(source.fundValues || {}).forEach(([candidate,value]) => {
+    if (wanted ? fundNavIdentity(candidate,value) !== wanted : candidate !== key) return;
+    const nav = invNum(value.nav);
+    if (nav > 0) quotes.push({nav,date:String(value.date || value.navDate || ''),updatedAt:String(value._navUpdatedAt || ''),source:'fund',key:candidate});
+  });
+  quotes.sort((a,b) => b.date.localeCompare(a.date) || b.updatedAt.localeCompare(a.updatedAt) || (a.key === key ? -1 : b.key === key ? 1 : a.key.localeCompare(b.key)));
+  return quotes[0] || {nav:0,date:'',updatedAt:'',source:'fund',key};
+}
+function fundNavValue(key, isin = '', source = state) {
+  const value = source.fundValues?.[key] || {}, quote = fundNavQuote(key,isin,source);
+  return quote.nav > 0 ? {...value,nav:quote.nav,date:quote.date,_navUpdatedAt:quote.updatedAt} : value;
+}
+function publishFundNav(key, nav, date, base = {}) {
+  if (!key || !(invNum(nav) > 0)) return fundNavQuote(key,base.isin);
+  const previous = fundNavQuote(key,base.isin), requestedDate = String(date || today()),
+    stale = previous.nav > 0 && previous.date > requestedDate,
+    unchanged = previous.nav === invNum(nav) && previous.date === requestedDate,
+    quote = stale || unchanged ? previous : {nav:invNum(nav),date:requestedDate,updatedAt:new Date().toISOString(),source:'fund',key};
+  state.fundValues ||= {};
+  state.fundValues[key] = {...(state.fundValues[key] || {}),...base};
+  const wanted = fundNavIsin(base.isin) || fundNavIdentity(key,state.fundValues[key]);
+  // Share only the quote. Fund labels, product areas and all client amounts remain independent.
+  Object.entries(state.fundValues).forEach(([candidate,value]) => {
+    if (candidate !== key && (!wanted || fundNavIdentity(candidate,value) !== wanted)) return;
+    state.fundValues[candidate] = {...value,nav:quote.nav,date:quote.date,_navUpdatedAt:quote.updatedAt};
+  });
+  return quote;
+}
+function invNavQuote(r, source = state) {
+  const shared = fundNavQuote(invPositionKey(r),invIsin(r),source);
+  // Keep the NAV and its own date together; a stale catalogue must not hide a newer row quote.
+  const quotes = [
+    shared,
+    {nav:invNum(r?.['Poslední schválená hodnota CP'] || r?.['Posledni schvalena hodnota CP']), date:String(r?.['Poslední schválená hodnota do'] || ''), source:'record'},
+    {nav:invProviderNumber(r,'nav'), date:String(r?.providerValuation?.date || ''), source:'provider'}
   ].filter(x => x.nav > 0).sort((a,b) => b.date.localeCompare(a.date));
-  return candidates[0]?.nav || 0;
+  return quotes[0] || {nav:0,date:'',source:''};
+}
+function invCurrentNav(r, source = state) {
+  return invNavQuote(r,source).nav;
+}
+function fundNavNewerThanStatement(quote, record) {
+  const date = String(record?.providerValuation?.date || '');
+  return quote.date > date || quote.date === date && quote.source === 'fund' && !!quote.updatedAt && quote.updatedAt > String(record?._providerImportedAt || '');
 }
 function invProviderValueDate(r, source = state) {
-  if (!r?.providerValuation) return '';
-  const date = String(r.providerValuation.date || ''), fv = source.fundValues?.[invPositionKey(r)] || {};
-  return invNum(fv.nav) > 0 && String(fv.date || '') > date ? String(fv.date) : date;
+  return invValuation(r,source).date;
 }
 function invEffectiveQty(r) {
   const q = invQty(r);
@@ -1442,7 +1483,7 @@ function invWithdrawalCurrentValue(r, source = state) {
   const current = invProviderNumber(r, 'current');
   if (current === null) return invWithdrawalValue(r);
   const qty = Math.abs(invQty(r)), nav = invCurrentNav(r, source), date = String(r.providerValuation.date || '');
-  if (qty > 0 && nav > 0 && (invPrefersNavCalculation(r) || invProviderValueDate(r, source) > date)) return qty * nav;
+  if (qty > 0 && nav > 0 && (invPrefersNavCalculation(r) || fundNavNewerThanStatement(invNavQuote(r,source),r))) return qty * nav;
   return Math.abs(current);
 }
 function invPrefersNavCalculation(r) {
@@ -1460,24 +1501,32 @@ function invManualValue(r) {
 function invPositionValue(r, source = state) {
   const manual = invManualValue(r);
   if (manual !== null) return manual;
-  if (invProviderNumber(r, 'current') !== null) return invCurrentValue(r, source);
+  if (invProviderNumber(r, 'current') !== null || invValuation(r,source).kind === 'legacy-zero') return invCurrentValue(r, source);
   return invCurrentValue(r, source) || invCurrent(r) || invDeposit(r) || 0;
 }
-function invCurrentValue(r, source = state) {
-  if (invIsWithdrawal(r)) return invIsFutureWithdrawal(r) ? 0 : -invWithdrawalCurrentValue(r, source);
+function invValuation(r, source = state) {
+  const quote = invNavQuote(r,source), rowDate = String(r?.['Poslední schválená hodnota do'] || ''),
+    providerDate = String(r?.providerValuation?.date || '');
+  if (invIsWithdrawal(r)) {
+    const usesNav = Math.abs(invQty(r)) > 0 && quote.nav > 0 && (invPrefersNavCalculation(r) || fundNavNewerThanStatement(quote,r));
+    return {value:invIsFutureWithdrawal(r) ? 0 : -invWithdrawalCurrentValue(r,source), date:invProviderNumber(r,'current') !== null && !usesNav ? providerDate : quote.date || providerDate || rowDate, kind:'withdrawal'};
+  }
   const manual = invManualValue(r);
-  if (manual !== null) return manual;
-  const qty = invEffectiveQty(r), nav = invCurrentNav(r, source), canCalculate = qty > 0 && nav > 0;
-  if (canCalculate && invPrefersNavCalculation(r)) return qty * nav;
-  const providerCurrent = invProviderNumber(r, 'current');
-  if (providerCurrent !== null && (!canCalculate || invProviderValueDate(r, source) <= String(r.providerValuation.date || ''))) return providerCurrent;
-  if (providerCurrent !== null && canCalculate) return qty * nav;
-  const imported = r?.codyaImportedCurrent,
-    importedDate = String(r?.codyaImportDate || ''),
-    fundDate = String(source.fundValues?.[invPositionKey(r)]?.date || '');
-  if (imported !== '' && imported != null && Number.isFinite(+imported) && (!fundDate || importedDate >= fundDate)) return +imported;
-  if (canCalculate) return qty * nav;
-  return invCurrent(r);
+  if (manual !== null) return {value:manual,date:rowDate || providerDate,kind:'manual'};
+  const qty = invEffectiveQty(r), canCalculate = qty > 0 && quote.nav > 0,
+    providerCurrent = invProviderNumber(r,'current');
+  if (canCalculate && invPrefersNavCalculation(r)) return {value:qty*quote.nav,date:quote.date,kind:'nav'};
+  if (providerCurrent !== null && (providerCurrent === 0 || !canCalculate || !quote.date || !fundNavNewerThanStatement(quote,r))) return {value:providerCurrent,date:providerDate,kind:'statement'};
+  const imported = r?.codyaImportedCurrent, hasImported = imported !== '' && imported != null && Number.isFinite(+imported);
+  // Old Codya imports stored the upload day, not the valuation day. They cannot date or override a CP calculation.
+  // Preserve an explicitly closed/zero legacy statement until the user opts into a CP calculation.
+  if (providerCurrent === null && hasImported && +imported === 0 && r.fkiValuationMode === 'statement') return {value:0,date:'',kind:'legacy-zero'};
+  if (canCalculate) return {value:qty*quote.nav,date:quote.date,kind:'nav'};
+  if (hasImported) return {value:+imported,date:'',kind:'legacy-statement'};
+  return {value:invCurrent(r),date:rowDate,kind:'stored'};
+}
+function invCurrentValue(r, source = state) {
+  return invValuation(r,source).value;
 }
 function providerStorageCurrentValue(record, source = state) {
   return invCurrentValue(record,source);
@@ -4512,6 +4561,7 @@ function investmentHasRegularPayments(x) {
   return investmentSchedule(x?.snapshot || x?.source || x || {}) !== 'single';
 }
 function investmentReportedGain(x) {
+  if (x?.snapshot?.providerValuation && !x.snapshot.manualPerformanceOverride && investmentSnapshotValuation(x.snapshot).kind === 'nav') return investmentPerformanceGain(+x.amount || 0, investmentInvestedAmount(x), investmentRealizedAmount(x));
   const v = x?.snapshot?.gainAmount;
   if (v !== '' && v != null && Number.isFinite(+v)) return +v;
   const pct = x?.snapshot?.gainPct;
@@ -4519,10 +4569,12 @@ function investmentReportedGain(x) {
   return investmentPerformanceGain(+x?.amount || 0, investmentInvestedAmount(x), investmentRealizedAmount(x));
 }
 function investmentReportedPct(x) {
+  if (x?.snapshot?.providerValuation && !x.snapshot.manualPerformanceOverride && investmentSnapshotValuation(x.snapshot).kind === 'nav') return investmentPerformancePct(+x.amount || 0, investmentInvestedAmount(x), investmentRealizedAmount(x));
   const v = x?.snapshot?.gainPct;
   return v !== '' && v != null && Number.isFinite(+v) ? +v : investmentInvestedAmount(x) ? investmentReportedGain(x) / investmentInvestedAmount(x) * 100 : 0;
 }
 function investmentReportedAnnualPct(x) {
+  if (x?.snapshot?.providerValuation && !x.snapshot.manualPerformanceOverride && investmentSnapshotValuation(x.snapshot).kind === 'nav') return null;
   const v = x?.snapshot?.annualReturnPct;
   return v !== '' && v != null && Number.isFinite(+v) ? +v : null;
 }
@@ -4576,33 +4628,35 @@ function latestSnapshotForItem(x) {
   const key = investmentItemKey(x);
   return latestInvestmentSnapshots(x.clientId || x.client?.id).find(s => investmentSnapshotKeyForSnapshot(s) === key) || null;
 }
-function investmentSnapshotFundValue(s = {}) {
+function investmentSnapshotFundValue(s = {}, source = state) {
   const key = s.isin ? ['investment-isin', norm(s.isin)].join('|') : s.mergeKey ? ['investment-merge', norm(s.mergeKey)].join('|') : investmentFundKeyFromParts(s.company, s.product, '', s.fundType || s.typ || 'Investice');
-  const direct = state.fundValues?.[key];
-  if (direct) return direct;
-  const isin = norm(s.isin || '');
-  if (isin) return Object.values(state.fundValues || {}).find(v => v?.area === 'investice' && norm(v.isin || '') === isin) || {};
-  return {};
+  return fundNavValue(key,s.isin || '',source);
 }
-function investmentSnapshotLiveCurrent(s = {}) {
+function investmentSnapshotValuation(s = {}, source = state) {
   const manual = s.manualAumOverride === true || (s.scope === 'provider-total' && s.calculationVersion !== 2);
   const qty = parseMoney(s.quantity ?? s.qty) || (s.calculationVersion === 2 && +s.subscribeValue > 0 ? +s.invested / +s.subscribeValue : 0),
-    fv = investmentSnapshotFundValue(s),
-    nav = parseMoney(fv.nav);
-  if (!manual && qty > 0 && nav > 0) return Math.max(0, qty * nav - parseMoney(s.redemptionAmount));
-  if (!manual && s.calculationVersion === 2) {
+    fv = investmentSnapshotFundValue(s,source), nav = parseMoney(fv.nav),
+    providerCurrent = invProviderNumber(s,'current'), providerDate = String(s.providerValuation?.date || ''),
+    quoteDate = String(fv.date || fv.navDate || ''),
+    newerQuote = fundNavNewerThanStatement({date:quoteDate,updatedAt:String(fv._navUpdatedAt || ''),source:'fund'},s);
+  if (manual) return {value:+s.current || 0,date:s.date || providerDate,kind:'manual'};
+  if (providerCurrent !== null && (providerCurrent === 0 || !(qty > 0 && nav > 0) || !newerQuote)) return {value:providerCurrent,date:providerDate,kind:'statement'};
+  if (qty > 0 && nav > 0) return {value:Math.max(0, qty * nav - parseMoney(s.redemptionAmount)),date:quoteDate,kind:'nav'};
+  if (s.calculationVersion === 2) {
     const invested = +s.invested || 0;
     const gain = s.gainAmount != null ? +s.gainAmount : s.gainPct != null ? invested * +s.gainPct / 100 : 0;
-    return Math.max(0, invested + gain - parseMoney(s.redemptionAmount));
+    return {value:Math.max(0, invested + gain - parseMoney(s.redemptionAmount)),date:s.date || '',kind:'calculated'};
   }
-  return +s.current || 0;
+  return {value:+s.current || 0,date:s.date || '',kind:'stored'};
+}
+function investmentSnapshotLiveCurrent(s = {}, source = state) {
+  return investmentSnapshotValuation(s,source).value;
 }
 function investmentItemValueDate(x) {
   const snapshot = x?.snapshot;
-  const fv = snapshot ? investmentSnapshotFundValue(snapshot) : state.fundValues?.[investmentFundKey(x)] || {};
-  const qty = snapshot ? parseMoney(snapshot.quantity ?? snapshot.qty) || (snapshot.calculationVersion === 2 && +snapshot.subscribeValue > 0 ? +snapshot.invested / +snapshot.subscribeValue : 0) : 0;
-  if (snapshot && (snapshot.manualAumOverride || snapshot.scope === 'provider-total' || !(qty > 0 && parseMoney(fv.nav) > 0))) return snapshot.date || x.date || '';
-  return fv.date || fv.navDate || snapshot?.date || x?.source?.valueDate || x?.date || '';
+  if (snapshot) return investmentSnapshotValuation(snapshot).date || x.date || '';
+  const fv = fundNavValue(investmentFundKey(x),x?.isin || x?.source?.isin || '');
+  return fv.date || fv.navDate || x?.source?.valueDate || x?.date || '';
 }
 function investmentSnapshotItem(s) {
   return {
@@ -5148,7 +5202,7 @@ function fillFkFundSelect(selected = '') {
 function liquidity_oldLoadFk() {
   const key = val('fkFundSelect'),
     f = fkFundItems().find(x => x.key === key),
-    fv = state.fundValues?.[key] || {};
+    fv = fundNavValue(key,f?.isin);
   setVal('fkFundCompany', fv.company || f?.company || '');
   setVal('fkFundName', fv.fond || f?.product || '');
   setVal('fkFundProduct', fv.product || f?.kind || 'FK');
@@ -5188,9 +5242,11 @@ function fillInvestmentFundSelect(selected = '') {
 }
 function investmentFundStoredValue(f) {
   if (!f) return {};
-  if (state.fundValues?.[f.key]) return state.fundValues[f.key];
-  for (const k of [...(f.rawKeys || [])]) if (state.fundValues?.[k]) return state.fundValues[k];
-  return {};
+  const key = state.fundValues?.[f.key] ? f.key : [...(f.rawKeys || [])].find(k => state.fundValues?.[k]) || f.key;
+  return fundNavValue(key,f.isin || '');
+}
+function investmentNavInputs(isinId, navId, dateId) {
+  return JSON.stringify([String(val(isinId) || '').replace(/\s/g,'').toUpperCase(),parseMoney(val(navId)) || 0,val(dateId) || '']);
 }
 function liquidity_oldLoadInv() {
   const key = val('invFundSelect'),
@@ -5206,6 +5262,7 @@ function liquidity_oldLoadInv() {
   setVal('invFundDate', fv.date || f?.date || today());
   setVal('invFundTrail', fv.trailPct ?? state.trailSettings?.[key]?.trailPct ?? '');
   setVal('invFundLocked', isInvestmentFundLocked(key) ? 'yes' : 'no');
+  byId('investmentFundModal').dataset.navInputs = investmentNavInputs('invFundIsin','invFundNav','invFundDate');
 }
 function openInvestmentFundModal(encodedKey = '') {
   const key = encodedKey ? decodeURIComponent(encodedKey) : '';
@@ -6860,7 +6917,9 @@ function fillInvestmentProductSelect(selectedKey = '') {
   syncInvestmentSnapshotProduct();
 }
 function syncInvestmentSnapshotProduct() {
-  byId('investmentSnapshotModal').dataset.snapshotId = '';
+  const modal = byId('investmentSnapshotModal');
+  modal.dataset.snapshotId = '';
+  ['statementValue','statementInputs','statementDate'].forEach(k => delete modal.dataset[k]);
   const key = val('isProduct'),
     clientId = +val('isClient') || selectedInvestmentClientId || selectedClientId;
   if (key && key !== '__custom') {
@@ -6868,7 +6927,7 @@ function syncInvestmentSnapshotProduct() {
     if (item) {
       const rawKey = investmentFundRawKey(item),
         fundKey = investmentFundKey(item),
-        fv = state.fundValues?.[fundKey] || state.fundValues?.[rawKey] || {},
+        fv = fundNavValue(state.fundValues?.[fundKey] ? fundKey : rawKey,item.isin || item.source?.isin || ''),
         snap = latestSnapshotForItem(item);
       byId('investmentSnapshotModal').dataset.snapshotId = snap?.id ?? '';
       setVal('isCompany', fv.company || item.company || '');
@@ -6896,6 +6955,19 @@ function syncInvestmentSnapshotProduct() {
       setVal('isNote', snap?.note || '');
       setVal('isSnapshotScope', snap?.scope || '');
       setVal('isProviderKey', snap?.providerKey || '');
+      modal.dataset.navInputs = investmentNavInputs('isIsin','isFundNav','isFundNavDate');
+      modal.dataset.performanceInputs = investmentSnapshotPerformanceInputs();
+      const valuation = snap ? investmentSnapshotValuation(snap) : null;
+      if (valuation?.kind === 'nav' && snap.providerValuation && !snap.manualPerformanceOverride) {
+        ['isGainAmount','isGainPct','isAnnualReturnPct'].forEach(id => setVal(id,''));
+        modal.dataset.performanceInputs = investmentSnapshotPerformanceInputs();
+      }
+      if (valuation?.kind === 'statement') {
+        setVal('isCurrent','');
+        modal.dataset.statementValue = String(valuation.value);
+        modal.dataset.statementDate = valuation.date;
+        modal.dataset.statementInputs = investmentSnapshotValuationInputs();
+      }
       updateClassicInvestmentPreview();
       return;
     }
@@ -6926,17 +6998,29 @@ function syncInvestmentSnapshotProduct() {
   setVal('isNote', '');
   setVal('isSnapshotScope', '');
   setVal('isProviderKey', '');
+  modal.dataset.navInputs = investmentNavInputs('isIsin','isFundNav','isFundNavDate');
+  modal.dataset.performanceInputs = investmentSnapshotPerformanceInputs();
   updateClassicInvestmentPreview();
+}
+function investmentSnapshotPerformanceInputs() {
+  return JSON.stringify(['isGainAmount','isGainPct','isAnnualReturnPct'].map(id => val(id)));
+}
+function investmentSnapshotValuationInputs() {
+  return JSON.stringify(['isInvested','isQty','isSubscribeValue','isFundNav','isFundNavDate','isIsin','isProductName','isCompany','isFundType','isRedemptionAmount','isCurrent'].map(id => val(id)));
+}
+function investmentSnapshotPreservedStatement() {
+  const data = byId('investmentSnapshotModal')?.dataset;
+  return data?.statementValue !== undefined && data.statementInputs === investmentSnapshotValuationInputs() && val('isCurrent').trim() === '' ? Number(data.statementValue) : null;
 }
 function updateClassicInvestmentPreview() {
   const regular = val('isInvestmentSchedule') !== 'single';
   for (const id of ['isRegularAmount','isRegularFrequency']) byId(id).disabled = !regular;
   const invested = parseMoney(val('isInvested')), qty = parseMoney(val('isQty')) || (parseMoney(val('isSubscribeValue')) > 0 ? invested / parseMoney(val('isSubscribeValue')) : 0), nav = parseMoney(val('isFundNav')), redemption = parseMoney(val('isRedemptionAmount'));
   const gainInput = val('isGainAmount').trim(), pctInput = val('isGainPct').trim(), currentInput = val('isCurrent').trim();
-  const current = currentInput !== '' ? parseMoney(currentInput) : qty > 0 && nav > 0 ? Math.max(0,qty * nav - redemption) : Math.max(0,invested + (gainInput !== '' ? parseMoney(gainInput) : pctInput !== '' ? invested * parseMoney(pctInput) / 100 : 0) - redemption);
+  const statement = investmentSnapshotPreservedStatement(), current = statement !== null ? statement : currentInput !== '' ? parseMoney(currentInput) : qty > 0 && nav > 0 ? Math.max(0,qty * nav - redemption) : Math.max(0,invested + (gainInput !== '' ? parseMoney(gainInput) : pctInput !== '' ? invested * parseMoney(pctInput) / 100 : 0) - redemption);
   const gain = gainInput !== '' ? parseMoney(gainInput) : pctInput !== '' ? invested * parseMoney(pctInput) / 100 : current + redemption - invested;
   const pct = pctInput !== '' ? parseMoney(pctInput) : invested ? gain / invested * 100 : 0;
-  setText('isCalculationPreview', `Aktuální hodnota: ${money(current)} · Výnos: ${money(gain)} · Zhodnocení: ${pct.toFixed(2)} %. ` + (currentInput !== '' ? 'Hodnota zadaná ručně má přednost.' : qty > 0 && nav > 0 ? 'Hodnota vypočtená z CP.' : gainInput !== '' || pctInput !== '' ? 'Hodnota dopočtená ze zadaného výnosu.' : 'Bez ceny CP nebo výnosu je hodnota zatím rovna vkladům po odečtení odkupů.') + (regular ? ' Pro přesné p.a. je potřeba výpis producenta nebo data jednotlivých plateb; samotná měsíční částka nestačí.' : ''));
+  setText('isCalculationPreview', `Aktuální hodnota: ${money(current)} · Výnos: ${money(gain)} · Zhodnocení: ${pct.toFixed(2)} %. ` + (statement !== null ? 'Zachová se hodnota z ověřeného výpisu.' : currentInput !== '' ? 'Hodnota zadaná ručně má přednost.' : qty > 0 && nav > 0 ? 'Hodnota vypočtená z CP.' : gainInput !== '' || pctInput !== '' ? 'Hodnota dopočtená ze zadaného výnosu.' : 'Bez ceny CP nebo výnosu je hodnota zatím rovna vkladům po odečtení odkupů.') + (regular ? ' Pro přesné p.a. je potřeba výpis producenta nebo data jednotlivých plateb; samotná měsíční částka nestačí.' : ''));
 }
 function openInvestmentSnapshotModal(clientId = null, encodedKey = '') {
   const id = clientId || selectedInvestmentClientId || selectedClientId;
@@ -6952,6 +7036,9 @@ function openInvestmentSnapshotModal(clientId = null, encodedKey = '') {
 function saveInvestmentSnapshot() {
   const clientId = +val('isClient');
   if (!clientId) return alert('Vyber klienta.');
+  const modalData = byId('investmentSnapshotModal').dataset,
+    navChanged = modalData.navInputs !== investmentNavInputs('isIsin','isFundNav','isFundNavDate'),
+    preservedStatement = investmentSnapshotPreservedStatement();
   const company = val('isCompany').trim(),
     product = val('isProductName').trim() || 'Investice',
     isin = val('isIsin').trim(),
@@ -6974,7 +7061,7 @@ function saveInvestmentSnapshot() {
     gainPct = val('isGainPct').trim() === '' ? null : parseMoney(val('isGainPct')),
     annualReturnPct = val('isAnnualReturnPct').trim() === '' ? null : parseMoney(val('isAnnualReturnPct')),
     effectiveQty = quantity > 0 ? quantity : subscribeValue > 0 ? investedBefore / subscribeValue : 0,
-    current = manualAumOverride ? parseMoney(currentRaw) : effectiveQty > 0 && nav > 0 ? Math.max(0, effectiveQty * nav - redemptionAmount) : Math.max(0, investedBefore + (gainAmount ?? (gainPct != null ? investedBefore * gainPct / 100 : 0)) - redemptionAmount),
+    current = preservedStatement !== null ? preservedStatement : manualAumOverride ? parseMoney(currentRaw) : effectiveQty > 0 && nav > 0 ? Math.max(0, effectiveQty * nav - redemptionAmount) : Math.max(0, investedBefore + (gainAmount ?? (gainPct != null ? investedBefore * gainPct / 100 : 0)) - redemptionAmount),
     currentBefore = current + redemptionAmount,
     invested = investedBefore,
     snapshot = {
@@ -7013,11 +7100,8 @@ function saveInvestmentSnapshot() {
     };
   const key = investmentSnapshotKeyForSnapshot(snapshot),
     oldIndex = investmentSnapshotUpdateIndex(snapshot, byId('investmentSnapshotModal').dataset.snapshotId || '');
-  if (oldIndex >= 0) snapshot.id = state.investmentSnapshots[oldIndex].id, state.investmentSnapshots[oldIndex] = {
-    ...state.investmentSnapshots[oldIndex],
-    ...snapshot,
-    updatedAt: today()
-  };else state.investmentSnapshots.push(snapshot);
+  const old = oldIndex >= 0 ? state.investmentSnapshots[oldIndex] : {};
+  if (oldIndex >= 0 && modalData.performanceInputs === investmentSnapshotPerformanceInputs()) snapshot.manualPerformanceOverride = !!old.manualPerformanceOverride;
   const fundKey = investmentFundKeyFromParts(company, product, isin, fundType),
     rawKey = investmentFundKeyFromParts(company, product, '', fundType),
     fundValue = {
@@ -7027,12 +7111,10 @@ function saveInvestmentSnapshot() {
       isin,
       mergeKey,
       typ: fundType,
-      product: fundType,
-      ...(nav > 0 ? {
-        nav,
-        date: navDate
-      } : {})
+      product: fundType
     };
+  const quote = nav > 0 && navChanged ? publishFundNav(fundKey,nav,navDate,fundValue) : fundNavQuote(fundKey,isin);
+  if (quote.nav > 0) Object.assign(fundValue,{nav:quote.nav,date:quote.date,...(quote.updatedAt ? {_navUpdatedAt:quote.updatedAt} : {})});
   state.fundValues[fundKey] = {
     ...(state.fundValues[fundKey] || {}),
     ...fundValue
@@ -7045,12 +7127,18 @@ function saveInvestmentSnapshot() {
     ...(state.fundValues[['investment-merge', norm(mergeKey)].join('|')] || {}),
     ...fundValue
   };
+  snapshot.current = preservedStatement !== null ? preservedStatement : investmentSnapshotLiveCurrent({...old,...snapshot});
+  snapshot.currentBeforeRedemption = snapshot.current + redemptionAmount;
+  if (oldIndex >= 0) {
+    snapshot.id = old.id;
+    state.investmentSnapshots[oldIndex] = {...old,...snapshot,updatedAt:today()};
+  } else state.investmentSnapshots.push(snapshot);
   selectedInvestmentClientId = clientId;
   selectedClientId = clientId;
   dedupeInvestmentSnapshotsInState(state);
   const affectedClients = new Set(classicInvestmentItems().filter(x => investmentFundKey(x) === fundKey || investmentFundRawKey(x) === rawKey).map(x => String(x.clientId || x.client?.id || '')).filter(Boolean));
   affectedClients.add(String(clientId));
-  addActivity(clientId, 'Investice', 'Aktualizována investiční pozice: ' + product + ' · ' + money(current) + (manualAumOverride ? ' · ruční AUM' : ` · ${num(quantity)} CP × ${num(nav)}`) + (redemptionAmount ? ' · odkup ' + money(redemptionAmount) : ''), true);
+  addActivity(clientId, 'Investice', 'Aktualizována investiční pozice: ' + product + ' · ' + money(snapshot.current) + (manualAumOverride ? ' · ruční AUM' : ` · ${num(quantity)} CP × ${num(quote.nav || nav)}`) + (redemptionAmount ? ' · odkup ' + money(redemptionAmount) : ''), true);
   closeModal('investmentSnapshotModal');
   persist();
   renderAll();
@@ -8231,7 +8319,8 @@ function mergeIncomingStateCore(incoming) {
   });
   Object.entries(incoming.fundValues || {}).forEach(([key,value]) => {
     const current = state.fundValues[key];
-    state.fundValues[key] = current && String(current.date || '') > String(value?.date || '') ? {...value,...current} : {...current,...value};
+    const currentNewer = current && (String(current.date || current.navDate || '') > String(value?.date || value?.navDate || '') || String(current.date || current.navDate || '') === String(value?.date || value?.navDate || '') && String(current._navUpdatedAt || '') > String(value?._navUpdatedAt || ''));
+    state.fundValues[key] = currentNewer ? {...value,...current} : {...current,...value};
   });
   state.lockedFunds = {
     ...state.lockedFunds,
@@ -9567,30 +9656,9 @@ function fkiEditor_fkRecordCurrent(r) {
 }
 function fkiEditor_fkSetFundValueForKey(key, nav, date, base = {}) {
   if (!key || !nav) return 0;
-  state.fundValues = state.fundValues || {};
-  state.fundValues[key] = {
-    ...(state.fundValues[key] || {}),
-    area: 'fki',
-    company: base.company || state.fundValues[key]?.company || '',
-    fond: base.fond || state.fundValues[key]?.fond || '',
-    product: base.product || state.fundValues[key]?.product || 'FKI',
-    isin: base.isin || state.fundValues[key]?.isin || '',
-    typ: base.typ || state.fundValues[key]?.typ || '',
-    nav,
-    date: date || today()
-  };
-  let changed = 0;
-  (state.investmentRecords || []).forEach(r => {
-    if (invPositionKey(r) !== key) return;
-    r['Poslední schválená hodnota CP'] = nav;
-    r['Poslední schválená hodnota do'] = date || today();
-    if (!invIsWithdrawal(r) && invEffectiveQty(r) > 0) {
-      if (r.fkiValuationMode !== 'manual' && (!r.codyaImportDate || String(date || today()) >= String(r.codyaImportDate)) && (!r.providerValuation?.date || String(date || today()) > String(r.providerValuation.date))) r.fkiValuationMode = 'nav';
-      r['Aktuální hodnota investice'] = invCurrentValue(r);
-    }
-    changed++;
-  });
-  return changed;
+  publishFundNav(key,nav,date,{area:'fki',...base});
+  const isin = fundNavIsin(base.isin) || fundNavIdentity(key,state.fundValues?.[key]);
+  return (state.investmentRecords || []).filter(r => isin ? fundNavIsin(invIsin(r)) === isin : invPositionKey(r) === key).length;
 }
 function fkiEditor_fkFundSelectOptions(selected = '') {
   return '<option value="">-- ručně / nový fond --</option>' + fkFundItems().map(f => `<option value="${esc(f.key)}" ${f.key === selected ? 'selected' : ''}>${esc([f.company, f.product, f.isin].filter(Boolean).join(' - '))}</option>`).join('');
@@ -9600,7 +9668,7 @@ function fkiPosition_d(v) {
 }
 function fkiPosition_fundDefaults(key) {
   const f = fkFundItems().find(x => x.key === key) || {},
-    fv = state.fundValues?.[key] || {};
+    fv = fundNavValue(key,f.isin);
   return {
     company: fv.company || f.company || '',
     fund: fv.fond || f.product || '',
@@ -10295,6 +10363,10 @@ function commissions_fkKey(isin, fond, company, typ) {
   return commissions_cNorm(isin) ? ['isin', commissions_cNorm(isin)].join('|') : ['fond', commissions_cNorm(cleanInvFundName(fond, company)), commissions_cNorm(typ)].join('|');
 }
 function commissions_applyFkFundMerge(keys, newKey, data) {
+  if (data.nav > 0) {
+    const quote = publishFundNav(newKey,data.nav,data.date,{...data,area:'fki'});
+    data = {...data,nav:quote.nav,date:quote.date,_navUpdatedAt:quote.updatedAt};
+  }
   let changed = 0;
   (state.investmentRecords || []).forEach(r => {
     const sameKey = keys.has(invPositionKey(r)),
@@ -10305,11 +10377,6 @@ function commissions_applyFkFundMerge(keys, newKey, data) {
     r['Typ produktu'] = data.product || 'FKI';
     r['rp.ISIN'] = data.isin;
     if (data.typ) r['Typ CP'] = data.typ;
-    if (data.nav) {
-      r['Poslední schválená hodnota CP'] = data.nav;
-      r['Poslední schválená hodnota do'] = data.date || today();
-      if (invEffectiveQty(r)) r['Aktuální hodnota investice'] = invCurrentValue(r);
-    }
     r._updatedAt = today();
     changed++;
   });
@@ -10477,10 +10544,11 @@ function liquidity_fundRulesFromValue(fv = {}) {
 }
 function liquidity_findFundValue(area, key, isin) {
   const direct = state.fundValues?.[key];
-  if (direct) return direct;
+  if (direct) return fundNavValue(key,isin);
   const wanted = norm(isin || '');
   if (!wanted) return {};
-  return Object.values(state.fundValues || {}).find(v => v?.area === area && norm(v.isin || '') === wanted) || {};
+  const metadata = Object.values(state.fundValues || {}).find(v => v?.area === area && norm(v.isin || '') === wanted) || {};
+  return {...metadata,...fundNavValue(key,isin)};
 }
 function liquidity_fundValueDateText(area, key, isin, fallback = '') {
   const fv = liquidity_findFundValue(area, key, isin);
@@ -10773,6 +10841,9 @@ function liquidity_saveRedemptionRecord() {
     ...state.investmentRecords[idx],
     ...rec
   };else state.investmentRecords.push(rec);
+  if (rec['Poslední schválená hodnota CP'] > 0 && byId('fkRecCurrent').dataset.sharedNavInputs !== fkRecordNavInputs()) {
+    fkiEditor_fkSetFundValueForKey(invPositionKey(rec),rec['Poslední schválená hodnota CP'],rec['Poslední schválená hodnota do'],{company,fond:fund,isin,typ,product:rec['Typ produktu']});
+  }
   dedupeInvestmentRecordsInState(state);
   selectedFkClientId = client.id;
   selectedClientId = client.id;
@@ -11447,10 +11518,11 @@ function clientOutput_xPerf(current, invested, realized = 0) {
 }
 function clientOutput_xFundValue(area, key, isin) {
   const direct = state.fundValues?.[key];
-  if (direct) return direct;
+  if (direct) return fundNavValue(key,isin);
   const wanted = clientOutput_xNorm(isin || '');
   if (!wanted) return {};
-  return Object.values(state.fundValues || {}).find(v => (!area || v?.area === area) && clientOutput_xNorm(v?.isin || '') === wanted) || {};
+  const metadata = Object.values(state.fundValues || {}).find(v => (!area || v?.area === area) && clientOutput_xNorm(v?.isin || '') === wanted) || {};
+  return {...metadata,...fundNavValue(key,isin)};
 }
 function clientOutput_xComment(area, key, isin) {
   return fundPerformance_fundComment(area,key,isin);
@@ -11501,7 +11573,7 @@ function clientOutput_xClientInvestments(c) {
       amount: clientOutput_xN(x.amount),
       realized: clientOutput_xN(x.realized),
       date: x.date || (typeof invDate === 'function' ? invDate(source) : ''),
-      valueDate: clientOutput_xValueDate('fki', key, isin, source['Poslední schválená hodnota do'] || x.date || ''),
+      valueDate: liquidity_fmtDate(invValuation(source).date),
       comment: clientOutput_xComment('fki', key, isin),
       rows: typeof investmentRecordsForClient === 'function' && typeof invPositionKey === 'function' ? investmentRecordsForClient(c.id).filter(r => invPositionKey(r) === key) : [source]
     };
@@ -11750,7 +11822,7 @@ function clientOutput_xRowCurrentDirect(r) {
   if (r?.snapshot) return investmentSnapshotLiveCurrent(r.snapshot);
   const manual = invManualValue(r);
   if (manual !== null) return manual;
-  if (invProviderNumber(r, 'current') !== null) return invCurrentValue(r);
+  if (invProviderNumber(r, 'current') !== null || invValuation(r).kind === 'legacy-zero') return invCurrentValue(r);
   const direct = typeof invCurrentValue === 'function' ? clientOutput_xN(invCurrentValue(r)) : typeof invCurrent === 'function' ? clientOutput_xN(invCurrent(r)) : 0;
   return direct || clientOutput_xN(clientOutput_xPick(r, ['Aktuální hodnota investice', 'Aktualni hodnota investice', 'current', 'value', 'amount']));
 }
@@ -11772,7 +11844,7 @@ function clientOutput_xFundRows(f) {
     const invested = clientOutput_xRowInvested(r),
       direct = clientOutput_xRowCurrentDirect(r),
       share = totalInvested > 0 ? invested / totalInvested : 0,
-      current = providerAllocation && !invIsWithdrawal(r) ? providerAllocation.remaining(r) : r?.snapshot || invManualValue(r) !== null || invProviderNumber(r,'current') !== null ? direct : direct > 0 ? direct : clientOutput_xN(f.amount) * share,
+      current = providerAllocation && !invIsWithdrawal(r) ? providerAllocation.remaining(r) : r?.snapshot || invManualValue(r) !== null || invProviderNumber(r,'current') !== null || invValuation(r).kind === 'legacy-zero' ? direct : direct > 0 ? direct : clientOutput_xN(f.amount) * share,
       realized = providerAllocation && !invIsWithdrawal(r) ? providerAllocation.redeemed(r) : typeof investmentRealizedAmount === 'function' ? clientOutput_xN(investmentRealizedAmount(r)) : clientOutput_xN(r?.realized || r?.redemptionAmount || 0),
       date = clientOutput_xRowPurchaseDate(r),
       taxStart = clientOutput_xRowTaxStart(r, f.area),
@@ -12838,6 +12910,27 @@ function saveInvestmentScenario(requestedMode) {
   showView('clients');
   saveToast(mode === 'forecast' ? 'Prognóza uložena bez obchodů a změny AUM' : `${mode === 'signed' ? 'Sjednané investice' : 'Obchodní případy'}: ${added} nových · ${existing} již evidovaných`);
 }
+function fkRecordValuationInputs() {
+  return JSON.stringify(['fkRecDeposit','fkRecQty','fkRecSubscribe','fkRecNav','fkRecNavDate','fkRecIsin','fkRecTx','fkRecFund','fkRecType','fkRecProduct','fkRecCompany'].map(id => val(id)));
+}
+function fkRecordNavInputs() {
+  return JSON.stringify([fundNavIsin(val('fkRecIsin')),parseMoney(val('fkRecNav')),val('fkRecNavDate')]);
+}
+function fkRecordPreservedStatement() {
+  const data = byId('fkRecCurrent')?.dataset;
+  return data?.statementValue !== undefined && data.statementInputs === fkRecordValuationInputs() && !byId('fkRecManualCurrent')?.checked ? Number(data.statementValue) : null;
+}
+function changeFkRecordManualValue() {
+  const data = byId('fkRecCurrent')?.dataset;
+  if (data) {delete data.statementValue;delete data.statementInputs;delete data.statementDate;}
+  updateFkRecordValuation();
+}
+function useFkRecordNavCalculation() {
+  const data = byId('fkRecCurrent')?.dataset;
+  if (data) {delete data.statementValue;delete data.statementInputs;delete data.statementDate;}
+  if (byId('fkRecManualCurrent')) byId('fkRecManualCurrent').checked = false;
+  updateFkRecordValuation();
+}
 function updateFkRecordValuation() {
   const field = byId('fkRecCurrent'), hint = byId('fkRecValuationHint');
   if (!field || !hint) return;
@@ -12846,9 +12939,14 @@ function updateFkRecordValuation() {
     withdrawal = invIsWithdrawal({'Typ transakce':val('fkRecTx')}),
     quantity = enteredQty > 0 ? enteredQty : deposit > 0 && subscription > 0 ? deposit / subscription : 0,
     manual = !!byId('fkRecManualCurrent')?.checked,
-    automatic = !withdrawal && !manual && quantity > 0 && nav > 0;
-  field.readOnly = automatic;
-  if (automatic) {
+    statement = !withdrawal ? fkRecordPreservedStatement() : null,
+    automatic = statement === null && !withdrawal && !manual && quantity > 0 && nav > 0;
+  field.readOnly = automatic || statement !== null;
+  if (statement !== null) {
+    field.value = String(statement);
+    hint.textContent = field.dataset.statementDate ? `Použita hodnota z ověřeného výpisu k ${liquidity_fmtDate(field.dataset.statementDate)}. Při uložení zůstane zachovaná.` : 'Použita uložená nulová hodnota výpisu. Při uložení zůstane zachovaná.';
+    if (quantity > 0 && nav > 0) {const button=document.createElement('button');button.id='fkRecUseNav';button.type='button';button.className='btn slim';button.textContent='Použít výpočet z CP';button.onclick=useFkRecordNavCalculation;hint.append(' ',button);}
+  } else if (automatic) {
     if (field.dataset.manualValue === undefined) field.dataset.manualValue = field.value;
     field.value = (quantity * nav).toFixed(2);
     hint.textContent = `Automaticky: ${quantity.toLocaleString('cs-CZ',{maximumFractionDigits:8})} CP × ${nav.toLocaleString('cs-CZ',{maximumFractionDigits:8})} Kč = ${money(quantity * nav)}.` +
@@ -12894,8 +12992,8 @@ function fkiPosition_previousOpen(clientId, encodedKey = '', encodedRecordKey = 
   setVal('fkRecProduct', invProductType(r) || 'FKI');
   setVal('fkRecTx', r['Typ transakce'] || 'Platba');
   setVal('fkRecDeposit', invDeposit(r) || '');
-  delete byId('fkRecCurrent').dataset.manualValue;
-  setVal('fkRecCurrent', invManualValue(r) ?? (fkiEditor_fkRecordCurrent(r) || ''));
+  ['manualValue','statementValue','statementDate','statementInputs'].forEach(k=>delete byId('fkRecCurrent').dataset[k]);
+  setVal('fkRecCurrent', invManualValue(r) ?? fkiEditor_fkRecordCurrent(r) ?? '');
   byId('fkRecManualCurrent').checked = invManualValue(r) !== null;
   setVal('fkRecQty', invQty(r) || '');
   setVal('fkRecSubscribe', invSubscribeValue(r) || '');
@@ -12907,8 +13005,13 @@ function fkiPosition_previousOpen(clientId, encodedKey = '', encodedRecordKey = 
   setVal('fkRecEmissionDate', fkiEditor_fkDate(invEmissionDate(r)));
   setVal('fkRecIsin', invIsin(r) || '');
   setVal('fkRecNav', invCurrentNav(r) || '');
-  setVal('fkRecNavDate', fkiEditor_fkDate(r['Poslední schválená hodnota do'] || state.fundValues?.[key]?.date));
+  setVal('fkRecNavDate', fkiEditor_fkDate(invNavQuote(r).date || r['Poslední schválená hodnota do']));
+  byId('fkRecCurrent').dataset.sharedNavInputs = fkRecordNavInputs();
   setVal('fkRecNote', r.note || r.Poznámka || '');
+  const resolved = invValuation(r);
+  if (['statement','legacy-zero'].includes(resolved.kind)) {
+    const data=byId('fkRecCurrent').dataset;data.statementValue=String(resolved.value);data.statementDate=resolved.date;data.statementInputs=fkRecordValuationInputs();
+  }
   openModal('fkRecordModal');
 }
 function liquidity_prevSaveFkRecord2() {
@@ -12926,13 +13029,14 @@ function liquidity_prevSaveFkRecord2() {
     isWithdrawal = invIsWithdrawal({'Typ transakce':val('fkRecTx')}),
     effectiveQty = qty > 0 ? qty : deposit > 0 && subscribe > 0 && !isWithdrawal ? deposit / subscribe : 0,
     manualRequested = !isWithdrawal && !!byId('fkRecManualCurrent')?.checked,
-    automatic = !isWithdrawal && !manualRequested && effectiveQty > 0 && nav > 0,
+    preservedStatement = !isWithdrawal ? fkRecordPreservedStatement() : null,
+    automatic = preservedStatement === null && !isWithdrawal && !manualRequested && effectiveQty > 0 && nav > 0,
     currentRaw = val('fkRecCurrent').trim(),
-    manual = !isWithdrawal && !automatic && currentRaw !== '',
-    current = automatic ? effectiveQty * nav : manual ? fkiEditor_fkNum(currentRaw) : fkiEditor_fkNum(currentRaw) || deposit;
+    manual = preservedStatement === null && !isWithdrawal && !automatic && currentRaw !== '',
+    current = preservedStatement !== null ? preservedStatement : automatic ? effectiveQty * nav : manual ? fkiEditor_fkNum(currentRaw) : fkiEditor_fkNum(currentRaw) || deposit;
   if (!fund) return alert('Vyplň fond.');
   if (!deposit) return alert('Vyplň čistou investici.');
-  if (manualRequested && (!currentRaw || !Number.isFinite(Number(currentRaw)) || Number(currentRaw) < 0)) return alert('Vyplň nezápornou ruční hodnotu v Kč, nebo vypni ruční hodnotu pro automatický výpočet z CP.');
+  if (manualRequested && (!currentRaw || !Number.isFinite(parseMoney(currentRaw)) || parseMoney(currentRaw) < 0)) return alert('Vyplň nezápornou ruční hodnotu v Kč, nebo vypni ruční hodnotu pro automatický výpočet z CP.');
   const rec = {
     'Investor': investor,
     'RČ': val('fkRecBirthId').trim() || client.birthId || '',
@@ -12963,7 +13067,7 @@ function liquidity_prevSaveFkRecord2() {
   else if (manual) {rec.fkiValuationMode = 'manual';rec.fkiManualCurrent = current;}
   else rec.fkiValuationMode = 'statement';
   const oldIndex = (state.investmentRecords || []).findIndex(r => fkiEditor_fkRecKey(r) === fkiEditor_editingFkRecordKey);
-  if (oldIndex >= 0 && state.investmentRecords[oldIndex]._providerTransactionKey) {
+  if (oldIndex >= 0 && (state.investmentRecords[oldIndex]._providerTransactionKey || state.investmentRecords[oldIndex].providerValuation)) {
     const old = state.investmentRecords[oldIndex];
     rec._providerClientId = client.id;
     rec._updatedAt = new Date().toISOString();
@@ -12975,7 +13079,7 @@ function liquidity_prevSaveFkRecord2() {
   const newRecordKey = invRecordKey(oldIndex >= 0 ? state.investmentRecords[oldIndex] : rec);
   providerStorageRemapRecordReferences(fkiEditor_editingFkRecordKey,newRecordKey);
   const key = invPositionKey(rec);
-  if (nav) fkiEditor_fkSetFundValueForKey(key, nav, val('fkRecNavDate') || today(), {
+  if (nav && byId('fkRecCurrent').dataset.sharedNavInputs !== fkRecordNavInputs()) fkiEditor_fkSetFundValueForKey(key, nav, val('fkRecNavDate') || today(), {
     company,
     fond: fund,
     product: rec['Typ produktu'],
@@ -13333,6 +13437,7 @@ function fkTrailForItem(x) {
   return window.investmentTrailForItem(x);
 }
 function liquidity_oldSaveInv() {
+  const navChanged = byId('investmentFundModal').dataset.navInputs !== investmentNavInputs('invFundIsin','invFundNav','invFundDate');
   const oldKey = val('invFundSelect'),
     chosen = investmentFundItems().find(x => x.key === oldKey),
     fallbackKey = chosen?.rawKeys?.values ? chosen.rawKeys.values().next().value : '',
@@ -13373,10 +13478,10 @@ function liquidity_oldSaveInv() {
     mergeKey: master.mergeKey || mergeKey,
     typ: master.typ || typ,
     product: master.product || product,
-    nav: master.nav || nav,
-    date: master.date || date,
     trailPct: master.trailPct ?? trailPct
   };
+  const quote = nav > 0 && navChanged ? publishFundNav(key,nav,date,fundValue) : fundNavQuote(key,fundValue.isin);
+  if (quote.nav > 0) Object.assign(fundValue,{nav:quote.nav,date:quote.date,...(quote.updatedAt ? {_navUpdatedAt:quote.updatedAt} : {})});
   const keys = commissions_investmentMergeKeys(oldKey, key, candidates, fundValue);
   keys.add(storeKey);
   [...keys].filter(Boolean).forEach(k => state.fundValues[k] = {
@@ -13666,7 +13771,7 @@ function loadInvestmentFundToForm() {
   const profile = fundProfile_value('investice',key,isin);
   setVal('invFundEntryCommission', profile.entryCommissionPct ?? '');
   setText('invFundCommissionSource', profile.commissionScheduleSource ? `${profile.commissionScheduleSource} · platnost od ${profile.commissionScheduleValidFrom || 'neuvedena'}` : 'Sazby lze doplnit ručně pro každý fond.');
-  setText('invFundPropagationNote', clients ? `Hodnota CP a datum ocenění se po uložení použijí u ${num(clients)} klientů s tímto fondem.` : 'Hodnota CP a datum ocenění se po uložení použijí u všech klientů s tímto fondem.');
+  setText('invFundPropagationNote', 'Nová cena CP se podle ISIN použije u všech klientů ve FKI i Investicích. Ruční hodnoty v Kč zůstávají zachované.');
 }
 function fillFundCommissionScheduleFromIsin(prefix) {
   const schedule = fundCommission_avantSchedule(val(prefix + 'Isin'));
@@ -15222,8 +15327,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.28-2';
-const VERSION_NOTE = 'Import Avant XLSX a bezpečná kontrola reportů Avant/Codya. Novější ocenění, červené rozdíly k ověření a ochrana ručních údajů i investic chybějících ve výpisu.';
+const VERSION = '2026.10.29-1';
+const VERSION_NOTE = 'Jednotné ocenění klienta, AUM a reportu. Změna ceny CP podle ISIN přeceňuje všechny automatické pozice ve FKI i Investicích; ruční hodnoty a potvrzené nulové pozice zůstávají zachované.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';

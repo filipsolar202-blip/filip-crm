@@ -142,6 +142,14 @@
   const firstNumber = (...values) => values.map(number).find(v=>v!==null) ?? null;
   function valuationOf(record,kind,source) {
     let current=kind==='snapshot'?number(record.current):record.fkiValuationMode==='manual'?firstNumber(record.fkiManualCurrent,record.providerValuation?.current,record['Aktuální hodnota investice']):firstNumber(record.providerValuation?.current,record.codyaImportedCurrent,record['Aktuální hodnota investice'],record.current);
+    if(kind==='snapshot'&&source&&typeof investmentSnapshotValuation==='function'){
+      const valuation=investmentSnapshotValuation(record,source),quote=valuation.kind==='nav'&&typeof investmentSnapshotFundValue==='function'?investmentSnapshotFundValue(record,source):null;
+      return {current:valuation.value,nav:quote?number(quote.nav):firstNumber(record.providerValuation?.nav,record['Poslední schválená hodnota CP']),valuationDate:date(valuation.date)};
+    }
+    if(kind==='record'&&source&&typeof invValuation==='function'){
+      const valuation=invValuation(record,source),quote=typeof invNavQuote==='function'?invNavQuote(record,source):null;
+      return {current:valuation.value,nav:valuation.kind==='nav'&&quote?number(quote.nav):firstNumber(record.providerValuation?.nav,record['Poslední schválená hodnota CP']),valuationDate:date(valuation.date)};
+    }
     if(kind==='record'&&source&&typeof providerStorageCurrentValue==='function')current=providerStorageCurrentValue(record,source);
     return {current,nav:firstNumber(record.providerValuation?.nav,record['Poslední schválená hodnota CP']),valuationDate:date(record.providerValuation?.date||record.codyaImportDate||record['Poslední schválená hodnota do']||record.date)};
   }
@@ -151,11 +159,22 @@
   }
   function manual(record,kind) {return kind==='snapshot'?!!(record.manualAumOverride&&!record._providerSource)||!!record.manualPerformanceOverride:record.fkiValuationMode==='manual'||record.fkiManualCurrent!==undefined&&record.fkiManualCurrent!==null&&record.fkiManualCurrent!=='';}
   function newestValuationDate(source,record,kind) {
-    const dates=[valuationOf(record,kind).valuationDate];
-    if(kind==='record')relatedFunds(source,recordIsin(record),record).forEach(([,f])=>dates.push(date(f.date)));
+    const dates=[valuationOf(record,kind,source).valuationDate];
+    if(kind==='record'&&typeof invNavQuote==='function')dates.push(date(invNavQuote(record,source).date));
+    relatedFunds(source,recordIsin(record),record).forEach(([,f])=>dates.push(date(f.date||f.navDate)));
     return dates.filter(Boolean).sort().at(-1)||'';
   }
-  function relatedFunds(source,isin,record) {const key=record&&typeof invPositionKey==='function'?invPositionKey(record):'',fund=record?normal(recordFund(record)):'';return Object.entries(source.fundValues||{}).filter(([k,f])=>k===key||isin&&(k==='isin|'+s(isin).toLowerCase()||s(f.isin).toUpperCase()===s(isin).toUpperCase())||!isin&&fund&&normal(f.fond||f.product||f.fund)===fund);}
+  function relatedFunds(source,isin,record) {
+    const key=record&&typeof invPositionKey==='function'?invPositionKey(record):'',fund=record?normal(recordFund(record)):'',
+      normalizeIsin=typeof fundNavIsin==='function'?fundNavIsin:value=>s(value).replace(/\s+/g,'').toUpperCase(),isinKey=normalizeIsin(isin);
+    return Object.entries(source.fundValues||{}).filter(([k,f])=>{
+      if(isinKey){
+        const identity=typeof fundNavIdentity==='function'?fundNavIdentity(k,f):normalizeIsin(f.isin||(/^(?:investment-)?isin\|/i.test(k)?k.split('|')[1]:''));
+        return identity===isinKey;
+      }
+      return k===key||fund&&normal(f.fond||f.product||f.fund)===fund;
+    });
+  }
   function contextHash(source,clientId,isin,record) {const c=(source.clients||[]).find(c=>same(c.id,clientId));return hash({client:c?clientIds(c):null,funds:relatedFunds(source,isin,record)});}
   function sourceComparable(row) {const clean=copy(row);['rowNumber','provider','errors','warnings'].forEach(k=>delete clean[k]);return clean;}
   function newEntry(row) {return {id:uuid(),clientId:null,isin:row.isin||'',fund:row.fund,status:'pending',reason:'',changes:Object.keys(LABELS).filter(field=>!empty(row[field])).map(field=>({field,label:LABELS[field],before:null,after:row[field]})),incoming:copy(row),targetKey:null,recordKey:'',canAccept:false,createdAt:timestamp(),updatedAt:timestamp()};}

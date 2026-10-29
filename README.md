@@ -2,7 +2,15 @@
 
 Lokální CRM pro klienty, smlouvy, obchody, pojistné události, investice, FKI, poznámky, reporty a zálohu.
 
-## Verze 2026.10.28-2
+## Verze 2026.10.29-1
+
+### Společná cena CP a aktuální AUM
+
+Změna **ceny jednoho CP a data ocenění** u klienta nebo v detailu fondu se podle přesného ISIN použije pro všechny jeho automatické pozice ve **FKI i Investicích**. Karta klienta, celkové AUM a nově vytvořený report počítají ze stejného ocenění; jednotlivé pozice není potřeba otevřít a znovu uložit. Rozdílný název nebo společnost u stejného ISIN cenu nerozdělují. Starší datum nepřepíše novější cenu.
+
+Ručně zadané celkové hodnoty v Kč, ruční výnosy a potvrzené nulové zůstatky zůstávají zachované. Přepočet potřebuje počet CP nebo vloženou částku a upisovací cenu. Pouhá změna poznámky nepublikuje klientský výpis jako cenu pro ostatní. Ověřený výpis má přednost před starší cenou; explicitní nová cena může přecenit automatické pozice. V editoru FKI lze přes **Použít výpočet z CP** zvolit výpočet místo uloženého výpisu.
+
+Staré importy Codya používaly den nahrání jako datum ocenění. Tento údaj již neblokuje dostupný výpočet z CP. Dříve stažené HTML reporty zůstávají snímky — pro nové hodnoty je vytvoř znovu.
 
 ### Import reportů Avant a Codya
 
@@ -44,7 +52,7 @@ Uložený návrh najdeš na kartě klienta v **Portfolio → Prognózy portfolia
 
 Dashboard má pevné pořadí: **Dnešní 3 priority → Tento týden 3 cíle → Grafy → Statistiky, grafy a kontrola dat → Úkoly a připomínky**. Změny dat, filtrů ani rozbalení přehledů pořadí nemění. Nedokončené priority jsou součástí poslední sekce; rychlé odkazy zůstávají v denní kartě.
 
-Hlavní CRM má jednu aplikační logiku a společný modrý glass vzhled. Investiční plán porovnává aktuální portfolio s nejvýše dvěma alternativami A a B. Odprodej lze rozdělit do více nových nákupů. Pro klienta lze stáhnout podrobný investiční návrh ve stylu původní kalkulačky nebo stručné srovnání variant. Přehled změn je v `CHANGELOG.md`, ověření aktuálního vydání v `QA-2026-10-28-2.md`.
+Hlavní CRM má jednu aplikační logiku a společný modrý glass vzhled. Investiční plán porovnává aktuální portfolio s nejvýše dvěma alternativami A a B. Odprodej lze rozdělit do více nových nákupů. Pro klienta lze stáhnout podrobný investiční návrh ve stylu původní kalkulačky nebo stručné srovnání variant. Přehled změn je v `CHANGELOG.md`, ověření aktuálního vydání v `QA-2026-10-29-1.md`.
 
 V klientském HTML reportu jsou podrobnosti a popis fondu pod tlačítkem **Bližší info o fondu**. Název, společnost, ISIN, ocenění a hodnoty investice jsou viditelné hned; transakce se rozbalují zvlášť. Klientský detail odkazuje jen na oficiální stránku fondu. V interním přehledu informací o fondech zůstávají všechny ověřovací podklady. Fondy se v CRM i reportech řadí podle společnosti a potom podle názvu. Pro nové rozložení vytvoř report znovu — již stažené HTML soubory se automaticky nemění.
 

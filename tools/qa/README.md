@@ -10,6 +10,8 @@ node tools/qa/regression.cjs
 node tools/qa/provider-import.cjs
 node tools/qa/provider-storage-calc.cjs
 node tools/qa/fki-nav.cjs
+node tools/qa/fki-valuation-consistency.cjs
+node tools/qa/fund-nav-propagation.cjs
 node tools/qa/classic-valuation.cjs
 node tools/qa/contract-investment.cjs
 node tools/qa/investment-proposal.cjs
@@ -58,3 +60,7 @@ insurance-claims.cjs ověřuje založení a úpravy pojistných událostí, hist
 `provider-import.cjs` ověřuje parser skutečně vytvořeného syntetického XLSX, česká čísla, Excel data, silné identity, pokyny, ISIN, ruční/starší hodnoty, náhled bez mutací, opakovaný import i nové porovnání po editaci, přijetí/ponechání CRM a návrat stavu při chybě. Pokrývá odkupy versus NAV, převody/konverze, Codya třídy/souhrny/prázdné/nulové buňky a viditelné červené kontroly na počítači i telefonu. Snímky: `/private/tmp/crm-provider-import-review-desktop.png` a `-mobile.png`.
 
 `provider-storage-calc.cjs` ověřuje ukládání a slučování importní historie, identity transakcí a klientů, zachování novějších hodnot, cílené odkupy, AUM/výnos a soulad klientského reportu. V repozitáři jsou pouze syntetické testovací údaje; klientský export není fixture.
+
+`fki-valuation-consistency.cjs` ověřuje stejnou hodnotu a datum v editoru, kartě, AUM a reportu, bez nutnosti dalšího uložení, včetně legacy importů, ověřených výpisů, novějších NAV, nul a odkupů.
+
+`fund-nav-propagation.cjs` ověřuje více klientů stejného ISIN, obě oblasti i editory, starší a stejně datované opravy, ruční hodnoty, nulové a neúplné pozice, sloučení starší zálohy a opětovné otevření reportu. Používá pouze syntetická data.

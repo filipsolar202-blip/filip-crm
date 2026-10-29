@@ -223,7 +223,7 @@ const fixture = {
     const sameKeptAfterEdit=await build([avant()]);assert.equal(sameKeptAfterEdit.entries[0].status,'pending','an old keep decision cannot hide a newly edited CRM discrepancy');
     // Value, NAV and valuation date form one coherent imported observation.
     for(const date of ['2026-08-31','2026-09-30']){
-      await reset({investmentRecords:[{...automatic,'Aktuální hodnota investice':120000,'Poslední schválená hodnota CP':120,codyaImportDate:date}]});
+      await reset({investmentRecords:[{...automatic,'Aktuální hodnota investice':120000,'Poslední schválená hodnota CP':120,'Poslední schválená hodnota do':date,codyaImportDate:'2026-10-25'}]});
       const adoption=await build([avant()]);assert.equal(adoption.entries[0].status,'auto');
       assert.deepEqual(adoption.entries[0].changes.map(c=>c.field),date==='2026-08-31'?['valuationDate']:[]);
       assert.equal((await commit(adoption)).ok,true);
@@ -234,9 +234,54 @@ const fixture = {
     await reset({investmentRecords:[automatic],fundValues:{['isin|'+ISIN.toLowerCase()]:{nav:140,date:'2026-10-15'}}});
     const newerCatalog=await build([avant()]);assert.equal(newerCatalog.entries[0].status,'pending');
     assert.equal(newerCatalog.entries[0].changes.find(c=>c.field==='current').before,140000,'comparison displays the actual NAV-derived CRM value');
+    assert.equal(newerCatalog.entries[0].changes.find(c=>c.field==='nav').before,140,'comparison displays the NAV that produced the CRM value');
+    assert.equal(newerCatalog.entries[0].changes.find(c=>c.field==='valuationDate').before,'2026-10-15','comparison dates the NAV-derived CRM value consistently');
     assert.equal((await commit(newerCatalog)).ok,true);assert.equal((await records())[0].value,140000);
     await page.evaluate(isin=>state.fundValues['isin|'+isin.toLowerCase()].nav=145,ISIN);
     const changedCatalog=await snapshot();assert.equal((await resolve(newerCatalog.id,newerCatalog.entries[0].id,'accept')).ok,false);assert.equal(await snapshot(),changedCatalog,'a NAV change after review creation requires a fresh comparison');
+    // A newer quote stored on the position must outrank an older provider tuple and catalogue.
+    await reset({investmentRecords:[{...automatic,providerValuation:{provider:'avant',date:'2026-08-31',current:110000,nav:110},'Poslední schválená hodnota CP':150,'Poslední schválená hodnota do':'2026-10-20',codyaImportDate:'2026-10-28'}],fundValues:{['isin|'+ISIN.toLowerCase()]:{nav:140,date:'2026-10-15'}}});
+    const newerRow=await build([avant({'Aktuální hodnota investice':145000,'Poslední schválená hodnota CP':145,'Poslední schválená hodnota do':'2026-10-18'})]);
+    assert.equal(newerRow.entries[0].status,'pending');assert.match(newerRow.entries[0].reason,/starší datum/);
+    assert.equal(newerRow.entries[0].changes.find(c=>c.field==='current').before,150000);
+    assert.equal(newerRow.entries[0].changes.find(c=>c.field==='nav').before,150);
+    assert.equal(newerRow.entries[0].changes.find(c=>c.field==='valuationDate').before,'2026-10-20');
+    assert.equal((await commit(newerRow)).ok,true);assert.equal((await records())[0].value,150000,'older report must not auto-replace a newer row NAV');
+    // Classic snapshots share the same live NAV/date protection, including legacy keys
+    // whose fund metadata does not repeat the ISIN stored in the dictionary key.
+    const classicSnapshot={id:101,clientId:1,company:'VIGO PUBLIC',product:'QA VIGO PUBLIC OPF',isin:ISIN,date:'2026-08-31',invested:100000,current:110000,quantity:1000,subscribeValue:100,calculationVersion:2,manualAumOverride:false};
+    const classicRow={'RODNÉ ČÍSLO':'9001010007','JMÉNO':'QA Alfa','PŘIJMENÍ':'Investor','QA VIGO PUBLIC OPF':120000};
+    const buildClassic=(row=classicRow,reportDate='2026-09-30')=>page.evaluate(({row,reportDate})=>providerImportBuildPlan(state,providerImportParseCodya([row],{fileName:'classic-codya.xlsx',reportDate,area:'investice'})),{row,reportDate});
+    for(const quoteSpec of [
+      {key:'isin|'+ISIN.toLowerCase()},
+      {key:'investment-isin|'+ISIN.toLowerCase()},
+      {key:'investment-isin| cz00080 40193 '},
+      {key:'legacy-classic-fund-alias',isin:' cz00080 40193 '}
+    ]){
+      const {key,...quoteMetadata}=quoteSpec;
+      await reset({investmentSnapshots:[classicSnapshot],fundValues:{[key]:{...quoteMetadata,nav:140,date:'2026-10-15'}}});
+      const beforeClassic=await snapshot(),classicPlan=await buildClassic(),entry=classicPlan.entries[0];
+      assert.equal(await snapshot(),beforeClassic,'classic live-value preview stays read-only');
+      assert.equal(entry.targetKey.kind,'snapshot');assert.equal(entry.status,'pending');assert.match(entry.reason,/starší datum/);
+      assert.equal(entry.changes.find(c=>c.field==='current').before,140000,'classic preview uses the NAV-derived current value from either ISIN namespace');
+      assert.equal(entry.changes.find(c=>c.field==='valuationDate').before,'2026-10-15','classic preview dates the actual NAV-derived value');
+      assert.equal((await commit(classicPlan)).ok,true);
+      assert.equal(await page.evaluate(()=>investmentSnapshotValuation(state.investmentSnapshots[0]).value),140000,'older classic statement cannot auto-replace newer shared NAV');
+      await page.evaluate(key=>{state.fundValues[key].nav=145;state.fundValues[key].date='2026-10-20';},key);
+      const changedClassic=await snapshot();assert.equal((await resolve(classicPlan.id,entry.id,'accept')).ok,false);assert.equal(await snapshot(),changedClassic,'either ISIN namespace invalidates a pending classic review when its shared NAV changes');
+      const pureClassic=await page.evaluate(({key,row})=>{
+        const source=JSON.parse(JSON.stringify(state));source.fundValues[key]={...source.fundValues[key],nav:160,date:'2026-10-25'};
+        return providerImportBuildPlan(source,providerImportParseCodya([row],{reportDate:'2026-09-30',area:'investice'}));
+      },{key,row:classicRow});
+      assert.equal(pureClassic.entries[0].changes.find(c=>c.field==='current').before,160000,'classic planning honours the passed source instead of reading the live CRM state');
+      assert.equal(pureClassic.entries[0].changes.find(c=>c.field==='valuationDate').before,'2026-10-25');
+      assert.equal(await snapshot(),changedClassic);
+    }
+    // The immutable provider baseline stays raw: an unrelated shared NAV update must not
+    // look like a manual edit when a genuinely newer classic statement is compared.
+    await reset({investmentSnapshots:[{...classicSnapshot,providerValuation:{provider:'codya',current:110000,date:'2026-08-31'},_providerSource:{provider:'codya',current:110000,valuationDate:'2026-08-31'}}],fundValues:{['investment-isin|'+ISIN.toLowerCase()]:{nav:140,date:'2026-10-15'}}});
+    const newerClassicStatement=await buildClassic({...classicRow,'QA VIGO PUBLIC OPF':150000},'2026-10-20');
+    assert.equal(newerClassicStatement.entries[0].status,'auto','shared valuation changes do not modify the raw three-way provider baseline');
     // Partial selection cannot attach a new date to an unrelated old amount or NAV.
     await reset({investmentRecords:[legacy()]});const partialPlan=await build([avant()]);assert.equal((await commit(partialPlan)).ok,true);
     const partialBefore=await snapshot();

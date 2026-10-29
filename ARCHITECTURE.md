@@ -1,6 +1,6 @@
 # Architektura hlavního CRM
 
-Stav k verzi 2026.10.28-2. Starší ARCHITECTURE_AUDIT.md popisuje stav před sjednocením aplikační logiky.
+Stav k verzi 2026.10.29-1. Starší ARCHITECTURE_AUDIT.md popisuje stav před sjednocením aplikační logiky.
 
 ## Jedna aplikace
 
@@ -27,6 +27,14 @@ Uzavření případu přenáší ISIN, fond a pravidelný vklad. `syncSignedInve
 Uživatel výslovně požaduje pořadí: denní 3 priority → týdenní 3 cíle → produkční grafy → statistiky, grafy a kontrola dat → úkoly a připomínky. Při úpravách ostatních funkcí toto pořadí neměnit. `#dashboardLayout` obsahuje právě pět stabilních bloků `data-dashboard-section="daily|weekly|charts|stats|tasks"`; pořadí HTML odpovídá pojmenovaným CSS oblastem. Grafy jsou uvnitř `#dashboardCharts`, nedokončené priority uvnitř `#dashboardTasks` a rychlé odkazy uvnitř denní karty. Renderovací funkce aktualizují obsah, nepřesouvají hlavní bloky. `tools/qa/focus-dashboard.cjs` chrání pořadí DOM i skutečné rozmístění na počítači a telefonu.
 
 ## Data
+
+### Jednotné ocenění a sdílení NAV
+
+`fundNavQuote(key, isin, source)` vybírá nejnovější cenu z `fundValues` napříč klíči `isin|…`, `investment-isin|…` a existujícími aliasy přesného ISIN. Nerozděluje cenu podle společnosti či oblasti. `publishFundNav` publikuje výslovnou změnu ceny a data, chrání novější datum a při změně ukládá `_navUpdatedAt`. Existujícím aliasům mění pouze cenu, datum a tento marker. Nevytváří druhý katalogový fond, nepřepisuje klientské částky ani pořizovací údaje. Bez ISIN platí jen přesná původní vazba, nikoli podobnost názvů.
+
+`invValuation` a `investmentSnapshotValuation` vracejí hodnotu, datum a původ ocenění pro kartu, AUM, editor, report i náhled importu. Ruční hodnoty mají přednost. Ověřený výpis zůstává, dokud není dostupná novější cena; explicitní oprava společné NAV ve stejném dni se rozlišuje časem publikace a importu. Potvrzená nula se automaticky neoživuje. Historický `codyaImportDate` je datum nahrání a nemůže blokovat výpočet z CP. Importované nemanuální výnosy při přecenění nejsou výnosem nového ocenění.
+
+Editory si uchovávají původní cenové vstupy. Uložení poznámky nepublikuje individuální výpis jako společnou cenu. Import producenta nepřidává globální kotace; řádky ostatních klientů se neprohledávají jako zdroj společné NAV. Sloučení záloh při shodném datu respektuje `_navUpdatedAt`. Nové souhrny se počítají při čtení, ne prostřednictvím destruktivního přepisování všech historických záznamů.
 
 ### Reporty producentů
 

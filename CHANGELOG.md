@@ -1,3 +1,12 @@
+## 2026.10.29-1
+
+- Sjednocené ocenění FKI v editoru, klientské kartě, AUM a HTML reportu. Starší importovaná částka již neblokuje výpočet z CP kvůli datu nahrání souboru.
+- Společná cena CP podle přesného ISIN pro FKI i klasické investice. Změna v klientském nebo fondovém editoru se projeví u všech automatických pozic, bez opětovného ukládání každého klienta.
+- Cena a datum se vybírají společně; starší kotace ani starší kopie stejného dne při sloučení zálohy nepřepíše novější opravu. Existující aliasy stejného ISIN sdílejí cenu, metadata oblastí se neslučují.
+- Zachované ruční částky, ruční výnosy, potvrzené nulové zůstatky a částky vyplacených odkupů. Pozice bez podkladů pro počet CP se nepřepočítávají odhadem.
+- Uložení poznámky zachová ověřený výpis a nepublikuje jeho klientská data ostatním. Novější společná NAV aktualizuje i odpovídající výnos; dřívější nemanuální výnos z importu již nezůstává vedle nového zůstatku.
+- Import Avant/Codya porovnává stejnou hodnotu a datum jako klientská karta, včetně sdílené NAV klasických investic. Individuální report producenta sám nemění cenu ostatním klientům.
+
 ## 2026.10.28-2
 
 - Transakční import Avant XLSX ve FKI: náhled, párování podle silné identity klienta, ISIN a pokynu, bezpečné novější ocenění a ruční řešení nejasností.
