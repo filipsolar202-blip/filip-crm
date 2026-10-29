@@ -7,7 +7,7 @@ fixture.deals[0].isin='TEST00000001';fixture.deals[0].fundIsin='TEST00000001';fi
 fixture.investmentSnapshots=[{id:80,clientId:1,company:'Test invest',product:'Test klasický fond',isin:'TEST00000001',mergeKey:'test-classic',date:'2026-10-01',invested:100000,current:120000,gainAmount:20000,gainPct:20,purchaseDate:'2026-01-10',source:'QA původní ocenění'}];
 fixture.externalInvestments=[{id:81,clientId:1,company:'QA jiný správce',product:'QA mimo správu',current:450000,invested:400000,monthly:2000,expectedRate:4,managed:false}];
 fixture.opportunities.push({id:31,clientId:2,category:'FKI',company:'QA FKI správce',product:'QA FKI Alfa',isin:'QAPROP000001',fundIsin:'QAPROP000001',amount:99000,status:'Kompletace',statusDate:'2026-10-10',note:'Jiný klient – zachovat'});
-fixture.deals.push({id:22,clientId:2,category:'Investice',company:'QA jiný správce',product:'QA Beta původní fond',date:'2026-01-10',amount:40000,bj:0});
+fixture.deals.push({id:22,clientId:2,category:'Investice',company:'QA jiný správce',product:'QA Beta původní fond',date:'2026-01-10',purchaseDate:'2026-01-10',amount:40000,bj:0});
 const funds=[
  {key:'qa-proposal-fki-a',area:'fki',company:'QA FKI správce',fond:'QA FKI Alfa',isin:'QAPROP000001'},
  {key:'qa-proposal-fki-b',area:'fki',company:'QA FKI správce',fond:'QA FKI Beta',isin:'QAPROP000002'},
@@ -147,15 +147,22 @@ const selected=[
    await page.locator('#dContractNumber').fill('QA-PROPOSAL-'+o.id);
    await page.evaluate(()=>saveDeal());
    signedTotal+=r.amount;
-   const result=await page.evaluate(id=>({trades:state.deals.filter(d=>String(d.fromOpportunityId)===String(id)).map(d=>({id:d.id,amount:d.amount,isin:d.isin||d.fundIsin,category:d.category})),aum:clientInvestmentSummary(1).total,otherAum:clientInvestmentSummary(2).total}),o.id);
+   const result=await page.evaluate(id=>({trades:state.deals.filter(d=>String(d.fromOpportunityId)===String(id)).map(d=>({id:d.id,amount:d.amount,isin:d.isin||d.fundIsin,category:d.category})),aum:clientInvestmentSummary(1).total,otherAum:clientInvestmentSummary(2).total,pending:investmentPendingRows(1).reduce((sum,r)=>sum+r.amount,0)}),o.id);
    assert.equal(result.trades.length,1,'closure creates exactly one trade');assert.equal(result.trades[0].amount,r.amount);assert.equal(result.trades[0].isin,r.isin);
-   assert.equal(result.aum,baseline.aum+signedTotal,'AUM adds the purchased principal once, keeping previous valuations');assert.equal(result.otherAum,baseline.otherAum);
+   assert.equal(result.aum,baseline.aum,'signature alone does not make the purchased principal settled AUM');assert.equal(result.pending,signedTotal,'signed principal stays separately actionable until purchase confirmation');assert.equal(result.otherAum,baseline.otherAum);
    // Reopening and saving the already closed case must edit its existing trade.
    await page.evaluate(o=>openDealFromOpportunity({...o,status:'Podepsáno'}),o);
    await page.evaluate(()=>saveDeal());
-   assert.equal(await page.evaluate(()=>clientInvestmentSummary(1).total),baseline.aum+signedTotal,'repeat closure does not add capital twice');
+   assert.equal(await page.evaluate(()=>clientInvestmentSummary(1).total),baseline.aum,'repeat closure does not activate pending capital');
+   assert.equal(await page.evaluate(()=>investmentPendingRows(1).reduce((sum,r)=>sum+r.amount,0)),signedTotal,'repeat closure does not duplicate pending capital');
    assert.equal(await page.evaluate(id=>state.deals.filter(d=>String(d.fromOpportunityId)===String(id)).length,o.id),1);
   }
+  // Confirm the actual purchase independently from the trade signature. The
+  // original production and funds are still asserted below, after settlement.
+  const signedProduction=await page.evaluate(()=>state.deals.map(d=>({id:d.id,date:d.date,bj:d.bj,amount:d.amount})));
+  for(const o of cases){const id=await page.evaluate(id=>state.deals.find(d=>String(d.fromOpportunityId)===String(id)).id,o.id);assert.equal(await page.evaluate(({id,fki})=>settleInvestmentPurchase('deal',id,'2026-10-27',fki?'2026-10-27':''),{id,fki:o.category==='FKI'}),true);}
+  assert.deepEqual(await page.evaluate(()=>state.deals.map(d=>({id:d.id,date:d.date,bj:d.bj,amount:d.amount}))),signedProduction,'settlement never recreates production or BJ');
+  assert.equal(await page.evaluate(()=>investmentPendingRows(1).length),0,'all explicitly confirmed selected purchases leave the pending list');
   const final=await snapshot();
   assert.equal(final.aum,baseline.aum+selectedTotal);
   assert.deepEqual(final.external,baseline.external);
@@ -163,8 +170,8 @@ const selected=[
   for(const before of baseline.snapshots)assert.deepEqual(final.snapshots.find(s=>s.id===before.id),before,'historical valuations stay intact');
   for(const before of baseline.records){assert(final.records.some(r=>JSON.stringify(r)===JSON.stringify(before)),'original FKI source records stay intact');}
   const holdings=await page.evaluate(()=>clientDisplayInvestmentItems(1).map(x=>({product:x.product,company:x.company,isin:x.isin,amount:x.amount,invested:investmentInvestedAmount(x)})));
-  for(const r of selected){const matches=holdings.filter(h=>h.isin===r.isin);assert.equal(matches.length,1,'one holding per exact fund '+r.isin);assert.equal(matches[0].amount,r.amount+(r.isin==='TEST00000001'?120000:0));}
-  checks.push('Closing FKI and classic cases creates separate holdings once; top-up preserves existing valuation and history');
+  for(const r of selected){const matches=holdings.filter(h=>h.isin===r.isin),existing=r.isin==='TEST00000001';assert.equal(matches.length,existing?2:1,'one confirmed purchase per exact fund, with a separate original valuation when present: '+r.isin);assert.equal(matches.reduce((sum,h)=>sum+h.amount,0),r.amount+(existing?120000:0));}
+  checks.push('Signing keeps purchases pending; separate confirmation creates FKI/classic holdings once and preserves earlier valuations and production');
 
   await page.reload();await openSaved(saved.id);await save('proposal');
   assert.equal(await page.evaluate(()=>state.opportunities.filter(o=>o.clientId===1&&['FKI','Investice'].includes(o.category)).length),0,'already signed rows must not reopen as fresh cases');
@@ -227,13 +234,14 @@ const selected=[
   await reset();await openNew();await setRows([{isin:'QAPROP000001',amount:21000},{isin:'QAPROP000003',amount:14000}],'QA přímé sjednání');
   await page.locator('#scenarioSaveMode').selectOption('signed');await page.locator('#scenarioSignedDate').fill('2026-10-27');await save('proposal');
   const direct=await page.evaluate(()=>({id:state.investmentForecasts[0].id,syncId:state.investmentForecasts[0].syncId,projectionCurrent:state.investmentForecasts[0].projection.current,baselineCurrent:state.investmentForecasts[0].baselineProjection.current,managedCurrent:state.investmentForecasts[0].managedRows.reduce((n,r)=>n+(+r.current||0),0),rows:state.deals.filter(d=>d.source==='investmentScenario').map(d=>({id:d.id,isin:d.isin,amount:d.amount})),aum:clientInvestmentSummary(1).total,opps:state.opportunities.length}));
-  assert.equal(direct.rows.length,2);assert.equal(direct.aum,baseline.aum+35000);assert.equal(direct.opps,baseline.opportunities.length);
+  assert.equal(direct.rows.length,2);assert.equal(direct.aum,baseline.aum);assert.equal(direct.opps,baseline.opportunities.length);assert.equal(await page.evaluate(()=>investmentPendingRows(1).reduce((sum,r)=>sum+r.amount,0)),35000,'direct signed mode does not bypass actual settlement dates');
   assert.equal(direct.projectionCurrent,baseline.aum+450000,'archived direct-signed forecast keeps its pre-signature portfolio baseline');
   assert.equal(direct.baselineCurrent,baseline.aum+450000);assert.equal(direct.managedCurrent,baseline.aum);
   await page.reload();await page.evaluate(id=>openSavedInvestmentForecast(id),direct.id);
   await page.locator('#scenarioSaveMode').selectOption('signed');await save('proposal');
   assert.deepEqual(await page.evaluate(()=>state.deals.filter(d=>d.source==='investmentScenario').map(d=>({id:d.id,isin:d.isin,amount:d.amount}))),direct.rows);
   assert.equal(await page.evaluate(()=>clientInvestmentSummary(1).total),direct.aum);
+  assert.equal(await page.evaluate(()=>investmentPendingRows(1).reduce((sum,r)=>sum+r.amount,0)),35000,'repeated direct signing keeps exactly the same pending capital');
   assert.deepEqual(await page.evaluate(()=>({current:state.investmentForecasts[0].projection.current,baseline:state.investmentForecasts[0].baselineProjection.current})),{current:direct.projectionCurrent,baseline:direct.baselineCurrent});
   checks.push('Direct signed save creates only the selected purchases and remains idempotent after reload');
 
@@ -253,15 +261,17 @@ const selected=[
   const raw=structuredClone(fixture);
   raw.deals=[];raw.opportunities=[];raw.investmentRecords=[];raw.investmentSnapshots=[];raw.externalInvestments=[];
   raw.contracts=[
-   {id:60,clientId:1,type:'investice',company:'Test invest',product:'Test klasický fond',isin:'TEST00000001',number:'QA-RAW-A',amount:'40000',status:'vyrizeno'},
-   {id:61,clientId:1,type:'investice',company:'QA alternativa',product:'QA nevybraná klasická alternativa',isin:'QAPROP000005',number:'QA-RAW-B',amount:'60000',status:'vyrizeno'}
+   {id:60,clientId:1,type:'investice',company:'Test invest',product:'Test klasický fond',isin:'TEST00000001',number:'QA-RAW-A',amount:'40000',status:'vyrizeno',purchaseDate:'2026-01-10'},
+   {id:61,clientId:1,type:'investice',company:'QA alternativa',product:'QA nevybraná klasická alternativa',isin:'QAPROP000005',number:'QA-RAW-B',amount:'60000',status:'vyrizeno',purchaseDate:'2026-01-10'}
   ];
   await reset(raw);const rawBefore=await snapshot();assert.equal(rawBefore.aum,100000);
   await openNew();await setRows([{isin:'QAPROP000003',amount:10000}],'QA nový fond ke smlouvám');await save('proposal');
   const rawNew=await page.evaluate(()=>JSON.parse(JSON.stringify(state.opportunities[0])));await closeCase(rawNew,'QA-RAW-C');
+  assert.equal(await page.evaluate(()=>clientInvestmentSummary(1).total),100000,'signed new fund preserves unrelated holdings while pending');assert.equal(await page.evaluate(()=>investmentPendingRows(1).reduce((sum,r)=>sum+r.amount,0)),10000);await page.evaluate(id=>{const d=state.deals.find(d=>String(d.fromOpportunityId)===String(id));if(!settleInvestmentPurchase('deal',d.id,'2026-10-27'))throw Error('QA settlement failed');},rawNew.id);
   assert.equal(await page.evaluate(()=>clientInvestmentSummary(1).total),110000,'a new deal does not hide unrelated raw-contract holdings');
   await openNew();await setRows([{isin:'TEST00000001',amount:15000}],'QA dokup ke smlouvě');await save('proposal');
   const rawTopup=await page.evaluate(()=>JSON.parse(JSON.stringify(state.opportunities.find(o=>o.isin==='TEST00000001'))));await closeCase(rawTopup,'QA-RAW-TOPUP');
+  assert.equal(await page.evaluate(()=>clientInvestmentSummary(1).total),110000,'signed top-up leaves the settled raw-contract amount intact');assert.equal(await page.evaluate(()=>investmentPendingRows(1).reduce((sum,r)=>sum+r.amount,0)),15000);await page.evaluate(id=>{const d=state.deals.find(d=>String(d.fromOpportunityId)===String(id));if(!settleInvestmentPurchase('deal',d.id,'2026-10-27'))throw Error('QA settlement failed');},rawTopup.id);
   const rawFinal=await page.evaluate(()=>({aum:clientInvestmentSummary(1).total,items:clientDisplayInvestmentItems(1).map(x=>({isin:x.isin,amount:x.amount})),contracts:state.contracts.filter(s=>[60,61].includes(s.id))}));
   assert.equal(rawFinal.aum,125000);assert.deepEqual(rawFinal.contracts,rawBefore.contracts);
   for(const [isin,amount] of [['TEST00000001',55000],['QAPROP000005',60000],['QAPROP000003',10000]])assert.equal(rawFinal.items.filter(x=>x.isin===isin).reduce((sum,x)=>sum+x.amount,0),amount,'raw-contract portfolio retains '+isin);

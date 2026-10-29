@@ -62,13 +62,15 @@ const near=(a,b,label)=>assert(Math.abs(a-b)<.01,`${label}: ${a} != ${b}`);
  const derived=structuredClone(fixture);derived.deals=[{id:20,clientId:1,category:'FKI',company:'QA správce',product:'QA odvozený fond',isin:DERIVED,fundIsin:DERIVED,date:'2026-01-10',amount:30000,bj:25}];
  await reset(derived);baseline=await financial();const derivedKey=await keyFor(1,DERIVED);assert(derivedKey,'render seeds a linked FKI position');
  await page.evaluate(key=>deleteFkiRecordByKey(encodeURIComponent(key)),derivedKey);await reload();near(await fundAmount(1,DERIVED),0,'deleted generated FKI position cannot be seeded again');assert((await financial()).deals.some(d=>d.id===20),'position deletion retains the recorded business');await unchangedOthers(baseline);
- const rawContract=structuredClone(fixture);rawContract.contracts.push({id:10,clientId:1,type:'FKI',company:'QA správce',product:'QA odvozená smlouva',isin:DERIVED,fundIsin:DERIVED,amount:'25000',status:'',number:'QA-DERIVED',log:[]});
+ const rawContract=structuredClone(fixture);rawContract.contracts.push({id:10,clientId:1,type:'FKI',company:'QA správce',product:'QA odvozená smlouva',isin:DERIVED,fundIsin:DERIVED,amount:'25000',purchaseDate:'2025-01-10',emissionDate:'2025-01-15',status:'',number:'QA-DERIVED',log:[]});
  await reset(rawContract);baseline=await financial();assert.equal(await keyFor(1,DERIVED),null,'fixture is a contract-derived card with no concrete FKI row');near(await portfolioAmount(1,DERIVED),25000,'contract-derived client portfolio card is present');
  await page.evaluate(isin=>deleteFkiClientFund(1,encodeURIComponent('isin|'+isin.toLowerCase())),DERIVED);await reload();near(await portfolioAmount(1,DERIVED),0,'zero-row derived card can be deleted without resurrection');near(await fundAmount(1,DERIVED),0,'deleted derived source is absent from report');await unchangedOthers(baseline);
  for(const extra of [{'Typ produktu':'Investice'},{'Stav scénáře':'čeká'}]){
-  const legacy=structuredClone(fixture);Object.assign(legacy.investmentRecords[0],extra);await reset(legacy);baseline=await financial();await page.evaluate(()=>{showView('fki');selectFkClient(1);});
-  const legacyCard=page.locator('#fkDetail .fki-work-card').filter({hasText:'QA fond '+FKI});await legacyCard.locator('summary').click();
-  const action=legacyCard.locator('tbody button[onclick*="deleteFkiRecordByKey"]');assert.equal(await action.count(),1,'legacy non-report row must not produce an inaccessible zero-position card');await action.click();await reload();assert.equal(await fkiRecords(),0,'legacy row can be removed from its actual transaction action');await unchangedOthers(baseline);
+  const legacy=structuredClone(fixture);Object.assign(legacy.investmentRecords[0],extra);await reset(legacy);baseline=await financial();
+  let action;
+  if(extra['Stav scénáře']){await page.evaluate(()=>openClientWorkspace(1,'pendingInvestments'));action=page.locator('.settlement-panel:visible tr[data-pending-id]').filter({hasText:'QA fond '+FKI}).getByRole('button',{name:'Smazat',exact:true});}
+  else{await page.evaluate(()=>{showView('investments');selectInvestmentClient(1);});const card=page.locator('#investmentDetail .fki-work-card').filter({hasText:'QA fond '+FKI});await card.locator('summary').click();action=card.getByRole('button',{name:'Smazat záznam',exact:true});}
+  assert.equal(await action.count(),1,'legacy row has a deletion action in its actual pending/classic screen');await action.click();await reload();assert.equal(await fkiRecords(),0,'legacy row can be removed without resurrection');await unchangedOthers(baseline);
  }
  // FIDUROCK-like legacy import: the card must edit its actual row, never open a new
  // purchase. Cover a non-mirror English import and both former report-only filters.
@@ -78,16 +80,34 @@ const near=(a,b,label)=>assert(Math.abs(a-b)<.01,`${label}: ${a} != ${b}`);
    : {...purchase(1,DERIVED,200000),Fond:'QA FIDUROCK','Aktuální hodnota investice':301788,'Poslední schválená hodnota CP':150.894,'Typ produktu':variant==='product-group'?'Retail / OPF':'FKI','Stav scénáře':variant==='scenario-waiting'?'čeká':'',_source:'import'};
   legacy.investmentRecords[0]=record;legacy.fundValues['isin|'+DERIVED.toLowerCase()]={...legacy.fundValues['isin|'+DERIVED.toLowerCase()],fond:'QA FIDUROCK',nav:150.894};await reset(legacy);baseline=await financial();
   const before=await page.evaluate(isin=>({count:state.investmentRecords.length,positions:investmentRecordsForClient(1).filter(r=>invIsin(r)===isin).length,invested:investmentRecordsForClient(1).reduce((n,r)=>n+invDeposit(r),0),aum:clientInvestmentSummary(1).total,report:clientOutput_xClientInvestments(findClient(1)).reduce((n,x)=>n+x.amount,0),mirror:isFkiMirrorRecord(investmentRecordsForClient(1).find(r=>invIsin(r)===isin))}),DERIVED);
-  if(variant==='non-mirror')assert.equal(before.mirror,false,'fixture really exercises a legacy non-mirror import');near(await fundAmount(1,DERIVED),301788,'legacy FIDUROCK-like amount before editing');
+  if(variant==='non-mirror')assert.equal(before.mirror,false,'fixture really exercises a legacy non-mirror import');near(await fundAmount(1,DERIVED),variant==='scenario-waiting'?0:301788,'legacy amount is active only when settlement is confirmed');
   for(let pass=1;pass<=3;pass++){
-   await page.evaluate(()=>{showView('fki');selectFkClient(1);});const card=page.locator('#fkDetail .fki-work-card').filter({hasText:'QA FIDUROCK'});await card.locator('summary button[onclick*="openFkRecordModal"]').click();
+   if(variant==='scenario-waiting'&&pass===1){await page.evaluate(()=>openClientWorkspace(1,'pendingInvestments'));await page.locator('.settlement-panel:visible tr[data-pending-id]').filter({hasText:'QA FIDUROCK'}).getByRole('button',{name:'Doplnit údaje'}).click();}
+   else if(variant==='product-group'){await page.evaluate(()=>{showView('investments');selectInvestmentClient(1);});const card=page.locator('#investmentDetail .fki-work-card').filter({hasText:'QA FIDUROCK'});await card.locator('summary').click();await card.getByRole('button',{name:'Upravit záznam',exact:true}).click();}
+   else{await page.evaluate(()=>{showView('fki');selectFkClient(1);});const card=page.locator('#fkDetail .fki-work-card').filter({hasText:'QA FIDUROCK'});await card.locator('summary button[onclick*="openFkRecordModal"]').click();}
    assert.equal(await page.locator('#fkRecordTitle').innerText(),'Upravit záznam',`${variant} save ${pass}: existing card must not open a new record`);assert.equal(await page.locator('#deleteFkRecordBtn').isVisible(),true,'existing record exposes its delete button');near(Number(await page.locator('#fkRecDeposit').inputValue()),200000,'existing invested amount is loaded');near(Number(await page.locator('#fkRecCurrent').inputValue()),301788,'existing current amount is loaded');
    assert(await page.evaluate(()=>!!fkiEditor_editingFkRecordKey),'existing row identity is retained');await page.evaluate(()=>saveFkRecord());await reload();
    const after=await page.evaluate(isin=>({count:state.investmentRecords.length,positions:investmentRecordsForClient(1).filter(r=>invIsin(r)===isin).length,invested:investmentRecordsForClient(1).reduce((n,r)=>n+invDeposit(r),0),aum:clientInvestmentSummary(1).total,report:clientOutput_xClientInvestments(findClient(1)).reduce((n,x)=>n+x.amount,0)}),DERIVED);
-   const {mirror,...expected}=before;assert.deepEqual(after,expected,`${variant}: unchanged save ${pass} never duplicates records, deposits, AUM or report totals`);near(await fundAmount(1,DERIVED),301788,'same fund amount after unchanged save');
+   const {mirror,...expected}=before;if(variant==='scenario-waiting'){expected.aum+=301788;expected.report+=301788;}assert.deepEqual(after,expected,`${variant}: save ${pass} confirms a pending record at most once and never duplicates records or deposits`);near(await fundAmount(1,DERIVED),301788,'same fund amount after confirmed save');
    const current=await financial();assert.deepEqual(current.records.filter(r=>invOwner(r)===2),baseline.records.filter(r=>invOwner(r)===2));assert.deepEqual(current.snapshots,baseline.snapshots);
   }
  }
+
+ // Raw classic transactions must retain every editable identity, including a
+ // redemption, even when the fund header aggregates multiple purchases.
+ const multiRaw=structuredClone(fixture);multiRaw.investmentRecords[0]['Typ produktu']='Investice';multiRaw.investmentRecords.push({...purchase(1,FKI,50000),'Typ produktu':'Investice','Datum připsání platby':'2025-04-10','Datum emise':'2025-04-15'});
+ await reset(multiRaw);await addWithdrawal();baseline=await financial();near(await fundAmount(1,FKI),156000,'two classic raw purchases less redemption aggregate once');
+ await page.evaluate(()=>{showView('investments');selectInvestmentClient(1);});let rawCard=page.locator('#investmentDetail .fki-work-card').filter({hasText:'QA fond '+FKI});await rawCard.locator('summary').click();
+ assert.equal(await rawCard.getByRole('button',{name:'Upravit záznam',exact:true}).count(),3,'both purchases and redemption have their own edit identities');assert.equal(await rawCard.getByRole('button',{name:'Smazat záznam',exact:true}).count(),3);
+ const renderedRaw=await rawCard.locator('tbody tr').evaluateAll(rows=>rows.map(row=>({current:Number(row.cells[2].firstChild.textContent.replace(/[^0-9,.-]/g,'').replace(',','.')),cash:row.cells[2].textContent,gain:row.cells[3].textContent.trim(),pa:row.cells[4].textContent.trim()})));
+ assert.deepEqual(renderedRaw.map(row=>row.current).sort((a,b)=>a-b),[-24000,60000,120000],'displayed transaction values retain signed CP reductions and sum to the fund balance');const renderedOut=renderedRaw.find(row=>row.current<0);assert.equal(renderedOut.gain,'—');assert.equal(renderedOut.pa,'-');assert.match(renderedOut.cash.replace(/\s/g,''),/Vyplaceno20000Kč/,'actual redemption cash is shown separately from the CP reduction');assert.match(await rawCard.locator('summary').innerText(),/3 pozic/,'header shows the actual transaction count');
+ const seen=[];for(let i=0;i<3;i++){
+  await rawCard.getByRole('button',{name:'Upravit záznam',exact:true}).nth(i).click();seen.push(Number(await page.locator('#fkRecDeposit').inputValue()));assert.equal(await page.locator('#fkRecProduct').inputValue(),'Investice','editing a raw classic record preserves its true type');await page.evaluate(()=>closeModal('fkRecordModal'));
+ }
+ assert.deepEqual(seen.sort((a,b)=>a-b),[-20000,50000,100000],'raw row editor identities are exact and never include another client');
+ await rawCard.getByRole('button',{name:'Upravit záznam',exact:true}).nth(0).click();await page.evaluate(()=>saveFkRecord());await reload();near(await fundAmount(1,FKI),156000,'saving an unchanged raw classic transaction preserves the aggregated balance');await unchangedOthers(baseline);
+ await page.evaluate(()=>{showView('investments');selectInvestmentClient(1);});rawCard=page.locator('#investmentDetail .fki-work-card').filter({hasText:'QA fond '+FKI});await rawCard.locator('summary').click();
+ const rawDeleteButtons=rawCard.getByRole('button',{name:'Smazat záznam',exact:true}),rawKeys=await rawDeleteButtons.evaluateAll(buttons=>buttons.map(button=>button.getAttribute('onclick')));assert.equal(new Set(rawKeys).size,3,'delete actions retain all three distinct raw identities');
 
  // A snapshot is one valuation. Removing only that update intentionally reveals the
  // previous update; deleting the fund instead removes all its valuation history.

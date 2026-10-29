@@ -1,6 +1,6 @@
 # Architektura hlavního CRM
 
-Stav k verzi 2026.10.29-2. Starší ARCHITECTURE_AUDIT.md popisuje stav před sjednocením aplikační logiky.
+Stav k verzi 2026.10.29-3. Starší ARCHITECTURE_AUDIT.md popisuje stav před sjednocením aplikační logiky.
 
 ## Jedna aplikace
 
@@ -20,7 +20,15 @@ Samostatné historické HTML nástroje zůstávají zachované. Nejsou součást
 
 Prognóza má stabilní `syncId`, uchovává `activeVariantId` a při úpravě se aktualizuje pod původním ID. Varianty a jejich řádky mají stabilní identity; `scenarioLinkKey` na případu a obchodu spojuje prognózu, variantu a řádek. Opakovaný převod zachovává existující případ včetně stavu a ručních změn; sjednaný nebo zrušený případ neotevírá znovu. Nová prognóza automaticky nepřebírá rozpracované případy klienta. Selhání trvalého uložení vrací předchozí stav a ponechává návrh ve formuláři.
 
-Uzavření případu přenáší ISIN, fond a pravidelný vklad. `syncSignedInvestmentPosition` přičítá nový jednorázový vklad ke stávajícímu klasickému ocenění jako nový historický snímek; marker na obchodu brání opakovanému přičtení. FKI synchronizace založí pozici jednou a nepřepisuje pozdější ručně zadané ocenění aktuální hodnotou celého fondu. Prognózy a vazby se zachovávají také při sloučení záloh s přemapováním klientů a číselných ID.
+Uzavření případu přenáší ISIN, fond a pravidelný vklad. `syncSignedInvestmentPosition` vytváří samostatný snapshot `scope: purchase` se stabilním `purchaseId`, nikoli přepsaný zůstatek stávajícího fondu. Skutečné datum nákupu je prázdné; marker na obchodu brání opakovanému vytvoření. FKI synchronizace založí pozici jednou a nepřepisuje pozdější ručně zadané ocenění aktuální hodnotou celého fondu. Prognózy a vazby se zachovávají také při sloučení záloh s přemapováním klientů a číselných ID.
+
+## Připsané a čekající investice
+
+`investmentSettlementInfo` validuje skutečné datum nákupu a pro FKI i emise, včetně budoucích dat. Nevyužívá obchodní datum jako náhradu. `investmentPendingRows` skládá čekající řádky z existujících kolekcí, s výslovnými vazbami odstraňuje zrcadlové obchody a smlouvy. Výpočty aktivního portfolia filtrují čekající položky; samotné oceňovací funkce nadále vracejí uložené údaje pro editor a porovnání importu.
+
+`latestInvestmentSnapshots` nejprve vybírá poslední ocenění a teprve potom rozlišuje připsání, aby starší hodnota nenahradila aktuálně čekající záznam. `coveredPurchaseIds` vznikají při zápisu celkového ocenění a určují zahrnuté samostatné nákupy téhož klienta a fondu, u souhrnu účtu téhož poskytovatele. Při čtení se zahrnutí neodhaduje pouze podle data. Pending baseline nepotvrzuje své nákupy a nezapočítává jejich vloženou částku dvakrát.
+
+Modul `assets/js/investment-settlement-ui.js` načítaný před `crm.js` dodává klientskou záložku, panely AUM a dialog doplnění dat. Používá existující transakční editory i mazání. Samostatná kolekce čekajících záznamů se nezakládá. HTML report má nezávislý seznam čekajících částek mimo aktivní souhrny a projekce.
 
 ## Pevné pořadí dashboardu
 

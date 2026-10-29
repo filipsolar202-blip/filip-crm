@@ -1,0 +1,53 @@
+// Isolated synthetic portfolio: no live CRM data or network access.
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const {chromium,launchOptions}=require('./runtime.cjs');
+const root=path.resolve(__dirname,'../..');
+(async()=>{const browser=await chromium.launch(launchOptions);try{
+  const context=await browser.newContext({viewport:{width:1440,height:1000}}),errors=[];
+  await context.route('**/*',route=>{const u=new URL(route.request().url()),f=path.join(root,decodeURIComponent(u.pathname));if(u.hostname==='crm.test'&&fs.existsSync(f)&&fs.statSync(f).isFile())return route.fulfill({body:fs.readFileSync(f),contentType:f.endsWith('.js')?'text/javascript':f.endsWith('.css')?'text/css':'text/html'});return route.abort();});
+  await context.addInitScript(()=>{if(location.hostname==='crm.test')localStorage.setItem('filip_crm_main_v1',JSON.stringify({clients:[],deals:[],contracts:[],investmentRecords:[],investmentSnapshots:[],settings:{}}));});
+  const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.dismiss());
+  await page.goto('https://crm.test/FILIP-CRM.html');await page.waitForFunction(()=>typeof investmentPendingRows==='function');
+  await page.evaluate(()=>{
+    const buy={_providerClientId:1,Investor:'Test klient',ClientID:'1','Investiční společnost':'Test FKI',Fond:'Testovaný FKI fond',ISIN:'TESTFKI00001','Typ produktu':'FKI','Typ transakce':'Platba','Čistá investice':100000,'Aktuální hodnota investice':120000,'Počet vydaných CP':1000,'Upisovací hodnota':100,'Poslední schválená hodnota CP':120,'Poslední schválená hodnota do':'2026-09-01','Datum připsání platby':'2026-01-10','Datum emise':'2026-01-11'};
+    state=normalizeState({...def(),clients:[{id:1,name:'Test klient'},{id:2,name:'Pouze čekající klient'}],contracts:[],deals:[],opportunities:[],fundValues:{},lockedFunds:{},investmentRecords:[buy,{...buy,'Čistá investice':60000,'Aktuální hodnota investice':60000,'Počet vydaných CP':600,'Datum připsání platby':'','Datum emise':'',tradeDate:'2026-10-20'},{...buy,_providerClientId:2,ClientID:'2',Investor:'Pouze čekající klient',Fond:'Čekající <nový> FKI',ISIN:'TESTPEND0002','Čistá investice':25000,'Aktuální hodnota investice':25000,'Počet vydaných CP':250,'Datum připsání platby':'','Datum emise':'',tradeDate:'2026-10-21'}],investmentSnapshots:[{id:11,clientId:1,company:'Test investice',product:'Klasická investice',isin:'TESTCLAS0001',date:'2026-09-01',purchaseDate:'2026-01-10',current:220000,invested:200000,calculationVersion:2,manualAumOverride:true},{id:12,clientId:1,company:'Test investice',product:'Klasická investice',isin:'TESTCLAS0001',scope:'purchase',purchaseId:'pending-purchase-test',date:'2026-10-20',tradeDate:'2026-10-20',purchaseDate:'',current:50000,invested:50000,calculationVersion:2,manualAumOverride:true}]});
+  });
+  const model=await page.evaluate(()=>({active:clientOutput_xClientInvestments(findClient(1)).map(x=>({area:x.area,amount:x.amount,rows:x.rows.length})),pending:clientOutput_xPendingInvestments(findClient(1)).map(x=>({area:x.area,amount:x.amount}))}));
+  assert.equal(model.active.reduce((s,x)=>s+x.amount,0),340000);assert.equal(model.active.find(x=>x.area==='FKI').rows,1,'pending raw payment must not enter active transactions');
+  assert.equal(model.pending.length,2);assert.equal(model.pending.reduce((s,x)=>s+x.amount,0),110000);
+  const html=await page.evaluate(()=>clientOutput_xReportHtml(findClient(1),{summary:true,investments:true,fki:true,notice:false}));
+  const report=await context.newPage();report.on('pageerror',e=>errors.push('REPORT '+e.message));await report.setContent(html);
+  const amount=async()=>Number((await report.locator('[data-summary-group=total] [data-value=current]').innerText()).replace(/[^0-9]/g,''));
+  const chart=async()=>report.evaluate(()=>JSON.parse(decodeURIComponent(document.querySelector('.portfolio-timeline').dataset.model)).funds.reduce((s,f)=>s+f.current,0));
+  assert.equal(await amount(),340000);assert.equal(await chart(),340000);
+  assert.equal(await report.locator('[data-report-section=pending] [data-report-item]').count(),2);
+  assert.match(await report.locator('[data-report-section=pending]').innerText(),/Nakoupeno — čeká na připsání/);
+  assert.match(await report.locator('[data-report-section=pending]').innerText(),/Datum obchodu/);
+  assert.match(await report.locator('[data-report-section=pending]').innerText(),/Neuvedeno/);
+  assert.equal(await report.locator('.report-area-fki .report-transactions tbody tr').count(),1);
+  const selection=await report.evaluate(()=>JSON.parse(decodeURIComponent(document.getElementById('reportSelection').dataset.items)));
+  const pending=selection.filter(x=>x.pending),pendingClassic=pending.find(x=>x.group==='classic'),pendingFki=pending.find(x=>x.group==='fki');
+  assert.equal(pending.length,2);assert.ok(pending.every(x=>!Object.hasOwn(x,'current')&&!Object.hasOwn(x,'gain')));
+  await report.locator('#reportSelection summary').click();
+  await report.locator(`[data-pick-item="${pendingFki.id}"]`).uncheck();assert.equal(await amount(),340000);assert.equal(await chart(),340000);assert.equal(await report.locator(`[data-report-item="${pendingFki.id}"]`).isVisible(),false);assert.equal(await report.locator('[data-pending-count]').innerText(),'1');
+  await report.locator('[data-pick-section=pending]').uncheck();assert.equal(await report.locator('[data-report-section=pending]').isVisible(),false);assert.equal(await amount(),340000);
+  await report.locator('[data-pick-section=pending]').check();assert.equal(await report.locator('[data-report-section=pending]').isVisible(),true);
+  await report.locator('[data-pick-group=classic]').uncheck();assert.equal(await amount(),120000);assert.equal(await chart(),120000);assert.equal(await report.locator(`[data-report-item="${pendingClassic.id}"]`).isVisible(),false);assert.equal(await report.locator('[data-report-section=pending]').isVisible(),false);
+  await report.locator('[data-pick-group=fki]').check();await report.locator('[data-pick-group=fki]').uncheck();assert.equal(await amount(),0);assert.equal(await report.locator('.portfolio-timeline').isVisible(),false);
+  // Selecting only a pending payment never creates active AUM or a chart.
+  await report.locator(`[data-pick-item="${pendingFki.id}"]`).check();assert.equal(await amount(),0);assert.equal(await report.locator('.portfolio-timeline').isVisible(),false);assert.equal(await report.locator('[data-report-section=pending]').isVisible(),true);
+  await report.locator('[data-pick-group=classic]').check();await report.locator('[data-pick-group=fki]').check();assert.equal(await amount(),340000);assert.equal(await chart(),340000);
+  await report.locator('[data-pick-section=pending]').uncheck();await report.evaluate(()=>window.dispatchEvent(new Event('beforeprint')));await report.emulateMedia({media:'print'});assert.equal(await report.locator('[data-report-section=pending]').isVisible(),false);await report.emulateMedia({media:'screen'});await report.evaluate(()=>window.dispatchEvent(new Event('afterprint')));await report.locator('[data-pick-section=pending]').check();
+  await report.locator('#reportSelection summary').click();await report.screenshot({path:'/private/tmp/crm-report-pending-desktop.png',fullPage:true});
+  await report.setViewportSize({width:390,height:844});assert.ok(await report.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await report.locator('[data-report-section=pending]').screenshot({path:'/private/tmp/crm-report-pending-mobile.png'});
+  await report.locator('#reportSelection summary').click();assert.ok(await report.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'expanded selection must fit mobile');
+  const excluded=await page.evaluate(()=>({classic:clientOutput_xReportHtml(findClient(1),{summary:true,investments:true,fki:false,notice:false}),fki:clientOutput_xReportHtml(findClient(1),{summary:true,investments:false,fki:true,notice:false}),none:clientOutput_xReportHtml(findClient(1),{summary:true,investments:false,fki:false,notice:false}),hidden:clientOutput_xReportHtml(findClient(1),{summary:true,investments:true,fki:true,pending:false,notice:false}),only:fkClientReportHtml(findClient(2),null,{open:false,notice:false})}));
+  for(const [key,group] of [['classic','classic'],['fki','fki']]){await report.setContent(excluded[key]);const data=await report.evaluate(()=>JSON.parse(decodeURIComponent(document.getElementById('reportSelection').dataset.items)));assert.equal(data.filter(x=>x.pending).length,1);assert.ok(data.every(x=>x.group===group));}
+  await report.setContent(excluded.none);assert.equal(await report.locator('[data-report-section=pending]').count(),0);assert.equal(await report.locator('.portfolio-timeline').count(),0);
+  await report.setContent(excluded.hidden);assert.equal(await report.locator('[data-report-section=pending]').count(),0);
+  await report.setContent(excluded.only);assert.equal(await report.locator('[data-report-section=pending]').isVisible(),true);assert.equal(await report.locator('[data-summary-group=total]').count(),0);assert.equal(await report.locator('.portfolio-timeline').count(),0);assert.equal(await report.locator('[data-report-section=pending] h3').innerText(),'Čekající <nový> FKI');assert.equal(await report.locator('[data-report-section=pending] nový').count(),0);
+  await report.locator('#reportSelection summary').click();await report.locator('[data-pick-group=fki]').uncheck();assert.equal(await report.locator('[data-report-section=pending]').isVisible(),false);await report.locator('[data-pick-group=fki]').check();assert.equal(await report.locator('[data-report-section=pending]').isVisible(),true);
+  await page.evaluate(()=>openClientReportModal(2));assert.equal(await page.locator('.report-section-check[value=fki]').isChecked(),true,'pending-only client export must default to including the available category');
+  assert.equal(await page.evaluate(()=>{for(const x of investmentPendingRows(1))state.lockedFunds[x.area==='fki'?fkiGlobalLockKey(x.fundKey):investmentFundLockKey(x.fundKey)]=true;return clientOutput_xPendingInvestments(findClient(1)).length;}),0,'existing fund lock must also exclude pending details from client reports');
+  assert.deepEqual(errors,[]);console.log('PASS: pending report section, active/pending same fund, no pending AUM/returns/charts, offline group/item/section selection, category export defaults, pending-only client, print, escaped text and mobile.');
+}finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

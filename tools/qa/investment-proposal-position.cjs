@@ -18,14 +18,18 @@ fixture.fundValues['qa-position-edit'] = {area:'fki', company:'QA správce', fon
     page.on('dialog', async dialog => {dialogs.push(dialog.message()); await dialog.dismiss();});
     await page.goto('https://crm.test/FILIP-CRM.html');
     const initial = await page.evaluate(() => {
+      const baselineAum=clientInvestmentSummary(1).total;
       const deal = {id:uid(), clientId:1, category:'FKI', company:'QA správce', product:'QA upravený nákup', fundKey:'qa-position-edit', isin:'QAEDIT000001', fundIsin:'QAEDIT000001', date:'2026-10-01', amount:200000, source:'investmentScenario', scenarioLinkKey:'qa-forecast|qa-variant|qa-row'};
       state.deals.push(deal); syncSignedInvestmentPosition(deal); syncCrmFkiDealsToRecords();
+      persist();renderAll();const pendingAum=clientInvestmentSummary(1).total,pending=investmentPendingRows(1).filter(r=>r.isin==='QAEDIT000001').reduce((sum,r)=>sum+r.amount,0);
+      if(!settleInvestmentPurchase('deal',deal.id,'2026-10-01','2026-10-01'))throw Error('QA purchase confirmation failed');
       const buy = state.investmentRecords.find(r => r._crmScenarioLinkKey === deal.scenarioLinkKey), key = invRecordKey(buy);
       state.investmentRecords.push({Investor:buy.Investor, ClientID:buy.ClientID, 'RČ':buy['RČ'], Fond:buy.Fond, 'Investiční společnost':buy['Investiční společnost'], 'rp.ISIN':buy['rp.ISIN'], 'Typ produktu':'FKI', 'Typ CP':buy['Typ CP'], 'Typ transakce':'Odkup', 'Čistá investice':1000, 'Aktuální hodnota investice':1000, 'Datum připsání platby':'2026-10-10', redemptionSourceRecordKey:key, 'Odkup z nákupu':key});
       openFkRecordModal(1, encodeURIComponent(invPositionKey(buy)), encodeURIComponent(key));
-      return {key, qty:invQty(buy)};
+      return {key, qty:invQty(buy),baselineAum,pendingAum,pending,settled:!investmentRecordIsPending(buy)};
     });
-    assert.equal(initial.qty, 2000);
+    assert.equal(initial.pendingAum,initial.baselineAum,'signature alone must not activate the position');assert.equal(initial.pending,200000);assert.equal(initial.settled,true,'redemption fixture starts only after explicit purchase/emission confirmation');
+    assert.equal(initial.qty, 0,'a signed amount and current fund NAV cannot invent the actual purchased CP count');
     await page.locator('#fkRecQty').fill('1900');
     await page.locator('#fkRecSubscribe').fill('105');
     await page.locator('#fkRecManualCurrent').check();

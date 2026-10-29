@@ -2,7 +2,15 @@
 
 Lokální CRM pro klienty, smlouvy, obchody, pojistné události, investice, FKI, poznámky, reporty a zálohu.
 
-## Verze 2026.10.29-2
+## Verze 2026.10.29-3
+
+### Nakoupeno a čekání na připsání
+
+Sjednání obchodu zachová datum obchodu a produkci, ale nevymýšlí datum skutečného nákupu nebo emise. U klienta otevři **Nakoupeno → Doplnit údaje**. Klasická investice vstoupí do AUM po doplnění skutečného data nákupu; FKI potřebuje také datum emise. Prázdné nebo budoucí datum ponechá investici v čekání. Změna ceny CP sama nákup nepotvrdí.
+
+Ve **FKI / Investice → AUM** jsou oddělené částky a záložky **Investováno** a **Čeká na připsání**. Čekající částka se nezapočítává do klientského ani poradenského AUM, vložené částky aktivního portfolia, výnosu nebo grafů. V klientském reportu je v samostatné zapínatelné sekci. Také starší investice s chybějícími daty se zobrazí v čekání; nejsou smazané. Potvrzený souhrnný zůstatek účtu Edward zůstává oceněním účtu, nikoli jednotlivým novým nákupem.
+
+Dokup klasické investice má vlastní pozici a nepřepisuje předchozí zůstatek. Pozdější aktualizace **celkové hodnoty fondu** zahrnuje již připsané nákupy, aby se nesčítaly podruhé. Opakované uložení nebo potvrzení nevytváří další nákup, obchod ani BJ. Data nákupu lze znovu vyprázdnit; při selhání uložení zůstává formulář otevřený.
 
 ### Mazání nesprávných záznamů
 

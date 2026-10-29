@@ -617,3 +617,6 @@ h1,h2,h3,h4,.detail-title,.client-row b,.portfolio-card b,.contact-value{color:#
 @media(max-width:600px){.fund-profile [data-profile-field="exitFee"],.fund-profile [data-profile-field="liquidity"]{grid-column:1/-1}}
 
 .fund-profile .fund-profile-identity{padding:0;background:none;color:#526b85;font-size:11px}.fund-profile .fund-profile-note{padding:10px 12px;background:#fff6df;color:#695127;font-size:12px}.fund-profile>div p{line-height:1.5}.fund-profile em{font-style:normal;line-height:1.5}
+
+/* Pending subscriptions are deliberately separated from settled AUM. */
+.settlement-panel{margin:12px 0;border-color:#e6cfa5}.settlement-panel .toolbar{align-items:flex-start;gap:14px}.settlement-panel .toolbar h3{margin:3px 0}.settlement-panel .toolbar .metric{min-width:150px;flex-shrink:0}.settlement-panel .actions{flex-wrap:wrap;justify-content:flex-start}.settlement-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px}.settlement-summary small,.settlement-panel .metric small{display:block;color:#657d96}.settlement-summary b{display:block;margin-top:5px}.settlement-panel table{min-width:700px}.settlement-panel .table-wrap{max-width:100%}@media(max-width:600px){.settlement-panel .toolbar{flex-direction:column}.settlement-summary .metric b{font-size:16px}}

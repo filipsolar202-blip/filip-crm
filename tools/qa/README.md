@@ -7,6 +7,10 @@ node tools/qa/static.cjs
 node tools/qa/google-sync.cjs
 python3 tools/qa/storage.py
 node tools/qa/regression.cjs
+node tools/qa/investment-settlement.cjs
+node tools/qa/investment-settlement-core.cjs
+node tools/qa/investment-settlement-restore.cjs
+node tools/qa/report-pending.cjs
 node tools/qa/portfolio-deletion.cjs
 node tools/qa/provider-deletion.cjs
 node tools/qa/provider-import.cjs
@@ -68,3 +72,5 @@ insurance-claims.cjs ověřuje založení a úpravy pojistných událostí, hist
 `fund-nav-propagation.cjs` ověřuje více klientů stejného ISIN, obě oblasti i editory, starší a stejně datované opravy, ruční hodnoty, nulové a neúplné pozice, sloučení starší zálohy a opětovné otevření reportu. Používá pouze syntetická data.
 
 `portfolio-deletion.cjs` ověřuje mazání nákupu/odkupu/fondu/aktualizace/smlouvy/obchodu/případu, navázané i nejasné odkupy, zachování ostatních klientů, chybně klasifikované starší řádky, uzavření importních kontrol, zrušení a rollback, obnovení stránky a historii pojistné události. `provider-deletion.cjs` kontroluje přesné cíle importních kontrol, klientské identity a idempotenci. Používají pouze syntetická data.
+
+`investment-settlement.cjs` kontroluje skutečné editory, prázdná a doplněná data, opakované potvrzení, NAV bez aktivace nákupu, obchodní produkci, zůstatky po dokupu a následném celkovém ocenění, souhrn Edward, rollback, reload, klientské a globální UI i mobil. `investment-settlement-core.cjs` chrání především průniky zdrojového obchodu/smlouvy a autoritativní pozice. `investment-settlement-restore.cjs` kontroluje stabilní identitu nákupu a novější metadata při sloučení zálohy. `report-pending.cjs` ověřuje oddělený čekající oddíl mimo AUM/grafy, výběr položek a tisk. Všechny používají pouze syntetické údaje.

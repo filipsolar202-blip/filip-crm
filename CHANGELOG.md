@@ -1,3 +1,12 @@
+## 2026.10.29-3
+
+- Volitelné skutečné datum nákupu a emise. Podepsaný obchod už tato data automaticky nepředvyplňuje datem obchodu.
+- Klientská záložka Nakoupeno a oddělené Investováno / Čeká na připsání v globálním AUM pro FKI i běžné investice. Čekající investice zůstávají editovatelné a smazatelné, ale nevstupují do AUM, aktivního vkladu, výnosů a grafů.
+- Samostatná volitelná sekce čekajících investic v HTML reportu, včetně ovládání jednotlivých položek a tisku.
+- Dokupy mají stabilní samostatnou identitu. Potvrzení nákupu je opakovatelné bez duplicit obchodů, BJ a pozic; celkové ocenění eviduje zahrnuté nákupy a nepočítá je dvakrát.
+- Vymazání data v editoru nepřebírá staré aliasy nebo obchodní datum. Autoritativní pozice brání návratu částky ze zdrojové smlouvy či obchodu.
+- Novější metadata potvrzení a zahrnutých nákupů se zachovají při sloučení zálohy i přemapování číselných identit. Selhání uložení vrací stav a ponechá rozepsaný formulář.
+
 ## 2026.10.29-2
 
 - Přímé mazání jednotlivých investičních transakcí, aktualizací a celého fondu u klienta, včetně starších karet bez dostupných řádků. Společný katalog fondů a ostatní klienti se nemění.
