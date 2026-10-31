@@ -35,6 +35,7 @@ function renderActiveViewContent() {
       settings: [['Nastavení', renderSettings]]
     };
   (renders[active] || []).forEach(([name, fn]) => renderPart(name, fn));
+  CrmWorkflow.mount();
 }
 // Shared file delivery for all client-facing HTML outputs.
 function downloadHtmlFile(html, filename) {
@@ -370,6 +371,7 @@ function normalizeState(s) {
   delete s.aiInbox;
   try { localStorage.removeItem('filip_crm_ai_active_job'); } catch (e) {}
   ['clients', 'contracts', 'deals', 'activities', 'workPilots', 'workOutputs', 'referrals', 'referrerPayouts', 'managementPartners', 'managementPayouts', 'notes', 'opportunities', 'insuranceClaims', 'investmentRecords', 'investmentSnapshots', 'providerImports', 'commissionImports', 'analysisEntries', 'campaigns', 'externalInvestments', 'investmentForecasts', 'weeklyGoals', 'weeklyReviews', 'dailyPriorities', 'focusDrafts', 'focusSnapshots', 'delegationProcesses'].forEach(k => s[k] = Array.isArray(s[k]) ? s[k] : []);
+  CrmWorkflow.normalize(s);
   normalizeWorkStorage(s, legacyOrigin);
   normalizeProviderImportStorage(s, legacyOrigin);
   normalizeInvestmentPurchaseStorage(s);
@@ -438,6 +440,7 @@ function managementBadge(clientOrId) {
   return `<span class="badge ${p.own ? 'blue' : 'purple'}">${esc(p.company || p.name)}</span>`;
 }
 function persist() {
+  CrmWorkflow.reconcile(state);
   invalidatePortfolioReadContext();
   state = normalizeState(state);
   clientDirectoryStatsCache = null;
@@ -3396,6 +3399,7 @@ function updateOpportunityStatus(id, status) {
     else openDealFromOpportunity({...existing,status:'Podepsáno'});
     return;
   }
+  const workflowBeforeChange = structuredClone(state);
   if (String(id).startsWith('contract_')) {
     const contractId = String(id).replace('contract_', '');
     state.contractOpportunityStatuses = state.contractOpportunityStatuses || {};
@@ -3436,7 +3440,7 @@ function updateOpportunityStatus(id, status) {
       }
     }
   }
-  persist();
+  if (!persist()) { state=workflowBeforeChange; return; }
   renderAll();
 }
 function opportunitySortValue(x, key) {
@@ -3623,6 +3627,7 @@ function renderCaseDetail() {
     history = [...(o.history || [])].sort((a,b)=>String(b.d || '').localeCompare(String(a.d || ''))), commission = caseExpectedCommission(o),
     next = opportunityNextContactDate(o), replacement = o.replacesContractId ? state.contracts.find(x=>String(x.id)===String(o.replacesContractId)) : null;
   root.innerHTML = `<div class="case-detail-shell"><section class="case-detail-top"><div class="case-detail-breadcrumb"><button class="client-back-button" onclick="closeCaseDetail()">← Zpět na seznam</button><div class="actions"><button class="btn" onclick="openQuickActivity(${Number(o.clientId)},'phone',${Number(o.id)})">Zaznamenat kontakt</button><button class="btn primary" onclick="openOpportunityModal(${Number(o.clientId)},${Number(o.id)})">Upravit případ</button><button class="btn red" onclick="deleteOpportunity(${Number(o.id)})">Smazat případ</button></div></div><div class="case-detail-title"><div><div class="chips"><span class="badge blue">${esc(o.category || 'Obchodní případ')}</span>${opportunityBadge(current)}${replacementBadge(o)}</div><h2>${esc(o.product || o.category || 'Obchodní případ')}</h2><p class="note">${esc(clientName(c))} · ${esc(o.company || 'bez společnosti')} · poslední změna ${esc(caseLastUpdate(o) ? dateObj(caseLastUpdate(o)).toLocaleDateString('cs-CZ') : 'bez data')}</p></div><div class="client-summary-tile"><small>${closed ? 'Původní odhad provize' : 'Očekávaná provize'}</small><b>${money(commission)}</b><span>objem ${money(o.amount)} · ${num(o.bj)} BJ</span></div></div><div class="case-stage-track">${(o.status === 'Podepsáno' ? [] : [...stages,'Klient nemá zájem','Zrušeno']).map((stage,i)=>`<button class="case-stage-step ${stage === current ? 'active' : i < currentIndex ? 'done' : ''}" onclick="updateOpportunityStatus('${esc(o.id)}','${esc(stage)}')">${esc(stage)}</button>`).join('')}</div></section><div class="case-detail-grid"><div class="case-detail-shell"><section class="case-detail-panel"><div class="toolbar"><div><div class="eyebrow">Aktuální fáze</div><h3>${esc(current)}</h3></div></div><div class="case-history-list">${caseDetailChecklist(o)}</div></section><section class="case-detail-panel"><div class="toolbar"><div><div class="eyebrow">Podrobnosti</div><h3>Parametry případu</h3></div><button class="btn slim" onclick="openOpportunityModal(${Number(o.clientId)},${Number(o.id)})">Upravit</button></div><div class="case-detail-facts"><div class="case-detail-fact"><span>Klient</span><button class="case-title" onclick="openClientWorkspace(${Number(o.clientId)},'opportunities')">${esc(clientName(c))}</button></div><div class="case-detail-fact"><span>Kategorie</span><b>${esc(o.category || '-')}</b></div><div class="case-detail-fact"><span>Společnost</span><b>${esc(o.company || '-')}</b></div><div class="case-detail-fact"><span>Produkt</span><b>${esc(o.product || '-')}</b></div><div class="case-detail-fact"><span>Objem</span><b>${money(o.amount)}</b></div><div class="case-detail-fact"><span>BJ</span><b>${num(o.bj)}</b></div><div class="case-detail-fact"><span>Termín dokončení</span><b>${esc(o.expectedDate || '-')}</b></div><div class="case-detail-fact"><span>Původní smlouva</span><b>${esc(replacement ? [replacement.company,replacement.product,replacement.number].filter(Boolean).join(' · ') : '-')}</b></div></div>${o.note ? `<div class="notice small" style="margin-top:12px"><b>Poznámky k jednání</b><div style="white-space:pre-wrap;margin-top:5px">${esc(o.note)}</div></div>` : ''}</section></div><aside class="case-detail-shell"><section class="case-detail-panel"><div class="eyebrow">Další krok</div><div class="case-next-action"><b>${closed ? 'Případ je uzavřený' : next ? dateObj(next).toLocaleDateString('cs-CZ') : 'Termín není naplánovaný'}</b><p class="note">${closed ? 'Historie a podklady zůstávají uložené.' : esc(o.lastContactMethod || (current === 'Opportunity' ? 'Klienta je potřeba kontaktovat.' : 'Doplňte další návaznost.'))}</p></div>${closed ? '' : `<button class="btn primary" onclick="openQuickActivity(${Number(o.clientId)},'phone',${Number(o.id)});setVal('qaOutcome','agreed')">+ Naplánovat aktivitu</button>`}</section><section class="case-detail-panel"><div class="eyebrow">Historie případu</div><h3>Posuny a kontakty</h3><div class="case-history-list">${history.map(x=>`<div class="case-history-row"><b>${esc(x.t || 'Aktualizace')}</b><small>${esc(x.d || '')}</small></div>`).join('') || '<p class="note">Zatím bez zaznamenané změny.</p>'}</div></section><section class="case-detail-panel"><div class="eyebrow">Provize</div><h3>${money(commission)}</h3><p class="note">${pipelineStageCommissionEnabled(current) ? 'Tato fáze se počítá do očekávané provize.' : 'Tato fáze je z očekávané provize vypnutá.'}</p></section></aside></div></div>`;
+  CrmWorkflow.mountCase(o);
 }
 let closedCaseLimit = 50;
 function showMoreClosedCases() {
@@ -4286,7 +4291,9 @@ function clientSectionAction(c) {
   return `<button class="btn primary" onclick="openQuickActivity(${c.id})">Zaznamenat kontakt</button>`;
 }
 function renderClientDetail() {
-  return withPortfolioReadContext(renderClientDetailContent);
+  const result = withPortfolioReadContext(renderClientDetailContent);
+  CrmWorkflow.mount();
+  return result;
 }
 function renderClientDetailContent() {
   const c = findClient(selectedClientId),
@@ -7797,7 +7804,7 @@ function fkiSync_before_moveDealToOpportunity() {
       }]
     };
   const exists = (state.opportunities || []).some(x => sameOpenOpportunity(x, o));
-  if (!exists) state.opportunities.push(o);
+  if (!exists) { state.opportunities.push(o); if (d.automation) o.automation=structuredClone(d.automation); else CrmWorkflow.attach(state,o); }
   state.deals = state.deals.filter(x => String(x.id) !== String(d.id));
   const s = linkedContractForDeal(d);
   if (s && String(s.fromDealId) === String(d.id)) {
@@ -7893,10 +7900,12 @@ function fkiSync_before_saveDeal() {
         d: d.date,
         t: 'Podepsáno · propsáno do obchodu'
       });
+      CrmWorkflow.transfer(state,o,d,d.date);
       state.opportunities = state.opportunities.filter(x => String(x.id) !== String(o.id));
       addActivity(clientId, 'Obchod', 'Obchodní případ propsán do obchodu: ' + (d.product || d.category) + ' · ' + num(dealBJ(d)) + ' BJ', true);
     }
   }
+  if (wasNew && !d.automation && !isInternalCommission(d)) CrmWorkflow.attach(state,d,true,d.date);
   if (pendingContractToDealId && !replacementSource) {
     d.fromContractId = pendingContractToDealId;
     d.contractId = pendingContractToDealId;
@@ -8124,7 +8133,9 @@ function saveOpportunity() {
   if (!data.clientId) return alert('Vyber klienta.');
   if(data.replacesContractId&&!clientContracts(data.clientId).some(s=>String(s.id)===String(data.replacesContractId)))return alert('Vyberte původní smlouvu tohoto klienta.');
   if(data.replacesContractId&&state.opportunities.some(o=>String(o.id)!==String(editingOpportunityId)&&String(o.replacesContractId)===String(data.replacesContractId)&&isOpenOpportunity(o)))return alert('K této smlouvě již existuje rozpracovaná náhrada. Upravte tento případ.');
+  const workflowBeforeSave = structuredClone(state);
   let o = editingOpportunityId ? state.opportunities.find(x => x.id === editingOpportunityId) : null;
+  const workflowNewCase = !o;
   const oldStatus = o?.status;
   if (!o) {
     o = {
@@ -8141,6 +8152,7 @@ function saveOpportunity() {
   Object.assign(o, data, {
     updatedAt: today()
   });
+  if (workflowNewCase) CrmWorkflow.attach(state,o);
   if (oldStatus !== o.status) {
     o.history = o.history || [];
     o.history.push({
@@ -8154,8 +8166,8 @@ function saveOpportunity() {
     o.history.push({d: data.lastContactDate, t: 'Kontakt s klientem' + (data.lastContactMethod ? ' · ' + data.lastContactMethod : '')});
   }
   selectedClientId = o.clientId;
+  if (!persist()) { state=workflowBeforeSave; return; }
   if (complete) {
-    persist();
     openDealFromOpportunity({...o, status:'Podepsáno'});
     return;
   }
@@ -8172,6 +8184,7 @@ function quickSignOpportunity() {
 function convertOpportunityToDeal(o) {
   const existing = linkedDealForOpportunity(o);
   if (existing) {
+    if (!existing.automation) CrmWorkflow.transfer(state,o,existing,existing.date);
     state.opportunities = state.opportunities.filter(x => String(x.id) !== String(o.id));
     return existing;
   }
@@ -8235,6 +8248,7 @@ function convertOpportunityToDeal(o) {
   }
   o.dealId = d.id;
   o.convertedAt = today();
+  CrmWorkflow.transfer(state,o,d,d.date);
   syncSignedInvestmentPosition(d);
   addActivity(o.clientId, 'Obchod', 'Obchodní případ dokončen a propsán: ' + (o.product || o.category) + ' · ' + num(o.bj) + ' BJ', true);
   state.opportunities = state.opportunities.filter(x => String(x.id) !== String(o.id));
@@ -8518,7 +8532,7 @@ function mergeIncomingStateCore(incoming) {
       ...idl,
       clientId
     };
-    const existing = state.deals.find(d => sameDeal(d, next));
+    const existing = state.deals.find(d => (idl.automation?.id && d.automation?.id === idl.automation.id) || sameDeal(d, next));
     if (existing) {
       dealMap.set(String(idl.id), existing.id);
       count.skipped++;
@@ -8544,7 +8558,7 @@ function mergeIncomingStateCore(incoming) {
     if (!clientId) return;
     // A signed scenario row must not be reintroduced as an open case by an older backup.
     if (io.scenarioLinkKey && state.deals.some(d => String(d.clientId) === String(clientId) && d.scenarioLinkKey === io.scenarioLinkKey)) { count.skipped++; return; }
-    const existing = state.opportunities.find(o => String(o.clientId) === String(clientId) && (io.scenarioLinkKey || o.scenarioLinkKey ? !!io.scenarioLinkKey && io.scenarioLinkKey === o.scenarioLinkKey : o.status === io.status && o.statusDate === io.statusDate && norm(o.product) === norm(io.product) && (+o.bj || 0) === (+io.bj || 0)));
+    const existing = state.opportunities.find(o => String(o.clientId) === String(clientId) && (io.automation?.id && o.automation?.id===io.automation.id || (io.scenarioLinkKey || o.scenarioLinkKey ? !!io.scenarioLinkKey && io.scenarioLinkKey === o.scenarioLinkKey : o.status === io.status && o.statusDate === io.statusDate && norm(o.product) === norm(io.product) && (+o.bj || 0) === (+io.bj || 0))));
     if (existing) {
       opportunityMap.set(String(io.id), existing.id);
       count.skipped++;
@@ -8887,6 +8901,9 @@ function loadGoogleBackup() {
   previewGoogleBackup();
 }
 function backupCountValue(s, key) {
+  if (key === 'workflowPlans') return [...(s.opportunities||[]),...(s.deals||[])].filter(x=>x.automation).length;
+  if (key === 'emailWaits') return (s.activities||[]).filter(x=>x.emailWait).length;
+  if (key === 'workflowSteps') return [...(s.opportunities||[]),...(s.deals||[])].reduce((n,x)=>n+(x.automation?.steps?.length||0),0);
   if (key === 'investments') return (s.investmentRecords || []).length;
   if (key === 'providerImportEntries') return (s.providerImports || []).reduce((n,batch) => n+(batch.entries?.length || 0),0);
   if (key === 'claimHistory' || key === 'claimAttachments') return (s.insuranceClaims || []).reduce((n, claim) => n + (claim[key === 'claimHistory' ? 'history' : 'attachments']?.length || 0), 0);
@@ -9993,6 +10010,7 @@ function scenario_addScenarioDeal(c, r, summary, horizon, date) {
   delete d.status;
   delete d.statusDate;
   state.deals.push(d);
+  CrmWorkflow.attach(state,d,true,d.date);
   syncSignedInvestmentPosition(d);
   return d;
 }
@@ -13088,6 +13106,7 @@ function mergeIncomingState(incoming) {
     state.delegationProcesses.push({...p, id:uid()});
   });
   Object.assign(count,mergeProviderImportStorage(incomingState,count._mergeIds));
+  CrmWorkflow.merge(state,incomingState,count._mergeIds);
   count.referrerPayouts = added;
   count.skipped = (count.skipped || 0) + skipped;
   return count;
@@ -13114,6 +13133,10 @@ function criticalBackupCounts(s = state) {
     externalInvestments: s.externalInvestments.length,
     investmentForecasts: s.investmentForecasts.length,
     activities: s.activities.length,
+    workflowTemplates: s.workflowTemplates.length,
+    workflowPlans: backupCountValue(s,'workflowPlans'),
+    workflowSteps: backupCountValue(s,'workflowSteps'),
+    emailWaits: backupCountValue(s,'emailWaits'),
     workPilots: s.workPilots.length,
     workOutputs: s.workOutputs.length,
     workActivities: backupCountValue(s, 'workActivities'),
@@ -13441,6 +13464,7 @@ function saveInvestmentScenario(requestedMode) {
       else {
         const opportunity = {id:uid(), ...scenario_scenarioOpportunityDraft(c, r, summary, horizon), createdAt:today(), history:[{d:today(),t:'Nabídka – z investičního návrhu'}]};
         state.opportunities.push(opportunity);
+        CrmWorkflow.attach(state,opportunity);
         r.opportunityId = opportunity.id;
       }
       added++;
@@ -14689,7 +14713,7 @@ function openQuickActivity(clientId = null, preset = 'phone', opportunityId = nu
   fillOptionalClientSelect('qaClient', chosen);
   setVal('qaClient', chosen && state.clients.some(c => String(c.id) === String(chosen)) ? chosen : '');
   setVal('qaDelegationRoute', '');
-  setVal('qaDate', today()); setVal('qaText', ''); setVal('qaFollowType', ''); setVal('qaFollowDate', ''); setVal('qaFollowTime', '09:00'); setVal('qaFollowText', '');
+  setVal('qaDate', today()); setVal('qaText', ''); setVal('qaFollowType', ''); setVal('qaFollowDate', ''); setVal('qaFollowTime', ''); setVal('qaFollowText', '');
   const details = byId('quickActivityModal')?.querySelector('.quick-activity-follow');
   if (details) details.open = false;
   selectQuickActivityPreset(quickActivityPreset);
@@ -14735,7 +14759,7 @@ function activityReadDuration(id) {
   return n;
 }
 function activitySaveSnapshot() {
-  return structuredClone({activities:state.activities || [], workOutputs:state.workOutputs || [], workPilots:state.workPilots || [], nextId:state.nextId});
+  return structuredClone({activities:state.activities || [], workOutputs:state.workOutputs || [], workPilots:state.workPilots || [], opportunities:state.opportunities, deals:state.deals, nextId:state.nextId});
 }
 function activityRestoreSnapshot(snapshot) {
   Object.assign(state, snapshot);
@@ -14758,7 +14782,7 @@ function openActivityModal(clientId = null, id = null) {
   activities_aSet('aClient', chosenClient || '');
   activities_aSet('aType', a?.type || 'Telefon');
   activities_aSet('aDate', a?.date || activities_aToday());
-  activities_aSet('aTime', a?.time || '09:00');
+  activities_aSet('aTime', a?.time || '');
   activities_aSet('aDuration', a ? a.duration ?? '' : 60);
   setVal('aDelegationRoute', a?.delegationRoute || '');
   activities_aSet('aLocation', a?.location || '');
@@ -14825,7 +14849,7 @@ function saveActivity(markDone = false) {
   if (typeof closeModal === 'function') closeModal('activityModal');
   if (typeof renderAll === 'function') renderAll();
   if (typeof saveToast === 'function') saveToast(completed ? 'Aktivita vyhodnocena' : 'Aktivita uložena');
-  if (isNew && a.type === 'Schůzka' && !completed && typeof googleCalendarUrl === 'function') window.open(googleCalendarUrl(a), '_blank');
+  if (isNew && a.type === 'Schůzka' && a.time && !completed && typeof googleCalendarUrl === 'function') window.open(googleCalendarUrl(a), '_blank');
 }
 function addActivity(clientId, type, text, silent = false) {
   if (!clientId) return;
@@ -14905,7 +14929,7 @@ function dashboardWorkRows() {
   const clientsById = new Map((state.clients || []).map(c=>[String(c.id),c]));
   const typeFilter = val('dashTaskType'), period = val('dashTaskPeriod') || 'today';
   const from = val('dashTaskFrom'), to = val('dashTaskTo'), order = val('dashTaskSort') || 'asc';
-  const acts = (state.activities || []).filter(a => !a.completed && !a.completedAt && activities_aOutcome(a) === 'agreed' && !activityIsInformational(a)).map(a => ({
+  const acts = (state.activities || []).filter(a => CrmWorkflow.active(a) && !a.completed && !a.completedAt && activities_aOutcome(a) === 'agreed' && !activityIsInformational(a)).map(a => ({
     kind:'activity', id:a.id, clientId:a.clientId, c:clientsById.get(String(a.clientId)),
     type:a.type || 'Aktivita', title:a.text || a.type || 'Aktivita',
     date:a.date || '', dateLabel:'Termín úkolu', time:a.time || '',
@@ -15789,6 +15813,7 @@ function deleteDelegationProcess() {
   persist();closeModal('delegationProcessModal');renderDelegationAnalysis();saveToast('Činnost odstraněna z přehledu');
 }
 function renderAnalysis() {
+  CrmWorkflow.mount();
   const weekEl = document.getElementById('analysisWeek'),
     monthEl = document.getElementById('analysisMonth');
   if (!weekEl) return;
@@ -15872,8 +15897,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.29-4';
-const VERSION_NOTE = 'Rychlejší otevření klienta a portfolia. Karta už nepřekresluje skrytý seznam klientů a opakované investiční výpočty sdílí pouze během jednoho vykreslení. Změny ocenění se zobrazují hned po uložení.';
+const VERSION = '2026.10.31-1';
+const VERSION_NOTE = 'Návaznosti obchodů: upravitelné šablony, úkoly v diáři, čekání na odpověď a ručně odesílané SMS. Odhady práce a delegování jsou oddělené od skutečného měření. Stávající případy zapnete jednotlivě po náhledu.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
@@ -15998,9 +16023,10 @@ const BACKUP_COUNT_LABELS = {
   focusDrafts: 'rozepsaných cílů',
   focusSnapshots: 'stavů AUM',
   delegationProcesses: 'činností k delegování',
+  workflowTemplates: 'šablon postupů', workflowPlans: 'pracovních postupů', workflowSteps: 'kroků postupů', emailWaits: 'čekání na odpověď',
   wealthRecords: 'majetkových podkladů'
 };
-const BACKUP_PROTECTED_KEYS = ['clients', 'contracts', 'deals', 'opportunities', 'insuranceClaims', 'claimHistory', 'claimAttachments', 'notes', 'activities', 'workPilots', 'workOutputs', 'workActivities', 'workTimeEntries', 'analysisEntries', 'campaigns', 'investments', 'investmentSnapshots', 'providerImports', 'providerImportEntries', 'externalInvestments', 'investmentForecasts', 'commissionImports', 'referrerPayouts', 'referrals', 'weeklyGoals', 'weeklyReviews', 'dailyPriorities', 'focusSnapshots', 'delegationProcesses', 'wealthRecords'];
+const BACKUP_PROTECTED_KEYS = ['workflowTemplates','workflowPlans','workflowSteps','emailWaits','clients', 'contracts', 'deals', 'opportunities', 'insuranceClaims', 'claimHistory', 'claimAttachments', 'notes', 'activities', 'workPilots', 'workOutputs', 'workActivities', 'workTimeEntries', 'analysisEntries', 'campaigns', 'investments', 'investmentSnapshots', 'providerImports', 'providerImportEntries', 'externalInvestments', 'investmentForecasts', 'commissionImports', 'referrerPayouts', 'referrals', 'weeklyGoals', 'weeklyReviews', 'dailyPriorities', 'focusSnapshots', 'delegationProcesses', 'wealthRecords'];
 let scenario_editableScope = '';
 let fkiEditor_editingFkRecordKey = '',
   fkiEditor_editingFkClientId = null;

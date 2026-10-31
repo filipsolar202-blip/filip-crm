@@ -1,3 +1,12 @@
+## 2026.10.31-1
+
+- Upravitelné verzované pracovní postupy pro skutečné produktové kategorie CRM. Nové případy získají plán; stávající pouze po individuálním náhledu a potvrzení. Podepsání přenese vazby na obchod a otevře následnou administrativu.
+- Automatické kroky používají existující aktivity, termíny a klientskou historii. Události, úpravy, pozastavení, zrušení a dokončení mají stabilní identitu. Ruční texty/termíny a historické odhady se nepřepisují.
+- Evidence odeslaného e-mailu, kontrola za 3 kalendářní nebo pracovní dny, jeden návrh připomenutí a upravitelná SMS. Kopírování neodesílá; skutečné odeslání se potvrzuje samostatně. Odpověď nebo jiné vyřízení ukončí nevyřízené připomenutí.
+- Přehled času a delegování v případu a Analýze se zdrojovými kroky. Odhad celku, dokončené a zbývající práce jsou oddělené od skutečně naměřeného času.
+- Kompaktní přehled návazností uvnitř stávajících úkolů zachovává pevné pořadí dashboardu. Úkol bez času nevytváří hodinovou rezervaci. Mobilní detail případu zalamuje ovládání.
+- Zálohy, slučování a ochranné počty zahrnují postupy, šablony a čekání na odpovědi. Nové testy používají výhradně syntetická data.
+
 ## 2026.10.29-4
 
 - Otevření klienta už nepřekresluje celý skrytý seznam klientů. Záložky karty a klientský report zpracovávají údaje daného klienta bez výpočtu portfolií ostatních.

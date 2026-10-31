@@ -2,6 +2,12 @@
 
 Lokální CRM pro klienty, smlouvy, obchody, pojistné události, investice, FKI, poznámky, reporty a zálohu.
 
+## Návaznosti obchodů a čekání na klienta
+
+Ve verzi **2026.10.31-1** se k novému případu připraví pracovní postup a první úkol. V detailu najdete **Pracovní postup**, **Podklady vyžádány**, **Nabídka odeslána**, **Další kontakt** a **E-mail odeslán – čekám na odpověď**. Starší případy zapnete jednotlivě tlačítkem **Náhled a zapnutí postupu**. Živé existující případy nejsou hromadně změněné.
+
+Šablony otevřete z případu nebo **Dashboard → Úkoly a připomínky → Návaznosti obchodů**. Odhady a delegování jsou také v **Analýze**; každý součet vede na konkrétní kroky. Skutečné měření zůstává volitelné. [Krátký návod, pravidla a návrat k předchozí verzi](NAVOD-AUTOMATIZACE.md).
+
 ## Verze 2026.10.29-4
 
 ### Rychlejší klientské karty

@@ -22,6 +22,9 @@ with tempfile.TemporaryDirectory(prefix='filip-crm-qa-') as folder:
     state['workPilots'] = [{'id': 'qa-pilot', 'startDate': '2026-11-02', 'process': 'QA zápis', 'caseIds': [42]}]
     state['workOutputs'] = [{'id': 'qa-output', 'pilotId': 'qa-pilot', 'clientId': 1, 'opportunityId': 42, 'method': 'new', 'status': 'complete'}]
     state['activities'] = [{'id': 11, 'syncId': 'qa-work', 'duration': 0, 'work': {'timeKind': 'actual', 'outputId': 'qa-output'}}, {'id': 12, 'duration': None, 'work': {'timeKind': 'unknown'}}]
+    state['workflowTemplates'] = [{'id': 'qa-template', 'version': 2, 'steps': [{'key': 'follow', 'solo': 30}]}]
+    state['opportunities'] = [{'id': 42, 'automation': {'id': 'qa-flow', 'steps': [{'id': 'qa-step', 'completedEstimate': {'solo': 30}}], 'history': [{'id': 'qa-event'}]}}]
+    state['activities'][0]['emailWait'] = {'id': 'qa-email', 'flowId': 'qa-flow', 'status': 'waiting'}
     assert storage.externalize_attachments(state) == 2
     attachment = state['contracts'][0]['attachments'][0]
     assert (storage.ATTACHMENT_DIR / attachment['fileRef']).read_bytes() == b'test'

@@ -1,6 +1,6 @@
 # Architektura hlavního CRM
 
-Stav k verzi 2026.10.29-4. Starší ARCHITECTURE_AUDIT.md popisuje stav před sjednocením aplikační logiky.
+Stav k verzi 2026.10.31-1. Starší ARCHITECTURE_AUDIT.md popisuje stav před sjednocením aplikační logiky.
 
 ## Jedna aplikace
 
@@ -87,3 +87,16 @@ Chart.js 4.5.0 a SheetJS 0.18.5 jsou uložené v assets/vendor s licencemi. Nasa
 ## Údržba
 
 Upravovat existující funkci nebo společné styly, nepřidávat další přepisovací skript na konec stránky. Při vydání změnit VERSION, VERSION_NOTE, odkazy s verzí v hlavní stránce a přesměrování index.html. Zapsat změnu do CHANGELOG.md a spustit relevantní ověření z tools/qa.
+
+
+## Návaznosti obchodů (2026.10.31-1)
+
+`assets/js/workflow-automation.js` je samostatný modul s explicitními hooky v hlavním CRM. Nepřepisuje za běhu existující funkce. `workflowTemplates` uchovává verzované definice. `opportunities[].automation` a po podpisu `deals[].automation` uchovávají stabilní UUID postupu, snímky kroků, události a historii. Skutečné úkoly jsou výhradně `activities`; krok odkazuje na jejich stabilní `syncId`. Termín, text a dokončení jsou autoritativní v aktivitě. Historický `completedEstimate` se nepřepisuje změnou šablony.
+
+Normalizace pouze doplní výchozí šablony, nepřijímá existující případy do automatizace. Hooky nového případu, podepsaného obchodu a investičního návrhu připojí postup. `persist()` idempotentně sjednotí pouze přijaté postupy a čekání. Index aktivit existuje jen během jedné synchronní kontroly. Změna dne / probuzení okna spustí kontrolu i bez editace; uzavřený prohlížeč nemá serverové úlohy. Kalendářní výpočty používají pražské datum a celočíselné posuny UTC poledne, nezávislé na DST.
+
+Odeslaný e-mail je běžná dokončená aktivita s `emailWait`. Identita čekání rozlišuje klienta, případ a vlákno, případně datum a účel. Připomínka používá `email-reminder:<uuid>` a návrh SMS je její metadata. Kopírování nic neodesílá. Potvrzení odeslání vytvoří jedinou SMS aktivitu se stabilním ID. Pozdější kontrola po skutečně odeslané SMS vytvoří nové čekání se zachovanou historií původní SMS. Odpověď nevyvozuje žádný e-mailový konektor.
+
+Sloučení záloh mapuje číselná ID klientů/případů, ale zachovává UUID postupů, kroků, událostí a aktivit. Existující kroky, události a historie se sjednocují; dokončené odhady se zachovávají. JSON, lokální disk i Google ukládají celý stav. Ochranné počty zahrnují šablony, postupy, kroky a čekání. Nové UI akce při neúspěšném uložení vracejí předchozí stav a nechávají formulář otevřený. Existující aktivita má rozšířený rollback o navázané postupy.
+
+Dashboard má stále pět původních pevných bloků. Návaznosti jsou v existující kartě denních úkolů, nikoliv další hlavní sekce. Odhady jsou počítané z kroků, nikdy z BJ, AUM nebo provizí. Do produkce se automatické úkoly nepřidávají.
