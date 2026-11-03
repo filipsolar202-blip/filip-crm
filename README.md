@@ -2,6 +2,10 @@
 
 Lokální CRM pro klienty, smlouvy, obchody, pojistné události, investice, FKI, poznámky, reporty a zálohu.
 
+## Život u klienta (2026.11.03-1)
+
+**Klient → Život** otevře dodanou pojistnou kalkulačku, předvyplní známou identitu a obnovuje rozpracované hodnoty. Doporučená varianta se přenese do případu k potvrzení. **Dotazník pro klienta** předvolí FairLife / Mantra podle správce; **Načíst odpovědi / kalkulaci** provede kontrolovaný import. [Postup, pravidla ukládání a návrat](NAVOD-ZIVOT.md).
+
 ## Návaznosti obchodů a čekání na klienta
 
 Ve verzi **2026.10.31-1** se k novému případu připraví pracovní postup a první úkol. V detailu najdete **Pracovní postup**, **Podklady vyžádány**, **Nabídka odeslána**, **Další kontakt** a **E-mail odeslán – čekám na odpověď**. Starší případy zapnete jednotlivě tlačítkem **Náhled a zapnutí postupu**. Živé existující případy nejsou hromadně změněné.

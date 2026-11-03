@@ -1,6 +1,6 @@
 # Architektura hlavního CRM
 
-Stav k verzi 2026.10.31-1. Starší ARCHITECTURE_AUDIT.md popisuje stav před sjednocením aplikační logiky.
+Stav k verzi 2026.11.03-1. Starší ARCHITECTURE_AUDIT.md popisuje stav před sjednocením aplikační logiky.
 
 ## Jedna aplikace
 
@@ -100,3 +100,14 @@ Odeslaný e-mail je běžná dokončená aktivita s `emailWait`. Identita čeká
 Sloučení záloh mapuje číselná ID klientů/případů, ale zachovává UUID postupů, kroků, událostí a aktivit. Existující kroky, události a historie se sjednocují; dokončené odhady se zachovávají. JSON, lokální disk i Google ukládají celý stav. Ochranné počty zahrnují šablony, postupy, kroky a čekání. Nové UI akce při neúspěšném uložení vracejí předchozí stav a nechávají formulář otevřený. Existující aktivita má rozšířený rollback o navázané postupy.
 
 Dashboard má stále pět původních pevných bloků. Návaznosti jsou v existující kartě denních úkolů, nikoliv další hlavní sekce. Odhady jsou počítané z kroků, nikdy z BJ, AUM nebo provizí. Do produkce se automatické úkoly nepřidávají.
+
+
+## Klientská kalkulace Život (2026.11.03-1)
+
+Dodaná aplikace je v `assets/life/calculator.html`, samostatné značkové dotazníky vedle ní. Nadbytečné base64 kopie dotazníků uvnitř kalkulačky jsou odstraněné; původní výpočetní jádro a rating zůstávají stejné. `life-engine.js` je přesná kopie výpočetního/validačního jádra pro import v rodiči; `life-catalog.js` dodává názvy produktů. `life-frame.js` má explicitní most do CRM a kalkulačka vyvolává změnovou událost při renderu.
+
+`clients[].lifeInsurance` obsahuje UUID, aktuální model, čas změny a historii snímků. Model včetně kroku se aktualizuje v paměti hned po zprávě a zapisuje přes společné `persist()` s krátkým sloučením klávesových vstupů. Obnovuje se pouze konkrétní klient. URL neobsahuje jeho údaje. Zprávy se přijímají jen od právě otevřeného rámce, ze stejného originu a s aktuálním tokenem relace. Údaje ze souboru se parsují jako JSON a validují, nikdy se nespouští nahrané HTML.
+
+Dotazník nese neprůhledné `crmLifeRef`; rodič kontroluje vazbu a identitu před náhledem. Klientské odpovědi přebírají osobní/rozpočtová data, mapují známé osoby na jejich dosavadní ID a zachovávají nabídky a krytí. Import celé kalkulace je plná náhrada s archivací. Import, obnova a snímek při převodu využívají rollback původního stavu při chybě zápisu. Sloučení klientů a záloh zachovává různé verze v historii, novější aktuální model přebírá jen pro tutéž identitu kalkulace.
+
+`opportunities[].lifeProposal` zachovává stabilní klíč kalkulace + index varianty a snímek výpočtu. Případ vznikne až původním uložením formuláře; automatizace obchodů fungují beze změny. Při podpisu se metadata přenesou do `deals[].lifeProposal`. Produkce a AUM se nepočítají z kalkulačních údajů. Ochranné zálohové počty obsahují `lifeCalculations` a `lifeHistory`.

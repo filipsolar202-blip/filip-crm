@@ -1,3 +1,11 @@
+## 2026.11.03-1
+
+- Záložka Život na kartě klienta se samostatně uloženou dodanou kalkulačkou a předvyplněním známých identifikačních údajů. Návrat obnoví i rozpracovaný krok a varianty.
+- Doporučená varianta otevře nový případ Život / Nabídka s měsíčním pojistným a neměnným snímkem. Opakování používá tentýž případ; podpis zachová vazbu a výpočet.
+- Přenosné dotazníky FairLife / Mantra podle správce, s původními návratovými e-maily a volitelným předvyplněním identity. JSON odpovědi procházejí náhledem a kontrolou klientské vazby.
+- Import odpovědí zachovává nabídky a krytí. Předchozí kalkulace i verze při sloučení jsou v historii; ochranné počty záloh zahrnují kalkulace a snímky.
+- Žádné automatické odesílání, podpis, BJ nebo změna AUM. Výpočty a produktové podklady dodané kalkulačky nebyly měněné.
+
 ## 2026.10.31-1
 
 - Upravitelné verzované pracovní postupy pro skutečné produktové kategorie CRM. Nové případy získají plán; stávající pouze po individuálním náhledu a potvrzení. Podepsání přenese vazby na obchod a otevře následnou administrativu.

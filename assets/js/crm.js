@@ -2945,7 +2945,7 @@ function mergeClientsFromModal() {
     const src = selectedMergeClientFor(k);
     if (src && src[k]) master[k] = src[k];
   });
-  clients.filter(c => c.id !== masterId).forEach(c => mergeWealthProfiles(master, c));
+  clients.filter(c => c.id !== masterId).forEach(c => {mergeWealthProfiles(master, c);CrmLife.mergeClient(master,c);});
   master.aliases = [...new Set([...String(master.aliases || '').split(',').map(x => x.trim()), ...originalNames].filter(x => x && norm(x) !== norm(master.name)))].join(', ');
   const loserIds = clients.map(c => c.id).filter(id => id !== masterId),
     loserSet = new Set(loserIds.map(String));
@@ -3628,6 +3628,7 @@ function renderCaseDetail() {
     next = opportunityNextContactDate(o), replacement = o.replacesContractId ? state.contracts.find(x=>String(x.id)===String(o.replacesContractId)) : null;
   root.innerHTML = `<div class="case-detail-shell"><section class="case-detail-top"><div class="case-detail-breadcrumb"><button class="client-back-button" onclick="closeCaseDetail()">← Zpět na seznam</button><div class="actions"><button class="btn" onclick="openQuickActivity(${Number(o.clientId)},'phone',${Number(o.id)})">Zaznamenat kontakt</button><button class="btn primary" onclick="openOpportunityModal(${Number(o.clientId)},${Number(o.id)})">Upravit případ</button><button class="btn red" onclick="deleteOpportunity(${Number(o.id)})">Smazat případ</button></div></div><div class="case-detail-title"><div><div class="chips"><span class="badge blue">${esc(o.category || 'Obchodní případ')}</span>${opportunityBadge(current)}${replacementBadge(o)}</div><h2>${esc(o.product || o.category || 'Obchodní případ')}</h2><p class="note">${esc(clientName(c))} · ${esc(o.company || 'bez společnosti')} · poslední změna ${esc(caseLastUpdate(o) ? dateObj(caseLastUpdate(o)).toLocaleDateString('cs-CZ') : 'bez data')}</p></div><div class="client-summary-tile"><small>${closed ? 'Původní odhad provize' : 'Očekávaná provize'}</small><b>${money(commission)}</b><span>objem ${money(o.amount)} · ${num(o.bj)} BJ</span></div></div><div class="case-stage-track">${(o.status === 'Podepsáno' ? [] : [...stages,'Klient nemá zájem','Zrušeno']).map((stage,i)=>`<button class="case-stage-step ${stage === current ? 'active' : i < currentIndex ? 'done' : ''}" onclick="updateOpportunityStatus('${esc(o.id)}','${esc(stage)}')">${esc(stage)}</button>`).join('')}</div></section><div class="case-detail-grid"><div class="case-detail-shell"><section class="case-detail-panel"><div class="toolbar"><div><div class="eyebrow">Aktuální fáze</div><h3>${esc(current)}</h3></div></div><div class="case-history-list">${caseDetailChecklist(o)}</div></section><section class="case-detail-panel"><div class="toolbar"><div><div class="eyebrow">Podrobnosti</div><h3>Parametry případu</h3></div><button class="btn slim" onclick="openOpportunityModal(${Number(o.clientId)},${Number(o.id)})">Upravit</button></div><div class="case-detail-facts"><div class="case-detail-fact"><span>Klient</span><button class="case-title" onclick="openClientWorkspace(${Number(o.clientId)},'opportunities')">${esc(clientName(c))}</button></div><div class="case-detail-fact"><span>Kategorie</span><b>${esc(o.category || '-')}</b></div><div class="case-detail-fact"><span>Společnost</span><b>${esc(o.company || '-')}</b></div><div class="case-detail-fact"><span>Produkt</span><b>${esc(o.product || '-')}</b></div><div class="case-detail-fact"><span>Objem</span><b>${money(o.amount)}</b></div><div class="case-detail-fact"><span>BJ</span><b>${num(o.bj)}</b></div><div class="case-detail-fact"><span>Termín dokončení</span><b>${esc(o.expectedDate || '-')}</b></div><div class="case-detail-fact"><span>Původní smlouva</span><b>${esc(replacement ? [replacement.company,replacement.product,replacement.number].filter(Boolean).join(' · ') : '-')}</b></div></div>${o.note ? `<div class="notice small" style="margin-top:12px"><b>Poznámky k jednání</b><div style="white-space:pre-wrap;margin-top:5px">${esc(o.note)}</div></div>` : ''}</section></div><aside class="case-detail-shell"><section class="case-detail-panel"><div class="eyebrow">Další krok</div><div class="case-next-action"><b>${closed ? 'Případ je uzavřený' : next ? dateObj(next).toLocaleDateString('cs-CZ') : 'Termín není naplánovaný'}</b><p class="note">${closed ? 'Historie a podklady zůstávají uložené.' : esc(o.lastContactMethod || (current === 'Opportunity' ? 'Klienta je potřeba kontaktovat.' : 'Doplňte další návaznost.'))}</p></div>${closed ? '' : `<button class="btn primary" onclick="openQuickActivity(${Number(o.clientId)},'phone',${Number(o.id)});setVal('qaOutcome','agreed')">+ Naplánovat aktivitu</button>`}</section><section class="case-detail-panel"><div class="eyebrow">Historie případu</div><h3>Posuny a kontakty</h3><div class="case-history-list">${history.map(x=>`<div class="case-history-row"><b>${esc(x.t || 'Aktualizace')}</b><small>${esc(x.d || '')}</small></div>`).join('') || '<p class="note">Zatím bez zaznamenané změny.</p>'}</div></section><section class="case-detail-panel"><div class="eyebrow">Provize</div><h3>${money(commission)}</h3><p class="note">${pipelineStageCommissionEnabled(current) ? 'Tato fáze se počítá do očekávané provize.' : 'Tato fáze je z očekávané provize vypnutá.'}</p></section></aside></div></div>`;
   CrmWorkflow.mountCase(o);
+  CrmLife.mountCase(o);
 }
 let closedCaseLimit = 50;
 function showMoreClosedCases() {
@@ -4318,6 +4319,7 @@ function renderClientDetailContent() {
     portfolio: 'Portfolio',
     pendingInvestments: 'Nakoupeno',
     wealth: 'Majetek a plán',
+    life: 'Život',
     opportunities: 'Obchodní případy',
     insuranceClaims: 'Pojistné události',
     contracts: 'Smlouvy',
@@ -4325,7 +4327,8 @@ function renderClientDetailContent() {
   };
   const more = {family:'Rodina',recommendations:'Doporučení',notes:'Poznámky',deals:'Obchody'}, moreActive = Object.keys(more).includes(clientSection);
   el.querySelector('.subnav').innerHTML = Object.entries(labels).map(([k, l]) => `<button class="subtab ${clientSection === k ? 'active' : ''}" onclick="clientSection='${k}';renderClientDetail()">${l}</button>`).join('') + `<details class="client-more-menu"><summary class="subtab ${moreActive ? 'active' : ''}">Více ▾</summary><div class="client-more-panel">${Object.entries(more).map(([k,l])=>`<button onclick="clientSection='${k}';this.closest('details').open=false;renderClientDetail()">${l}</button>`).join('')}<button onclick="openClientReportModal(${c.id})">Report pro klienta</button></div></details>`;
-  el.insertAdjacentHTML('beforeend', clientSection === 'overview' ? clientOverview(c, contracts, deals, acts, year) : clientSection === 'pendingInvestments' ? investmentPendingPanel(c.id) : clientSection === 'wealth' ? clientWealthHtml(c) : clientSection === 'family' ? clientFamilyHtml(c) : clientSection === 'portfolio' ? clientPortfolio(c, contracts, deals) : clientSection === 'opportunities' ? opportunitiesMini(opps) + closedCasesHtml(state.opportunities.filter(o=>String(o.clientId)===String(c.id)&&!isOpenOpportunity(o))) : clientSection === 'insuranceClaims' ? clientInsuranceClaimsHtml(c.id) : clientSection === 'contracts' ? contractsMini(contracts) : clientSection === 'deals' ? dealsMini(deals, year) : clientSection === 'recommendations' ? recommendationsMini(c) : clientSection === 'notes' ? notesMini(notes) : historyMini(c, acts, contracts, deals));
+  el.insertAdjacentHTML('beforeend', clientSection === 'overview' ? clientOverview(c, contracts, deals, acts, year) : clientSection === 'pendingInvestments' ? investmentPendingPanel(c.id) : clientSection === 'life' ? CrmLife.view(c) : clientSection === 'wealth' ? clientWealthHtml(c) : clientSection === 'family' ? clientFamilyHtml(c) : clientSection === 'portfolio' ? clientPortfolio(c, contracts, deals) : clientSection === 'opportunities' ? opportunitiesMini(opps) + closedCasesHtml(state.opportunities.filter(o=>String(o.clientId)===String(c.id)&&!isOpenOpportunity(o))) : clientSection === 'insuranceClaims' ? clientInsuranceClaimsHtml(c.id) : clientSection === 'contracts' ? contractsMini(contracts) : clientSection === 'deals' ? dealsMini(deals, year) : clientSection === 'recommendations' ? recommendationsMini(c) : clientSection === 'notes' ? notesMini(notes) : historyMini(c, acts, contracts, deals));
+  if (clientSection === 'life') CrmLife.mount(c);
   if (clientSection === 'overview') el.insertAdjacentHTML('beforeend', clientFamilyHtml(c) + clientReferralOverview(c));
 }
 function clientInvestmentSummary(clientId) {
@@ -7885,6 +7888,7 @@ function fkiSync_before_saveDeal() {
     actualCommission: val('dActualCommission').trim() === '' ? '' : parseMoney(val('dActualCommission')),
     commissionPaid: val('dCommissionPaid') === 'yes'
   });
+  if (sourceOpportunity?.lifeProposal) d.lifeProposal=structuredClone(sourceOpportunity.lifeProposal);
   if (['Investice','FKI'].includes(d.category)) d.isin = d.fundIsin || '';
   if (pendingOpportunityToDealId) {
     d.fromOpportunityId = pendingOpportunityToDealId;
@@ -8152,6 +8156,7 @@ function saveOpportunity() {
   Object.assign(o, data, {
     updatedAt: today()
   });
+  CrmLife.decorate(o);
   if (workflowNewCase) CrmWorkflow.attach(state,o);
   if (oldStatus !== o.status) {
     o.history = o.history || [];
@@ -8167,6 +8172,7 @@ function saveOpportunity() {
   }
   selectedClientId = o.clientId;
   if (!persist()) { state=workflowBeforeSave; return; }
+  CrmLife.clearCase();
   if (complete) {
     openDealFromOpportunity({...o, status:'Podepsáno'});
     return;
@@ -8208,6 +8214,7 @@ function convertOpportunityToDeal(o) {
     createContract: o.createContract !== false,
     contractNumber: o.contractNumber
   };
+  if(o.lifeProposal)d.lifeProposal=structuredClone(o.lifeProposal);
   d.fundIsin = o.fundIsin || o.isin || '';
   d.isin = d.fundIsin;
   state.deals.push(d);
@@ -8451,6 +8458,7 @@ function mergeIncomingStateCore(incoming) {
         if (!c[k] && ic[k]) c[k] = ic[k];
       });
       mergeWealthProfiles(c, ic);
+      CrmLife.mergeClient(c,ic);
       count.skipped++;
     } else {
       c = {
@@ -8901,6 +8909,8 @@ function loadGoogleBackup() {
   previewGoogleBackup();
 }
 function backupCountValue(s, key) {
+  if (key === 'lifeCalculations') return (s.clients||[]).filter(c=>c.lifeInsurance?.data).length;
+  if (key === 'lifeHistory') return (s.clients||[]).reduce((n,c)=>n+(c.lifeInsurance?.history?.length||0),0);
   if (key === 'workflowPlans') return [...(s.opportunities||[]),...(s.deals||[])].filter(x=>x.automation).length;
   if (key === 'emailWaits') return (s.activities||[]).filter(x=>x.emailWait).length;
   if (key === 'workflowSteps') return [...(s.opportunities||[]),...(s.deals||[])].reduce((n,x)=>n+(x.automation?.steps?.length||0),0);
@@ -13133,6 +13143,8 @@ function criticalBackupCounts(s = state) {
     externalInvestments: s.externalInvestments.length,
     investmentForecasts: s.investmentForecasts.length,
     activities: s.activities.length,
+    lifeCalculations: backupCountValue(s,'lifeCalculations'),
+    lifeHistory: backupCountValue(s,'lifeHistory'),
     workflowTemplates: s.workflowTemplates.length,
     workflowPlans: backupCountValue(s,'workflowPlans'),
     workflowSteps: backupCountValue(s,'workflowSteps'),
@@ -14153,6 +14165,7 @@ function openDashboardTask(kind, id) {
   openActivityModal(null, id);
 }
 function openOpportunityModal(clientId = null, id = null) {
+  CrmLife.clearCase();
   dashboard_prevOpenOpp.apply(this, arguments);
   const o = id ? (state.opportunities || []).find(x => String(x.id) === String(id)) : null;
   setVal('oActivityType', 'Telefon');
@@ -15897,8 +15910,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.10.31-1';
-const VERSION_NOTE = 'Návaznosti obchodů: upravitelné šablony, úkoly v diáři, čekání na odpověď a ručně odesílané SMS. Odhady práce a delegování jsou oddělené od skutečného měření. Stávající případy zapnete jednotlivě po náhledu.';
+const VERSION = '2026.11.03-1';
+const VERSION_NOTE = 'Život na kartě klienta: uložená kalkulace pojištění, předvyplnění známých údajů, dotazníky FairLife / Mantra a vybraná varianta do obchodního případu bez duplicit.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
@@ -16023,10 +16036,11 @@ const BACKUP_COUNT_LABELS = {
   focusDrafts: 'rozepsaných cílů',
   focusSnapshots: 'stavů AUM',
   delegationProcesses: 'činností k delegování',
+  lifeCalculations:'životních kalkulací',lifeHistory:'snímků životních kalkulací',
   workflowTemplates: 'šablon postupů', workflowPlans: 'pracovních postupů', workflowSteps: 'kroků postupů', emailWaits: 'čekání na odpověď',
   wealthRecords: 'majetkových podkladů'
 };
-const BACKUP_PROTECTED_KEYS = ['workflowTemplates','workflowPlans','workflowSteps','emailWaits','clients', 'contracts', 'deals', 'opportunities', 'insuranceClaims', 'claimHistory', 'claimAttachments', 'notes', 'activities', 'workPilots', 'workOutputs', 'workActivities', 'workTimeEntries', 'analysisEntries', 'campaigns', 'investments', 'investmentSnapshots', 'providerImports', 'providerImportEntries', 'externalInvestments', 'investmentForecasts', 'commissionImports', 'referrerPayouts', 'referrals', 'weeklyGoals', 'weeklyReviews', 'dailyPriorities', 'focusSnapshots', 'delegationProcesses', 'wealthRecords'];
+const BACKUP_PROTECTED_KEYS = ['lifeCalculations','lifeHistory','workflowTemplates','workflowPlans','workflowSteps','emailWaits','clients', 'contracts', 'deals', 'opportunities', 'insuranceClaims', 'claimHistory', 'claimAttachments', 'notes', 'activities', 'workPilots', 'workOutputs', 'workActivities', 'workTimeEntries', 'analysisEntries', 'campaigns', 'investments', 'investmentSnapshots', 'providerImports', 'providerImportEntries', 'externalInvestments', 'investmentForecasts', 'commissionImports', 'referrerPayouts', 'referrals', 'weeklyGoals', 'weeklyReviews', 'dailyPriorities', 'focusSnapshots', 'delegationProcesses', 'wealthRecords'];
 let scenario_editableScope = '';
 let fkiEditor_editingFkRecordKey = '',
   fkiEditor_editingFkClientId = null;

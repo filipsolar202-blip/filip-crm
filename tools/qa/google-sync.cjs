@@ -18,6 +18,7 @@ const state={clients:[{id:1,name:'Synthetic QA'}],contracts:[],notes:[{text:'tes
 state.workflowTemplates=[{id:'qa-template',version:2,steps:[{key:'follow',solo:30,assistant:35,residual:5}]}];
 state.opportunities=[{id:42,automation:{id:'qa-flow',version:2,steps:[{id:'qa-step',status:'done',completedEstimate:{solo:30}}],events:[{id:'qa-event',type:'offer'}]}}];
 state.activities[0].emailWait={id:'qa-email',flowId:'qa-flow',status:'waiting',due:'2026-11-03'};
+state.clients[0].lifeInsurance={id:'qa-life',updatedAt:'2026-11-03',data:{schema:'life-wizard',notes:'QA rozpracováno'},history:[{id:'qa-life-history',data:{notes:'QA předchozí'}}]};
 const saved=ctx.doPost({parameter:{action:'save',key:'qa-key',app:'filip_crm',payload:JSON.stringify({version:'qa',state})}});
 assert(saved.text.includes('byla ulozena'));
 function read(action,key='qa-key'){const text=ctx.doGet({parameter:{action,key,app:'filip_crm',callback:'qa'}}).text;return JSON.parse(text.slice(3,-2))}
