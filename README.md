@@ -2,6 +2,12 @@
 
 Lokální CRM pro klienty, smlouvy, obchody, pojistné události, investice, FKI, poznámky, reporty a zálohu.
 
+## Pracovní prostor klienta (2026.11.04-2)
+
+Pracovní záložky automaticky sbalí klientské kontakty a souhrn portfolia. Tlačítky **Zobrazit přehled klienta** a **Více prostoru** lze zobrazení měnit bez ztráty rozepsaného editoru.
+
+**Majetek a plán → Otevřít plán v CRM** načte známé podklady a uložený rodinný plán. [Postup práce a aktualizací](docs/majetek-a-plan.md).
+
 ## Život u klienta (2026.11.03-1)
 
 **Klient → Život** otevře dodanou pojistnou kalkulačku, předvyplní známou identitu a obnovuje rozpracované hodnoty. Doporučená varianta se přenese do případu k potvrzení. **Dotazník pro klienta** předvolí FairLife / Mantra podle správce; **Načíst odpovědi / kalkulaci** provede kontrolovaný import. [Postup, pravidla ukládání a návrat](NAVOD-ZIVOT.md).

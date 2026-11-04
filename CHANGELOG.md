@@ -1,3 +1,10 @@
+## 2026.11.04-2
+
+- Pracovní záložky klienta mají automaticky sbalené záhlaví, kompaktní identitu a přepínač Více prostoru. Rozbalení přehledu ani zvětšení neobnovuje editor.
+- Majetek a plán otevírá rodinný plán přímo uvnitř CRM, samostatně pro každého klienta. Uložené formuláře i pracovní scénář zůstávají u klienta a v zálohách.
+- Známé podklady se předvyplní. Aktualizace částek z CRM nabízí jednotlivé rozdíly a předchozí snímek zachovává v historii; neznámý zůstatek úvěru se nenahrazuje jeho původní částkou ani splátkou.
+- Převzetí plánu do majetkového přehledu používá stávající výběrový náhled. Uložení modelu nemění skutečné investice, obchody či AUM.
+
 ## 2026.11.04-1
 
 - Report Život začíná identitou pojištěných osob. Krátké poznámky patří do úvodu; rozpočet již údaje o osobách neopakuje.

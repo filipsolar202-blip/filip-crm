@@ -1,0 +1,11 @@
+/* Presentation-only focus: toggles never rebuild the active editor or iframe. */
+window.CrmWorkspace=(()=>{
+ const expanded=new Set();
+ function key(){return String(selectedClientId)+':'+clientSection;}
+ function apply(){const el=document.getElementById('clientDetail');if(!el)return;const compact=(clientSection!=='overview')!==expanded.has(key());el.classList.toggle('client-focused',compact);const b=el.querySelector('[data-context-toggle]');if(b){b.textContent=compact?'Zobrazit přehled klienta':'Sbalit přehled';b.setAttribute('aria-expanded',String(!compact));}}
+ function toggle(){expanded.has(key())?expanded.delete(key()):expanded.add(key());apply();}
+ function mount(c){const el=document.getElementById('clientDetail'),nav=el?.querySelector(':scope > .subnav');if(!nav)return;const context=document.createElement('div');context.className='client-context';while(el.firstElementChild!==nav)context.append(el.firstElementChild);el.prepend(context);const bar=document.createElement('div');bar.className='client-focus-bar';bar.innerHTML=`<button class="btn slim" onclick="openClientDirectory()" aria-label="Zpět na seznam klientů">← Klienti</button><b>${esc(clientName(c))}</b><div class="actions"><button class="btn slim" data-context-toggle onclick="CrmWorkspace.toggle()"></button><button class="btn slim" data-wide-toggle onclick="CrmWorkspace.wide()">Více prostoru</button></div>`;el.prepend(bar);const wb=bar.querySelector("[data-wide-toggle]"),wide=el.classList.contains("client-wide");wb.textContent=wide?"Zmenšit plochu":"Více prostoru";wb.setAttribute("aria-pressed",String(wide));apply();}
+ function wide(){const el=document.getElementById('clientDetail');if(!el)return;const on=el.classList.toggle('client-wide');const b=el.querySelector('[data-wide-toggle]');if(b){b.textContent=on?'Zmenšit plochu':'Více prostoru';b.setAttribute('aria-pressed',String(on));}}
+ document.addEventListener('click',e=>{if(!e.target.closest('.subtab,.tab,.client-back-button,.client-focus-bar button'))return;const f=document.getElementById('clientFamilyFrame');if(f?.contentWindow?.CrmFamilyFrame?.dirty&&!e.target.closest('[data-context-toggle]')&&!String(e.target.getAttribute('onclick')).includes('.wide(')&&!confirm('V plánu je rozepsaný formulář. Opustit jej bez uložení?')){e.preventDefault();e.stopImmediatePropagation();}},true);
+ return {mount,toggle,wide};
+})();

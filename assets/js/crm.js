@@ -4329,6 +4329,8 @@ function renderClientDetailContent() {
   el.querySelector('.subnav').innerHTML = Object.entries(labels).map(([k, l]) => `<button class="subtab ${clientSection === k ? 'active' : ''}" onclick="clientSection='${k}';renderClientDetail()">${l}</button>`).join('') + `<details class="client-more-menu"><summary class="subtab ${moreActive ? 'active' : ''}">Více ▾</summary><div class="client-more-panel">${Object.entries(more).map(([k,l])=>`<button onclick="clientSection='${k}';this.closest('details').open=false;renderClientDetail()">${l}</button>`).join('')}<button onclick="openClientReportModal(${c.id})">Report pro klienta</button></div></details>`;
   el.insertAdjacentHTML('beforeend', clientSection === 'overview' ? clientOverview(c, contracts, deals, acts, year) : clientSection === 'pendingInvestments' ? investmentPendingPanel(c.id) : clientSection === 'life' ? CrmLife.view(c) : clientSection === 'wealth' ? clientWealthHtml(c) : clientSection === 'family' ? clientFamilyHtml(c) : clientSection === 'portfolio' ? clientPortfolio(c, contracts, deals) : clientSection === 'opportunities' ? opportunitiesMini(opps) + closedCasesHtml(state.opportunities.filter(o=>String(o.clientId)===String(c.id)&&!isOpenOpportunity(o))) : clientSection === 'insuranceClaims' ? clientInsuranceClaimsHtml(c.id) : clientSection === 'contracts' ? contractsMini(contracts) : clientSection === 'deals' ? dealsMini(deals, year) : clientSection === 'recommendations' ? recommendationsMini(c) : clientSection === 'notes' ? notesMini(notes) : historyMini(c, acts, contracts, deals));
   if (clientSection === 'life') CrmLife.mount(c);
+  if (clientSection === 'wealth') CrmFamily.mount(c);
+  CrmWorkspace.mount(c);
   if (clientSection === 'overview') el.insertAdjacentHTML('beforeend', clientFamilyHtml(c) + clientReferralOverview(c));
 }
 function clientInvestmentSummary(clientId) {
@@ -8909,6 +8911,8 @@ function loadGoogleBackup() {
   previewGoogleBackup();
 }
 function backupCountValue(s, key) {
+  if (key === 'familyPlans') return (s.clients||[]).filter(c=>c.familyPlan?.data).length;
+  if (key === 'familyPlanHistory') return (s.clients||[]).reduce((n,c)=>n+(c.familyPlan?.history?.length||0),0);
   if (key === 'lifeCalculations') return (s.clients||[]).filter(c=>c.lifeInsurance?.data).length;
   if (key === 'lifeHistory') return (s.clients||[]).reduce((n,c)=>n+(c.lifeInsurance?.history?.length||0),0);
   if (key === 'workflowPlans') return [...(s.opportunities||[]),...(s.deals||[])].filter(x=>x.automation).length;
@@ -13143,6 +13147,8 @@ function criticalBackupCounts(s = state) {
     externalInvestments: s.externalInvestments.length,
     investmentForecasts: s.investmentForecasts.length,
     activities: s.activities.length,
+    familyPlans: backupCountValue(s,'familyPlans'),
+    familyPlanHistory: backupCountValue(s,'familyPlanHistory'),
     lifeCalculations: backupCountValue(s,'lifeCalculations'),
     lifeHistory: backupCountValue(s,'lifeHistory'),
     workflowTemplates: s.workflowTemplates.length,
@@ -15910,7 +15916,7 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.11.04-1';
+const VERSION = '2026.11.04-2';
 const VERSION_NOTE = 'Report Život: klientské údaje na první stránce, pouze vyplněné nabídky a opravené stránkování. FairLife má čistý vzhled CRM, design Mantry zůstává zachovaný.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
@@ -16007,6 +16013,7 @@ document.querySelectorAll('.modal').forEach(m => m.addEventListener('click', e =
   if (e.target === m) m.classList.remove('show');
 }));
 const BACKUP_COUNT_LABELS = {
+  familyPlans:'rodinných plánů', familyPlanHistory:'historických plánů',
   clients: 'klientů',
   contracts: 'smluv',
   deals: 'obchodů',
@@ -16040,7 +16047,7 @@ const BACKUP_COUNT_LABELS = {
   workflowTemplates: 'šablon postupů', workflowPlans: 'pracovních postupů', workflowSteps: 'kroků postupů', emailWaits: 'čekání na odpověď',
   wealthRecords: 'majetkových podkladů'
 };
-const BACKUP_PROTECTED_KEYS = ['lifeCalculations','lifeHistory','workflowTemplates','workflowPlans','workflowSteps','emailWaits','clients', 'contracts', 'deals', 'opportunities', 'insuranceClaims', 'claimHistory', 'claimAttachments', 'notes', 'activities', 'workPilots', 'workOutputs', 'workActivities', 'workTimeEntries', 'analysisEntries', 'campaigns', 'investments', 'investmentSnapshots', 'providerImports', 'providerImportEntries', 'externalInvestments', 'investmentForecasts', 'commissionImports', 'referrerPayouts', 'referrals', 'weeklyGoals', 'weeklyReviews', 'dailyPriorities', 'focusSnapshots', 'delegationProcesses', 'wealthRecords'];
+const BACKUP_PROTECTED_KEYS = ['familyPlans','familyPlanHistory','lifeCalculations','lifeHistory','workflowTemplates','workflowPlans','workflowSteps','emailWaits','clients', 'contracts', 'deals', 'opportunities', 'insuranceClaims', 'claimHistory', 'claimAttachments', 'notes', 'activities', 'workPilots', 'workOutputs', 'workActivities', 'workTimeEntries', 'analysisEntries', 'campaigns', 'investments', 'investmentSnapshots', 'providerImports', 'providerImportEntries', 'externalInvestments', 'investmentForecasts', 'commissionImports', 'referrerPayouts', 'referrals', 'weeklyGoals', 'weeklyReviews', 'dailyPriorities', 'focusSnapshots', 'delegationProcesses', 'wealthRecords'];
 let scenario_editableScope = '';
 let fkiEditor_editingFkRecordKey = '',
   fkiEditor_editingFkClientId = null;

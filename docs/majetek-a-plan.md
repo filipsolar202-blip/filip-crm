@@ -1,13 +1,13 @@
-# Majetek klienta a dědický plán
+# Majetek a plán uvnitř CRM
 
-1. V CRM otevři klienta → **Majetek a plán**. Zkontroluj evidované investice, penze, smlouvy a závazky. Přes **+ Majetek / závazek** doplň například nemovitost, účet nebo firmu.
-2. **Export majetku → Stáhnout soubor pro plán** stáhne JSON. Alternativa **Majetkový přehled k tisku** vytvoří samostatnou HTML stránku, kterou lze otevřít a vytisknout nebo uložit jako PDF.
-3. Otevři samostatný Dědický a krizový plán a načti soubor z CRM. Zkontroluj náhled a vytvoř případ. Právní vlastnictví, rodinné poměry a neznámé hodnoty doplň v plánu nebo společném dotazníku.
-4. Vyplněný dotazník nebo zpětný export z rodinného plánu načti v CRM pod stejným klientem přes **Načíst dotazník / plán**. Vyber údaje k převzetí a potvrď. Změněné existující položky se bez zaškrtnutí nepřepíší. Náhled zobrazuje obě hodnoty.
-5. Převzaté údaje najdeš opět v **Majetek a plán**. Rozbal **Dotazník a historie převzetí** pro odpovědi, rodinu a rozpočet. Stávající Google záloha CRM je obsahuje automaticky.
+1. Otevři klienta → **Majetek a plán → Otevřít plán v CRM**. Známé údaje, majetek a závazky se načtou do jeho vlastního rodinného plánu. U dalších návštěv se obnoví uložený plán.
+2. Uprav částky a ulož příslušný formulář. Plán se ukládá ke klientovi a je součástí záloh CRM. Rozepsaný, dosud nepotvrzený formulář je nutné nejprve uložit jeho vlastním tlačítkem.
+3. **Aktualizovat částky z CRM** nabídne nové položky a změny. Existující změněné částky potvrď jednotlivě; ruční úpravy se bez výběru nepřepíší. Nic se automaticky nemaže. Před aktualizací vznikne obnovitelný snímek v **Historii**.
+4. **Přenos do CRM** uvnitř plánu otevře náhled převzetí do majetkového přehledu klienta. Vyber položky a potvrď. Samotné uložení modelu nevytváří investici, obchod či provizi a nemění skutečné AUM.
+5. **Podklady klienta** vrátí původní majetkový přehled v CRM. JSON export/import a společný dotazník zůstávají dostupné i pro samostatnou aplikaci.
 
-Aplikace si údaje neposílají automaticky. JSON obsahuje osobní údaje a přenáší jej poradce. Dotazník klienta lze použít i bez předchozího exportu z CRM; v tom případě potvrď, ke komu patří.
+Na pracovních záložkách je velké záhlaví automaticky sbalené. **Zobrazit přehled klienta** jej rozbalí, **Více prostoru** zvětší celou pracovní plochu. Tyto přepínače nenačítají editor znovu.
 
-Položky z dotazníku patří do majetkového přehledu pro plán. Samy nevytvářejí spravovanou investici, uzavřený obchod ani provizi. To umožňuje evidovat i klientův majetek u jiných institucí. Vlastnictví a hodnotu z přehledu nelze považovat za právně ověřené údaje. Součty znamenají hodnoty celých položek a jsou oddělené podle měny.
+Původní částka úvěru ani měsíční splátka nejsou aktuálním zůstatkem. Chybějící zůstatky zůstanou označené k doplnění; měsíční penzijní příspěvek není hodnotou účtu. Přenesené vlastnictví a rodinné vztahy se musí v plánu ověřit stejně jako v původní aplikaci.
 
-Měsíční penzijní platba, pojistné krytí a původní částka úvěru nejsou aktuální majetek. Chybějící zůstatky jsou označené k doplnění. Pokud se upraví majetkový údaj pro plán, finanční evidence a provize CRM zůstanou zachované.
+Aktualizace z CRM je výběrová pro částky majetku a závazků. Údaje o rodině, vlastnictví a pokynech jsou předvyplněné při založení a dále se upravují v uloženém plánu. Předchozí plán se zachovává také při sloučení klientů. Samostatný projekt rodinného plánu tato integrace nemění.

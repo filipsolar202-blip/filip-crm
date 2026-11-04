@@ -1,6 +1,7 @@
 /* Explicit bridge for the trusted, bundled calculator. No client record is stored in the URL. */
 (function(){
  'use strict';
+ const compactStyle=document.createElement('style');compactStyle.textContent='.embedded .intro{display:none}.embedded nav{margin:10px 0}.embedded #crmLifeActions{margin:8px 0;padding:8px 12px}.embedded #crmLifeActions>b{display:none}.embedded header{padding-bottom:8px}.embedded .app{padding-top:12px}';document.head.append(compactStyle);
  let token='',ready=false,last='',revision=0;
  const send=(type,extra={})=>parent.postMessage({channel:'filip-life',type,token,...extra},location.origin);
  function publish(){if(!ready)return;const data=JSON.parse(JSON.stringify(d)),serialized=JSON.stringify(data);if(serialized===last)return;last=serialized;send('save',{data,revision:++revision});}
