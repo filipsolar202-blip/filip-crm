@@ -1,3 +1,10 @@
+## 2026.11.04-1
+
+- Report Život začíná identitou pojištěných osob. Krátké poznámky patří do úvodu; rozpočet již údaje o osobách neopakuje.
+- Prázdné nabídky se vynechávají z cen, ratingu i rozdílů. Indexy skutečně vybraných variant zůstávají zachované, včetně nevyplněného prostředního sloupce. Automaticky předvyplněné krytí neaktivuje prázdnou nabídku.
+- Stránkování drží poznámky s obsahem, dělí dlouhý text pod nadpisem bez vytváření prázdných pokračování a krátké rozdíly alternativ připojuje ke srovnání.
+- FairLife používá systémové písmo, tlumené modré barvy CRM, jemné plochy a geometrickou postavu. Vzhled a původní ikona Mantry zůstávají beze změny. Výpočetní jádro a uložené kalkulace se nemění.
+
 ## 2026.11.03-1
 
 - Záložka Život na kartě klienta se samostatně uloženou dodanou kalkulačkou a předvyplněním známých identifikačních údajů. Návrat obnoví i rozpracovaný krok a varianty.

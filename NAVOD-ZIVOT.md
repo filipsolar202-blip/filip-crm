@@ -39,3 +39,9 @@ Vrácený JSON načti u příslušného klienta přes **Načíst odpovědi / kal
 **Historie kalkulací** obsahuje snímky před importem, obnovou a převodem do případu, také zachované verze při sloučení klientů/záloh. Obnovení vyžaduje potvrzení a původní aktuální stav se opět zachová. Automatické psaní ukládá aktuální rozepsaný stav; nevytváří nový historický snímek po každém písmenu.
 
 Kalkulace a historie jsou součástí běžné JSON, diskové a Google zálohy CRM. Před změnou byla vytvořena kopie dat `/private/tmp/filip-crm-before-life-2026-11-03.json` a kódu `/private/tmp/filip-crm-before-life-2026-11-03.tar`. Pro návrat nejprve exportuj aktuální CRM, aby zůstala zachovaná novější práce. Předchozí vydání 2026.10.31-1 je commit `0a14443e70b4c7e3bc48ca79c003dd9640d3e9bf`; vrácení vydání nemá automaticky vracet starší klientská data.
+
+## Klientský report od 2026.11.04-1
+
+První stránka uvádí pojištěné osoby a jejich známé údaje, osobní analýzu i krátké doplňující informace. Nabídka se ve výstupu zobrazí, pokud má vybraný produkt nebo zadanou cenu; samotné automaticky dopočtené krytí nestačí. Výběr doporučené nabídky zůstává na poradci. Prázdné sloupce se vynechají také z ratingu a rozdílů alternativ.
+
+FairLife má minimalistický vzhled navazující na CRM. Mantra zachovává původní design. Při exportu použij původní **Tisk / Uložit jako PDF**, formát A4 a vypnuté záhlaví/zápatí prohlížeče. Oprava se projeví po novém vytvoření PDF; již stažené soubory se zpětně nemění.

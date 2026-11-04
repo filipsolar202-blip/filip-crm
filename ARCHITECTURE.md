@@ -1,6 +1,6 @@
 # Architektura hlavního CRM
 
-Stav k verzi 2026.11.03-1. Starší ARCHITECTURE_AUDIT.md popisuje stav před sjednocením aplikační logiky.
+Stav k verzi 2026.11.04-1. Starší ARCHITECTURE_AUDIT.md popisuje stav před sjednocením aplikační logiky.
 
 ## Jedna aplikace
 
@@ -111,3 +111,5 @@ Dodaná aplikace je v `assets/life/calculator.html`, samostatné značkové dota
 Dotazník nese neprůhledné `crmLifeRef`; rodič kontroluje vazbu a identitu před náhledem. Klientské odpovědi přebírají osobní/rozpočtová data, mapují známé osoby na jejich dosavadní ID a zachovávají nabídky a krytí. Import celé kalkulace je plná náhrada s archivací. Import, obnova a snímek při převodu využívají rollback původního stavu při chybě zápisu. Sloučení klientů a záloh zachovává různé verze v historii, novější aktuální model přebírá jen pro tutéž identitu kalkulace.
 
 `opportunities[].lifeProposal` zachovává stabilní klíč kalkulace + index varianty a snímek výpočtu. Případ vznikne až původním uložením formuláře; automatizace obchodů fungují beze změny. Při podpisu se metadata přenesou do `deals[].lifeProposal`. Produkce a AUM se nepočítají z kalkulačních údajů. Ochranné zálohové počty obsahují `lifeCalculations` a `lifeHistory`.
+
+Report Život od 2026.11.04-1 filtruje nabídky podle vyplněného produktu/ceny se zachováním původních indexů. Reportová transformace ani stránkování nemění model kalkulace. Vzhled FairLife je oddělen v `life-report.css` a omezen na `.theme-fairlife`; Mantra používá původní styl. Tiskové scénáře pokrývá `tools/qa/life-report.cjs`.

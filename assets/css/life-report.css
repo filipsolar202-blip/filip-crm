@@ -1,0 +1,51 @@
+/* FairLife report only. Mantra keeps the supplied typography, palette and icon. */
+.report-approved.theme-fairlife{--navy:#284e76;--cyan:#4b7da3;--tint:#f4f6f9;--line:#dce3ec;--radius:14px;color:#26354a;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;font-size:12px;line-height:1.45}
+.report-approved.theme-fairlife .report-page{border-radius:0;box-shadow:0 8px 28px #26354a0b}
+.report-approved.theme-fairlife .report-top{border:0;padding-top:26px}
+.report-approved.theme-fairlife .report-body{padding-top:18px}
+.report-approved.theme-fairlife .report-brand{letter-spacing:-.7px;font-weight:650}
+.report-approved.theme-fairlife .eyebrow{letter-spacing:1.3px;font-weight:600;color:#637991;margin-bottom:16px}
+.report-approved.theme-fairlife h2{font-size:30px;font-weight:650;letter-spacing:-.7px;line-height:1.17;color:#26354a}
+.report-approved.theme-fairlife h3{font-size:17px;font-weight:600;margin:20px 0 12px}
+.report-approved.theme-fairlife h4{font-weight:600}
+.report-approved.theme-fairlife .r-sub{color:#667587;margin-bottom:22px}
+.report-approved.theme-fairlife .r-card,.report-approved.theme-fairlife .r-person,.report-approved.theme-fairlife .r-analysis{border:1px solid var(--line);background:#f7f9fb;padding:16px 18px}
+.report-approved.theme-fairlife .r-person{background:white;margin:10px 0}
+.report-approved.theme-fairlife .r-person h3{margin:0 0 5px;font-size:19px}
+.report-approved.theme-fairlife .r-person p{margin-bottom:12px}
+.report-approved.theme-fairlife .r-person-fields{gap:10px 22px}
+.report-approved.theme-fairlife .r-person-fields b{font-weight:600}
+.report-approved.theme-fairlife .r-intro,.report-approved.theme-fairlife .r-why,.report-approved.theme-fairlife .r-base,.report-approved.theme-fairlife .r-recommend{background:#f1f5f9;border:1px solid var(--line);color:#26354a;padding:18px 20px;margin:18px 0}
+.report-approved.theme-fairlife .r-intro h3,.report-approved.theme-fairlife .r-why h3{color:var(--navy);margin:0 0 10px}
+.report-approved.theme-fairlife .r-why small{color:#667587}
+.report-approved.theme-fairlife .r-base{background:#edf2f8;text-align:left;padding:14px 18px}
+.report-approved.theme-fairlife .r-metrics{gap:12px;margin:20px 0}
+.report-approved.theme-fairlife .r-metrics article{padding:16px;border:1px solid var(--line);background:#f7f9fb}
+.report-approved.theme-fairlife .r-metrics b{font-size:25px;font-weight:650;letter-spacing:-.5px}
+.report-approved.theme-fairlife .r-budget article{background:white;border:1px solid var(--line)}
+.report-approved.theme-fairlife .cash-row i{background:linear-gradient(90deg,var(--cyan) var(--bar),#edf0f4 var(--bar));border-radius:3px}
+.report-approved.theme-fairlife .r-risk-figure{grid-template-columns:1fr 82px 1fr;gap:20px}
+.report-approved.theme-fairlife .r-risk-figure h4{background:transparent;color:var(--navy);border-radius:0;text-align:left;border-bottom:1px solid var(--line);padding:8px 0;letter-spacing:.5px;font-size:11px}
+.report-approved.theme-fairlife .r-risk-figure p{background:transparent;border:0;border-bottom:1px solid #edf0f4;border-radius:0;text-align:left;font-weight:500;padding:8px 0;margin:4px 0}
+.report-approved.theme-fairlife .r-risk-figure svg{width:76px;color:#4b7da3}
+.report-approved.theme-fairlife .r-flow article{background:#f5f7fa;padding:16px 8px;border:1px solid var(--line)}
+.report-approved.theme-fairlife .r-flow b{font-weight:650;font-size:22px}
+.report-approved.theme-fairlife .r-result{background:#edf2f8;border:1px solid var(--line)}
+.report-approved.theme-fairlife .r-prices article{background:white;padding:12px;border:1px solid var(--line)}
+.report-approved.theme-fairlife .r-prices article.r-chosen{background:#f0f5fa;border:2px solid #4b7da3}
+.report-approved.theme-fairlife .r-table-wrap{border-color:var(--line)}
+.report-approved.theme-fairlife td,.report-approved.theme-fairlife th{border-right:0;padding:5px 6px}
+.report-approved.theme-fairlife tbody tr:nth-child(odd){background:#f7f9fb}
+.report-approved.theme-fairlife thead th{background:#eef3f8;color:#435e7b;letter-spacing:.25px}
+.report-approved.theme-fairlife .r-person-row th{background:#e8eef5}
+.report-approved.theme-fairlife .r-note{color:#667587}
+.report-approved.theme-fairlife .report-bottom{color:#718096;border-color:var(--line)}
+.report-approved.theme-fairlife .r-guarantee-prices article{background:#f4f7fa;border:1px solid var(--line)}
+@media print{.report-approved.theme-fairlife{print-color-adjust:exact;-webkit-print-color-adjust:exact}.report-approved.theme-fairlife .report-page{box-shadow:none}}
+
+.report-approved.theme-fairlife .r-guarantee-prices article,.report-approved.theme-fairlife .r-guarantee-prices b{color:var(--navy)}
+.report-approved.theme-fairlife .r-guarantee-prices small,.report-approved.theme-fairlife .r-guarantee-prices span{color:#667587}
+
+.report-approved.theme-fairlife .r-budget{align-items:start}
+
+.report-approved.theme-fairlife .r-rating-total th{background:#e8eef5;color:var(--navy);font-weight:650}

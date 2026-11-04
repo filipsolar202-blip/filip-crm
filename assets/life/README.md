@@ -13,3 +13,7 @@ Integrované 3. 11. 2026 ze souborů poskytnutých uživatelem. Výpočetní pra
 FairLife dotazník je původní soubor. Mantra dotazník mění zobrazeného poradce na Martina Čermáka a doplňuje, že odpovědi přebírá Filip Solár. Původní e-mailové adresy zůstávají beze změny. CRM při stažení přidává identifikaci kalkulace a volitelně základní identitu klienta; žádné poradenské poznámky nebo připravené nabídky.
 
 Aktualizace výpočetního jádra musí současně aktualizovat hlavní kalkulačku, rodičovský `life-engine.js` a obě přenosné varianty. Ověření integrace: `tools/qa/life-crm.cjs`.
+
+## Úprava klientského reportu 4. 11. 2026
+
+`calculator.html` nově přesouvá identitu do úvodu, filtruje nabídky podle produktu/ceny se zachováním jejich indexů a upravuje stránkování. FairLife vzhled je oddělen v `assets/css/life-report.css`; Mantra má původní styl i ikonu. Výpočty v jádru, dotazníky a ukládání dat nejsou touto úpravou měněny. Tiskové scénáře včetně více osob a dlouhých textů ověřuje `tools/qa/life-report.cjs`.
