@@ -1,0 +1,26 @@
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const {chromium,launchOptions}=require('./runtime.cjs'),root=path.resolve(__dirname,'../..'),fixture=require('./fixture.cjs');
+(async()=>{const b=await chromium.launch(launchOptions);try{
+ const ctx=await b.newContext({viewport:{width:1440,height:1000},acceptDownloads:true});
+ await ctx.route('**/*',r=>{const u=new URL(r.request().url()),f=path.join(root,decodeURIComponent(u.pathname));if(u.hostname==='crm.test'&&f.startsWith(root+path.sep)&&fs.existsSync(f)&&fs.statSync(f).isFile())return r.fulfill({body:fs.readFileSync(f),contentType:f.endsWith('.js')?'text/javascript':f.endsWith('.css')?'text/css':'text/html'});return r.abort();});
+ const seed=structuredClone(fixture);seed.opportunities=[];seed.activities=[];seed.deals=[];
+ await ctx.addInitScript(s=>{if(location.hostname==='crm.test'&&!localStorage.getItem('filip_crm_main_v1'))localStorage.setItem('filip_crm_main_v1',JSON.stringify(s));},seed);
+ const p=await ctx.newPage(),errors=[],dialogs=[];p.on('pageerror',e=>errors.push(e.message));p.on('dialog',async d=>{dialogs.push(d.message());await d.dismiss();});await p.goto('https://crm.test/FILIP-CRM.html');await p.waitForFunction(()=>typeof state==='object');
+ await p.locator('[data-view="forms"]').click();assert.equal(await p.locator('.forms-grid article').count(),10);assert.equal(await p.locator('.forms-grid .badge').count(),8);
+ await p.evaluate(()=>CrmForms.prepare('life',1));const url=await p.locator('#formsLink').inputValue();assert(!url.includes('Alfa'));assert(url.includes('#request='));assert.equal(await p.evaluate(()=>state.opportunities.length),0);
+ await p.locator('#formsReminder').fill('2099-01-01');await p.locator('#formsConfirm').click();const request=await p.evaluate(()=>findClient(1).clientForms[0].id);
+ assert.deepEqual(await p.evaluate(()=>({n:state.opportunities.length,s:state.opportunities[0].status,last:clientLastContact(findClient(1))===state.opportunities[0].lastContactDate,rem:state.activities.filter(a=>!a.completed).length})),{n:1,s:'Opportunity',last:true,rem:1});
+ await p.evaluate(()=>CrmForms.sent());assert.equal(await p.evaluate(()=>state.opportunities.length),1);
+ await p.reload();await p.waitForFunction(()=>typeof state==='object');assert.equal(await p.evaluate(()=>findClient(1).clientForms.length),1);
+ const data=await p.evaluate(request=>{const d=Life.fresh();d.adults[0].name=clientName(findClient(1));d.adults[0].job='<img src=x onerror=alert(1)>';d.crmFormRequest=request;return d;},request);
+ await p.evaluate(async data=>{await CrmForms.preview(data,'test.json');},data);assert.equal(await p.locator('#formsReceiveClient').inputValue(),'1');assert.equal(await p.locator('#formsRead img').count(),0);assert((await p.locator('#formsRead').innerText()).includes('Povolání'));
+ await p.locator('#formsIdentity').check();await p.getByRole('button',{name:'Uložit odpovědi',exact:true}).click();assert.equal(await p.evaluate(()=>findClient(1).clientForms[0].responses.length),1);assert.equal(await p.evaluate(()=>state.activities.filter(a=>!a.completed).length),0);
+ await p.evaluate(async data=>{await CrmForms.preview(data,'duplicate.json');},data);await p.locator('#formsIdentity').check();await p.getByRole('button',{name:'Uložit odpovědi',exact:true}).click();assert(dialogs.pop().includes('už jsou uložené'));assert.equal(await p.evaluate(()=>findClient(1).clientForms[0].responses.length),1);
+ assert((await p.evaluate(async data=>{try{await CrmForms.preview(data,'wrong.json',2);return '';}catch(e){return e.message;}},data)).includes('jinému klientovi'));
+ await p.evaluate(()=>closeModal('formsRead'));await p.evaluate(()=>CrmForms.prepare('family',null));await p.locator('#formsConfirm').click();assert.equal(await p.evaluate(()=>state.opportunities.length),1);assert.equal(await p.evaluate(()=>state.anonymousForms.length),1);
+ const family=await p.evaluate(async()=>{const {newIntake}=await import('./assets/family-plan/src/intake-contract.js');const d=newIntake();d.self.name='Testovací klient Beta';return d;});await p.evaluate(async data=>CrmForms.preview(data,'family.json',2),family);await p.locator('#formsIdentity').check();await p.getByRole('button',{name:'Uložit odpovědi',exact:true}).click();assert.equal(await p.evaluate(()=>findClient(2).clientForms.length),1);
+ await p.evaluate(()=>{const c=findClient(1),copy=structuredClone(c);CrmForms.mergeClient(c,copy);CrmForms.mergeClient(c,copy);persist();});assert.equal(await p.evaluate(()=>findClient(1).clientForms[0].responses.length),1);
+ await p.reload();await p.waitForFunction(()=>typeof state==='object');await p.evaluate(()=>openClientWorkspace(1,'forms'));assert((await p.locator('#clientDetail').innerText()).includes('Odpovědi přijaty'));
+ await p.setViewportSize({width:390,height:844});await p.evaluate(()=>showView('forms'));assert(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));await p.screenshot({path:'/private/tmp/crm-forms-mobile.png'});
+ assert.deepEqual(errors,[]);assert.deepEqual(dialogs,[]);console.log('PASS forms: catalogue, send confirmation, opportunity/contact/reminder, reload, anonymous send, safe reader, correct client, duplicate prevention, both schemas, merge, mobile.');
+}finally{await b.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

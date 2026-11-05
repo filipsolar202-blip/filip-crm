@@ -1,3 +1,11 @@
+## 2026.11.05-3
+
+- Formuláře v hlavní navigaci a u klienta: Život (FairLife/Mantra), Majetek a plán a osm připravovaných oblastí.
+- Příprava odkazu/e-mailu a výslovné potvrzení odeslání; u klienta vytvoří Opportunity, kontakt a volitelnou připomínku. Anonymní odeslání má samostatnou evidenci.
+- Nahrání JSON s čitelným náhledem, kontrolou přiřazení, archivem u klienta a ochranou proti duplicitám. Odkazy nesou pouze náhodný identifikátor pro přiřazení odpovědí. Odpovědi se stále předávají souborem, bez automatického příjmu ze serveru.
+- Návody jsou výchozím stavem sbalené. Datum narození/sňatku lze zadat osmi číslicemi; tečky se doplní automaticky, uložení zůstává v ISO formátu.
+- Ověřeno izolovanými testy formulářů, mobilních dat, průvodců a integrace Život; rodinný plán 68 testů.
+
 ## 2026.11.05-2
 
 - Život → Dotazník pro klienta nyní nabízí jako hlavní volbu webový odkaz pro PC a telefon, kopírování a otevření ke zkoušce podle značky FairLife/Mantra.

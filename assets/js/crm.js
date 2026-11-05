@@ -19,6 +19,7 @@ function renderActiveViewContent() {
       clients: [['Klienti', renderClients]],
       notes: [['Poznámky', renderNotes]],
       campaigns: [['Kampaně', renderCampaigns]],
+      forms: [['Formuláře', CrmForms.render]],
       opportunities: [['Obchodní případy', renderOpportunities]],
       pipeline: [['Pipeline', renderOpportunities]],
       insuranceClaims: [['Pojistné události', renderInsuranceClaims]],
@@ -2945,7 +2946,7 @@ function mergeClientsFromModal() {
     const src = selectedMergeClientFor(k);
     if (src && src[k]) master[k] = src[k];
   });
-  clients.filter(c => c.id !== masterId).forEach(c => {mergeWealthProfiles(master, c);CrmLife.mergeClient(master,c);});
+  clients.filter(c => c.id !== masterId).forEach(c => {mergeWealthProfiles(master, c);CrmLife.mergeClient(master,c);CrmForms.mergeClient(master,c);});
   master.aliases = [...new Set([...String(master.aliases || '').split(',').map(x => x.trim()), ...originalNames].filter(x => x && norm(x) !== norm(master.name)))].join(', ');
   const loserIds = clients.map(c => c.id).filter(id => id !== masterId),
     loserSet = new Set(loserIds.map(String));
@@ -4320,6 +4321,7 @@ function renderClientDetailContent() {
     pendingInvestments: 'Nakoupeno',
     wealth: 'Majetek a plán',
     life: 'Život',
+    forms: 'Formuláře',
     opportunities: 'Obchodní případy',
     insuranceClaims: 'Pojistné události',
     contracts: 'Smlouvy',
@@ -4327,7 +4329,7 @@ function renderClientDetailContent() {
   };
   const more = {family:'Rodina',recommendations:'Doporučení',notes:'Poznámky',deals:'Obchody'}, moreActive = Object.keys(more).includes(clientSection);
   el.querySelector('.subnav').innerHTML = Object.entries(labels).map(([k, l]) => `<button class="subtab ${clientSection === k ? 'active' : ''}" onclick="clientSection='${k}';renderClientDetail()">${l}</button>`).join('') + `<details class="client-more-menu"><summary class="subtab ${moreActive ? 'active' : ''}">Více ▾</summary><div class="client-more-panel">${Object.entries(more).map(([k,l])=>`<button onclick="clientSection='${k}';this.closest('details').open=false;renderClientDetail()">${l}</button>`).join('')}<button onclick="openClientReportModal(${c.id})">Report pro klienta</button></div></details>`;
-  el.insertAdjacentHTML('beforeend', clientSection === 'overview' ? clientOverview(c, contracts, deals, acts, year) : clientSection === 'pendingInvestments' ? investmentPendingPanel(c.id) : clientSection === 'life' ? CrmLife.view(c) : clientSection === 'wealth' ? clientWealthHtml(c) : clientSection === 'family' ? clientFamilyHtml(c) : clientSection === 'portfolio' ? clientPortfolio(c, contracts, deals) : clientSection === 'opportunities' ? opportunitiesMini(opps) + closedCasesHtml(state.opportunities.filter(o=>String(o.clientId)===String(c.id)&&!isOpenOpportunity(o))) : clientSection === 'insuranceClaims' ? clientInsuranceClaimsHtml(c.id) : clientSection === 'contracts' ? contractsMini(contracts) : clientSection === 'deals' ? dealsMini(deals, year) : clientSection === 'recommendations' ? recommendationsMini(c) : clientSection === 'notes' ? notesMini(notes) : historyMini(c, acts, contracts, deals));
+  el.insertAdjacentHTML('beforeend', clientSection === 'overview' ? clientOverview(c, contracts, deals, acts, year) : clientSection === 'pendingInvestments' ? investmentPendingPanel(c.id) : clientSection === 'forms' ? CrmForms.view(c) : clientSection === 'life' ? CrmLife.view(c) : clientSection === 'wealth' ? clientWealthHtml(c) : clientSection === 'family' ? clientFamilyHtml(c) : clientSection === 'portfolio' ? clientPortfolio(c, contracts, deals) : clientSection === 'opportunities' ? opportunitiesMini(opps) + closedCasesHtml(state.opportunities.filter(o=>String(o.clientId)===String(c.id)&&!isOpenOpportunity(o))) : clientSection === 'insuranceClaims' ? clientInsuranceClaimsHtml(c.id) : clientSection === 'contracts' ? contractsMini(contracts) : clientSection === 'deals' ? dealsMini(deals, year) : clientSection === 'recommendations' ? recommendationsMini(c) : clientSection === 'notes' ? notesMini(notes) : historyMini(c, acts, contracts, deals));
   if (clientSection === 'life') CrmLife.mount(c);
   if (clientSection === 'wealth') CrmFamily.mount(c);
   CrmWorkspace.mount(c);
@@ -8426,6 +8428,7 @@ function findMatchingClient(c) {
 function mergeIncomingStateCore(incoming) {
   incoming = normalizeState(incoming);
   state = normalizeState(state);
+  CrmForms.mergeAnonymous(incoming);
   if(incoming.settings.commissionLegacyArchive){
     const archive=state.settings.commissionLegacyArchive||(state.settings.commissionLegacyArchive={});
     Object.entries(incoming.settings.commissionLegacyArchive).forEach(([key,rows])=>{const existing=archive[key]||(archive[key]=[]);rows.forEach(x=>{if(!existing.some(y=>JSON.stringify(y)===JSON.stringify(x)))existing.push(JSON.parse(JSON.stringify(x)));});});
@@ -8460,7 +8463,7 @@ function mergeIncomingStateCore(incoming) {
         if (!c[k] && ic[k]) c[k] = ic[k];
       });
       mergeWealthProfiles(c, ic);
-      CrmLife.mergeClient(c,ic);
+      CrmLife.mergeClient(c,ic);CrmForms.mergeClient(c,ic);
       count.skipped++;
     } else {
       c = {
@@ -15916,8 +15919,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.11.05-2';
-const VERSION_NOTE = 'Report Život: klientské údaje na první stránce, pouze vyplněné nabídky a opravené stránkování. FairLife má čistý vzhled CRM, design Mantry zůstává zachovaný.';
+const VERSION = '2026.11.05-3';
+const VERSION_NOTE = 'Formuláře pro klienty: odeslání, příležitosti, připomínky a čtečka odpovědí. Sbalené návody a automatické tečky v datech na telefonu.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';

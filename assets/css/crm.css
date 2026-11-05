@@ -620,3 +620,11 @@ h1,h2,h3,h4,.detail-title,.client-row b,.portfolio-card b,.contact-value{color:#
 
 /* Pending subscriptions are deliberately separated from settled AUM. */
 .settlement-panel{margin:12px 0;border-color:#e6cfa5}.settlement-panel .toolbar{align-items:flex-start;gap:14px}.settlement-panel .toolbar h3{margin:3px 0}.settlement-panel .toolbar .metric{min-width:150px;flex-shrink:0}.settlement-panel .actions{flex-wrap:wrap;justify-content:flex-start}.settlement-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px}.settlement-summary small,.settlement-panel .metric small{display:block;color:#657d96}.settlement-summary b{display:block;margin-top:5px}.settlement-panel table{min-width:700px}.settlement-panel .table-wrap{max-width:100%}@media(max-width:600px){.settlement-panel .toolbar{flex-direction:column}.settlement-summary .metric b{font-size:16px}}
+
+/* Client questionnaire catalogue and readable answer archive. */
+.forms-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:16px 0 24px}
+.forms-grid .mini-card{padding:16px}.forms-grid h3{margin:0 0 12px}
+.form-reader-level{margin:8px 0;padding-left:12px;border-left:2px solid #dce9f1}
+.form-reader-row{display:grid;grid-template-columns:minmax(110px,28%) minmax(0,1fr);gap:12px;padding:8px;border-bottom:1px solid #e5edf3;overflow-wrap:anywhere}
+.form-reader-row>div{min-width:0;white-space:pre-wrap}
+@media(max-width:600px){.form-reader-row{display:block}.form-reader-row>b{display:block;margin-bottom:5px}.form-reader-level{padding-left:5px}}
