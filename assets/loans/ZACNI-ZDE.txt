@@ -1,0 +1,33 @@
+PŘEDÁNÍ DO VLÁKNA CRM · FILIP ÚVĚROVÉ STUDIO v3.2 · 5. 11. 2026
+
+ZADÁNÍ PRO NAVAZUJÍCÍ PRÁCI V CRM
+Integruj tento modul do existujícího CRM. Nejde pouze o přiložení souborů: přidej úvěrové studio k navigaci a kartě klienta, klientský dotazník, načítání podkladů, ukládání kalkulací a klientský PDF návrh. Prohlédni nejprve skutečnou architekturu CRM a respektuj jeho vzhled, autentizaci, datový model a způsob nasazení. Zachovej níže uvedené funkce a ověř je testy. Připrav vše k vyzkoušení v CRM. Tento archiv sám o sobě CRM nemění.
+
+CO JE UVNITŘ
+aplikace/ – dvě plně funkční samostatné offline HTML aplikace; referenční chování a vizuální podoba.
+src/ – editovatelné zdrojové části, sestavení, schéma klientských dat a automatické testy.
+priklady/ – výhradně fiktivní klientský JSON pro import.
+INTEGRACE.txt – datový kontrakt a konkrétní pravidla integrace.
+manifest.json – verze a kontrolní součty všech ostatních souborů.
+
+NOVINKY A NEZBYTNÉ ZACHOVÁNÍ CHOVÁNÍ
+1. Export klientského JSON i rozpracovaného dotazníku má jméno klienta, typ a místní datum/čas; bezpečný název bez diakritiky a cestových znaků. Bez jména lze uložit koncept jako Bez-jmena. Hotový export podléhá povinným polím.
+2. Hypotéka označená v klientském JSON se automaticky otevře ve vlastní kartě. NIKDY ji nepřesouvej do ostatních dluhů jen proto, že chybí údaje nebo jsou v rozporu. Nedoplňuj domnělou sazbu/fixaci. Režim oldSolve=observed uchová původní údaje a pro bonitu počítá skutečnou uvedenou splátku a zůstatek jednou. Přesné srovnání refinancování je do ověření nedostupné.
+3. DTI/DSTI jsou editovatelné modelové hranice a umí dopočítávat splátku a úvěr; překročení dalších limitů jsou viditelná. Splátky stávajících závazků se odečítají.
+4. KB doplacení nejpozději v 75 letech, ČSOB v 72; horizont nepřekročit. Air Bank, Moneta a Partners se nenabízejí. Ostatní banky lze skrýt.
+5. Zachovat hypotéku, refinancovat a navýšit, refinancovat se samostatným dalším úvěrem; stavební spoření/stavební úvěr a spotřebitelský úvěr; volitelná investiční varianta, která bez zapnutí není v PDF.
+6. Klientský PDF návrh s grafy, volitelnou časovou osou 1–11 a podklady KB/ČSOB/ČS podle podkladů poradce. Časy jsou orientační. Bankovní formuláře nejsou přílohami. Zpřesněné daňové informace odkazují na oficiální zdroje.
+7. Bankovní sazby a metodika jsou datovaný podklad z 5. 11. 2026; při integraci je nevydávej za automaticky aktualizované nabídky. Ruční zadání musí zůstat dostupné.
+
+RYCHLÉ SPUŠTĚNÍ / OVĚŘENÍ
+Otevři aplikace/Uverove-studio-v3.2.html a aplikace/Klientsky-dotaznik-v3.2.html v prohlížeči.
+V adresáři src spusť:
+python3 build-intake.py
+python3 finish.py
+python3 prepare-test-dom.py
+node test-advisory.cjs
+Python používá standardní knihovnu, testy Node také. Generátory zachovávají historické pracovní názvy Uverove-studio.html a Klientsky-dotaznik-v3.0.html; obsah je v3.2. Datum a názvy výstupů testů jsou historické a nemění obsah ověření.
+Před předáním prošlo 213 automatických kontrol a 4 kontroly názvů exportů. Sestavení z tohoto balíčku bylo ověřeno samostatně.
+
+TEXT K VLOŽENÍ DO VLÁKNA CRM
+„Rozbal přiložený archiv, přečti ZACNI-ZDE.txt a INTEGRACE.txt a integruj celé úvěrové studio i klientský formulář do našeho CRM. Zachovej fungující výpočty a opravu započítávání stávající hypotéky. Propoj podklady a uložené návrhy s kartou klienta a připrav výsledek k vyzkoušení.“

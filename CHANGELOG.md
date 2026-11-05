@@ -1,3 +1,12 @@
+## 2026.11.05-4
+
+- Úvěrové studio v3.2 integrované přímo u klienta: předvyplnění známé identity, samostatné rozepsané kalkulace, historie, uložené návrhy a převzetí vráceného dotazníku. Přepnutí klienta ukládá poslední změny; import archivuje původní výpočet.
+- Nové mobilní dotazníky Auto a Nemovitost podle dodaných Jotform předloh. Podmíněná pole vlastníka/provozovatele, financování/DPH, ploch a vedlejších objektů, hodnot a krytí; čtečka odpovědí a archiv u klienta. Úvěrový dotazník doplněný o volitelné pracovní a podnikatelské podklady.
+- E-mail u smlouvy nabízí tykání/vykání, upravitelný text a nový příslušný dotazník. Kontakt, příležitost a záznam o odeslání vznikají až po výslovném potvrzení. Nepodporované typy smluv zachovávají možnost e-mailu bez nesouvisejícího formuláře.
+- Hypoteční PDF: krátký popis stávající hypotéky je na titulní straně, podmínky bank přímo u srovnání, kompaktnější rozpočet; odstraněné přetečení na prázdný list. Testovací výstup 8 stran místo původních 11.
+- Uložení investiční hodnoty už nepočítá portfolia všech klientů pouze kvůli číslu v potvrzovací hlášce. Na syntetické sadě 300 klientů pokles z přibližně 2,1 s na 0,37 s; AUM, sdílené NAV, ruční hodnoty a čekající investice ověřené regresními testy.
+- Odpovědi se nadále předávají souborem JSON a přílohy samostatně e-mailem. Není zapnutý automatický příjem ze serveru ani odesílání zpráv.
+
 ## 2026.11.05-3
 
 - Formuláře v hlavní navigaci a u klienta: Život (FairLife/Mantra), Majetek a plán a osm připravovaných oblastí.

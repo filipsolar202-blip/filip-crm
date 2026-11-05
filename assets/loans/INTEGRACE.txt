@@ -1,0 +1,26 @@
+DATOVÝ KONTRAKT A INTEGRAČNÍ BODY
+
+KLIENTSKÝ DOTAZNÍK
+JSON obálka: {type:"filip-mortgage-intake", version:1, status:"ready"|"draft", createdAt:ISO datum, fields:{...}}.
+Klíče a podmíněná povinnost jsou v src/intake-schema.js (INTAKE_FIELDS, intakeActive, intakeRequired, intakeValidate, parseIntake). Čísla se přenášejí jako řetězce, prázdný řetězec je neznámý údaj, explicitní "0" není totéž. Desetinná čárka je podporována. Jméno je fields.qName. Souborové jméno určuje intakeFilename; identitu klienta neurčuj z názvu souboru.
+Převod do kalkulačky provádí importClientIntake(payload) v workflow.js. Stav kalkulačky má vlastní formát přes state()/applyState(); nezaměňovat s klientským JSON.
+Klient nesmí souborem nastavovat sazby, limity, bankovní metodiku ani poradce. Validuj payload znovu na serveru, pokud CRM zavede serverové přijímání. Status ready není náhradou validace.
+Import při náhradě domácnosti resetuje předchozí klientské údaje, doplňkové úvěry a osobní poznámky; nastavení nabídky poradce ponechává. Původní klientský payload a poznámky importu se zachovávají pro kontrolu. Nevyplněnou hodnotu zástavy nezaměňuj za výchozí hodnotu. Neznámé zatížení společné zástavy znamená neověřené LTV.
+
+ZÁVAZKY
+hasDebts a qDebtBalance/qDebtPayment vyjadřují OSTATNÍ závazky mimo samostatně uvedenou hypotéku. hasMortgage a old* patří do samostatné karty. Ponechané závazky se započítávají jednou; refinancované se nahrazují podle použité varianty. Toto pravidlo platí i pro opakovaný import a obnovení uloženého stavu.
+Režim observed nevytváří anuitní kalendář: rezervuje uvedenou splátku a poplatky po modelovaný horizont. Interní konstantní řádky jsou pouze konzervativní rozpočtová rezervace, nikoli tvrzení o budoucím zůstatku/úrocích. Není dovoleno je prezentovat jako splacení úvěru ani úsporu refinancování.
+Regresní případ: P=7 965 650, A=30 368, r=1,84 %, zadaná doba 270, fixace 11 měsíců. Karta otevřena, ostatní dluhy=0, splátka závazků=30 368. Doba 270 se zachová a označí rozpor (anuitně cca 336). Při příjmu 140 000 a DSTI 45 % je splátkový prostor 32 632. Zvýšení DSTI na 55 % dává 46 632 před ostatními omezeními. Nerovná se automatickému schválení bankou.
+
+ZAPOJENÍ DO CRM
+- U klienta přidej „Úvěrové studio“, „Klientský dotazník“, „Načíst podklady“ a seznam uložených návrhů/PDF. Navazuj na interní clientId CRM; samotné stejné jméno není důkaz totožnosti.
+- Ulož klientský dotazník a jednotlivé verze kalkulace odděleně; bankovní nabídky a interní poznámky nesdílej do klientského formuláře.
+- Pro klientské vyplnění využij existující infrastrukturu CRM pro zabezpečené odkazy. Pokud taková infrastruktura není, zachovej funkční offline export/import a jasně odliš připravený e-mail od skutečně odeslaného. Neodesílej automaticky zprávy při integraci ani při pouhém uložení formuláře.
+- U online formuláře pracuj s neprůhledným identifikátorem, omezením přístupu a existujícími oprávněními CRM; nevkládej finanční údaje do URL. Přijatý formulář přiřaď ke konkrétnímu klientovi, nikoli podle volného jména.
+- Zachovej ukládání rozpracovaných podkladů. Povinné údaje blokují dokončení, nikoli uložení konceptu. Chybějící volitelné údaje nesmějí zablokovat orientační výpočet, ale nesmí se vydávat za ověřené.
+- Tisk/PDF nyní používá HTML/CSS a tiskový dialog; nevyžaduje externí službu. Při převodu do CRM zachovej tiskové styly a ověř stránkování.
+- Při převodu do komponent odstraň kolize globálních ID a sdílených funkcí; zachovej stejný výpočetní model. Ověř izolaci dvou otevřených klientů.
+
+PŘEJÍMACÍ OVĚŘENÍ
+Otestuj původní regresní testy, přenos formulář → CRM → kalkulačka, opakovaný import, návrat k uloženému klientovi, jiné skutečné dluhy, neúplnou a rozpornou hypotéku, všechny tři varianty refinancování, limity podle banky, přepočty DTI/DSTI, skrytí bank, volitelné části PDF a pojmenování konceptů i hotových exportů.
+Kontroly názvů: Jiří Novák → Jiri-Novak; Jana Černá → Jana-Cerna; prázdný koncept → Bez-jmena; znaky / a .. nesmějí tvořit cestu. Jméno samotné v obsahu JSON zachovej včetně diakritiky.

@@ -11,3 +11,11 @@ apple-mail-export.json
 apple-mail-index.sqlite*
 apple-mail-token
 apple-mail-sync/
+
+# Generated intermediate files of supplied loan studio
+assets/loans/source/Uverove-studio.html
+assets/loans/source/Klientsky-dotaznik-v3.0.html
+assets/loans/source/banks-all.json
+assets/loans/source/test-dom.json
+assets/loans/source/__pycache__/
+assets/loans/source/tmp/

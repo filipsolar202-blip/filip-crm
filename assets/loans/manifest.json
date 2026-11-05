@@ -1,0 +1,30 @@
+{
+  "package": "FILIP Úvěrové studio – předání do CRM",
+  "version": "3.2",
+  "date": "2026-11-05",
+  "client_data": "fictional example only",
+  "sha256": {
+    "INTEGRACE.txt": "fc0022f6162a132bfd7a1a0aa88ab27d2ef4db2b9a93c25d513a68885c58d24a",
+    "ZACNI-ZDE.txt": "697431083117f0a38c547f06ebaecc52e385bc068887c5752b42174689014af8",
+    "aplikace/Klientsky-dotaznik-v3.2.html": "f1b9e3a4b08015a6497542a299d97c394410f37132fe6fbd5283fed9c06c350b",
+    "aplikace/Uverove-studio-v3.2.html": "ba3534fb41471644c4fcccbb6b7f0151df5234803476c8318d79c1274fdf42a6",
+    "priklady/Ukazkovy-klient.json": "04efdf5a7b2f737215b7ad453372ba449ac92f9e203f06918f5f7300f5fbec99",
+    "src/Ukazka-klientskych-podkladu.json": "04efdf5a7b2f737215b7ad453372ba449ac92f9e203f06918f5f7300f5fbec99",
+    "src/advisory-ui.py": "dc3e53dd11736e66f62d5b8ef133db1f5ba054605e3467cfb474693da2618381",
+    "src/advisory.css": "854c71a583e1c4459c3249fd14d01eb8d5a12d4a259e164601922c15500658cf",
+    "src/advisory.js": "8d132d5e26eb5e70c76fd38f8bb01a65ea849ee0191dc712ff08b4759a8d9a29",
+    "src/banks.json": "74f6322cf1c3516e96f4c6b44c4a10d74bdb6089598b92b07040ba9e1fee0994",
+    "src/build-intake.py": "1e2092ff9c3fa95d3185f24424bc64a6ccb93b826920778b33c811b441a17cac",
+    "src/existing-ui.py": "c53df074c2e837295880394f299f3b561402235b6e5fc55f00bb0ca8b6d6bc0c",
+    "src/existing.js": "fe818fad9e297d170fd47ecaa51a4f16f5270bf239aabac26dfe709b757d230e",
+    "src/finish.py": "9d11e2a6a2794cb199e9cd7fd184878c70c8a04bcdac662b668bd6358f91820f",
+    "src/font-fragment.txt": "204d48afae7381ba353dd3332e250bc4b1797354904f428c484619ae2c965417",
+    "src/intake-schema.js": "656f345004d7847438b21b5dd0135e046a5abaeb8719aaf569ab76fb707366f2",
+    "src/prepare-test-dom.py": "83ea1b80b5cfb5a3e703983e685a9792b1c26dbd65b95c2bcccbd70244a72d4c",
+    "src/proposal.js": "3cd6dc5db9a0f34de08fc462d64d191d3b7c4d4e0ee90ec2a52c1efc356b411f",
+    "src/template.html": "53cf4cced3288c6bd4d826f314dbdd3d4da25f6b9ffd9e042420b6ef512031a0",
+    "src/test-advisory.cjs": "6785efd7eb27565ea8cf7b84b99964037bceb9c0f588e5a09067b1a50906f18a",
+    "src/workflow-ui.py": "0819dd8f3a3246b758ca05af006b5b23789812a9da9343abfa0ce76aba4e227f",
+    "src/workflow.js": "5b87c9587c97285b52ce56254b0eb4cb008503cd4c01141f2c3fabcf2831de99"
+  }
+}

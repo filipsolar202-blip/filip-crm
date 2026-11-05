@@ -1,0 +1,157 @@
+[
+  {
+    "id": "moneta",
+    "name": "MONETA",
+    "color": "#7b488c",
+    "rate": 4.99,
+    "fix": 3,
+    "term": 30,
+    "age": 70,
+    "min": 1,
+    "kind": "free",
+    "pct": 30,
+    "basis": "total",
+    "cap": null,
+    "verified": true,
+    "rateNote": "4,99 %: fixace 3 roky, LTV do 80 %, úvěr nad 1 mil. Kč. Veřejná nabídka, nikoli individuální schválení.",
+    "note": "Věkový horizont 70 let je doporučení kalkulačky banky; individuální posouzení. Neúčelově až 30 % vyčerpané hypotéky.",
+    "sources": [
+      [
+        "Sazba a produkt",
+        "https://www.moneta.cz/hypoteky/hypoteka"
+      ],
+      [
+        "Věk",
+        "https://www.moneta.cz/kalkulacky/na-jakou-hypoteku-dosahnu"
+      ],
+      [
+        "Neúčelová část",
+        "https://www.moneta.cz/caste-dotazy/odpoved/ktera-hypoteka-je-nejlepsi-"
+      ]
+    ]
+  },
+  {
+    "id": "cs",
+    "name": "Česká spořitelna",
+    "color": "#2f79b2",
+    "rate": 5.49,
+    "fix": null,
+    "term": 35,
+    "age": null,
+    "min": 5,
+    "kind": "check",
+    "pct": 40,
+    "basis": "base",
+    "cap": 1500000,
+    "verified": false,
+    "rateNote": "Veřejná sazba od 5,49 %. Fixaci a podmínky slev potvrďte v nabídce. Až 35 let podle varianty produktu.",
+    "note": "Hypotahák uvádí doplňkovou část do 40 % účelové části, nejvýše 1,5 mil. Kč; dokument má u splatnosti starší údaj 30 let. Platnost limitu doplňkové části a její použití je nutné potvrdit. Věk nedoložen.",
+    "sources": [
+      [
+        "Aktuální produkt",
+        "https://www.csas.cz/cs/osobni-finance/hypoteky/hypoteka"
+      ],
+      [
+        "Doplňková část – metodická pomůcka",
+        "https://www.csas.cz/static_internet/cs/Systemy_a_aplikace/Extranet/MSF/Prilohy/Hypotahak.pdf"
+      ]
+    ]
+  },
+  {
+    "id": "csob",
+    "name": "ČSOB",
+    "color": "#2778a6",
+    "rate": 5.84,
+    "fix": null,
+    "term": 30,
+    "age": 65,
+    "min": 1,
+    "kind": "housing",
+    "pct": 30,
+    "basis": "total",
+    "cap": null,
+    "verified": true,
+    "rateNote": "Sazebník od 12. 10. 2026: od 5,84 % pro LTV do 80 % (5,69 % do 70 %, 5,99 % do 90 %). Fixaci ověřte. Slevy mohou vyžadovat účet, PENB A/B a pojištění.",
+    "note": "Standardně splacení do 65 let; při individuálním posouzení příjmů 70, resp. 72 let. Až 30 % úvěru bez dokladů, ale na potřeby související s bydlením.",
+    "sources": [
+      [
+        "Sazby",
+        "https://www.csob.cz/lide/poplatky-a-sazby/sazby"
+      ],
+      [
+        "Věk a peníze navíc",
+        "https://www.csob.cz/lide/bydleni/caste-dotazy"
+      ],
+      [
+        "Splatnost",
+        "https://www.csobhypotecni.cz/o-bance"
+      ]
+    ],
+    "exceptionAge": 72,
+    "exceptionNote": "ČSOB: standard 65 let, vyšší hranice 70 / 72 let pouze při individuálním posouzení udržitelnosti příjmů. Zvolte skutečně potvrzený limit."
+  },
+  {
+    "id": "kb",
+    "name": "Komerční banka",
+    "color": "#b64c57",
+    "rate": 5.69,
+    "fix": null,
+    "term": 30,
+    "age": 65,
+    "min": 1,
+    "kind": "housing",
+    "pct": 30,
+    "basis": "base",
+    "cap": 2000000,
+    "verified": true,
+    "rateNote": "Aktuálně otevřená produktová stránka: sazba od 5,69 %. Fixace a podmínky konkrétní nabídky nejsou převzaty automaticky.",
+    "note": "KB: maximálně 360 měsíců od zahájení čerpání (metodika od 1. 10. 2026, §4.1.3); nejvýše 75 let při doplacení u žadatele se započítaným příjmem (§5.1.1). Základní scénář 65 let / vyšší věk individuálně podle veřejného vyjádření KB z 29. 7. 2025. Hypotéka 2 v 1: část navíc do 30 % účelové části, max. 2 mil. Kč, výdaje související s bydlením (§4.2).",
+    "sources": [
+      [
+        "Produkt a peníze navíc",
+        "https://www.kb.cz/cs/obcane/pujcky/hypoteky/hypoteka"
+      ],
+      [
+        "Splatnost",
+        "https://www.kb.cz/cs/podpora/pujcky-a-hypoteky/jak-se-da-zmenit-datum-splatnosti-uveru"
+      ],
+      [
+        "Metodika KB 13/2026, účinná 1. 10. 2026",
+        "https://www.kb.cz/getmedia/0be647a9-681a-435a-936a-4644c09357fa/KB-Metodika-produkty-HU.pdf"
+      ],
+      [
+        "Veřejné vyjádření KB k individuálnímu věku (29. 7. 2025)",
+        "https://www.penize.cz/hypoteky/476097-hypoteka-pro-starsi-do-kolika-let-banka-pujci-na-bydleni"
+      ]
+    ],
+    "exceptionAge": 75,
+    "exceptionNote": "Základní scénář 65 let vychází z veřejného vyjádření KB z 29. 7. 2025. Metodika KB od 1. 10. 2026 potvrzuje absolutní hranici 75 let u žadatele se započítaným příjmem. Vyšší horizont zde vyžaduje výslovnou volbu individuálního posouzení; volba nenahrazuje schválení banky."
+  },
+  {
+    "id": "air",
+    "name": "Air Bank",
+    "color": "#529047",
+    "rate": 5.39,
+    "fix": 3,
+    "term": 30,
+    "age": null,
+    "min": 1,
+    "kind": "housing",
+    "pct": null,
+    "basis": "base",
+    "cap": 1500000,
+    "verified": true,
+    "rateNote": "Veřejná kalkulačka nové hypotéky: 5,39 % pro 2 a 3 roky. Sazba pro refinancování a případné slevy se mohou lišit.",
+    "note": "Peníze navíc do 1,5 mil. Kč bez dokládání, pouze na bydlení. Splatnost 1–30 let. Aktuální obecný věkový limit nebyl potvrzen.",
+    "sources": [
+      [
+        "Sazby a peníze navíc",
+        "https://www.airbank.cz/produkty/hypoteka/"
+      ],
+      [
+        "Parametry",
+        "https://www.airbank.cz/co-vas-nejvic-zajima/zakladni-vlastnosti-hypoteky/"
+      ]
+    ]
+  }
+]

@@ -1,0 +1,68 @@
+{
+  "release": "2026.11.05-4",
+  "sourceForms": [
+    "https://form.jotform.com/261162014371344",
+    "https://form.jotform.com/261162792406356",
+    "https://form.jotform.com/261163600405344"
+  ],
+  "data": "Synthetic fixtures only; no live client records changed",
+  "loanModelChecks": 213,
+  "passedSuites": [
+    "insurance-forms",
+    "client-forms",
+    "loans-crm",
+    "loans-output",
+    "portfolio-read-context",
+    "regression",
+    "smoke",
+    "life-report",
+    "pension-report",
+    "report-fund-layout",
+    "report-selection",
+    "report-pending",
+    "wealth-crm",
+    "client-workspace"
+  ],
+  "pdfReview": {
+    "mortgage": {
+      "beforePages": 11,
+      "afterPages": 8,
+      "allPagesVisuallyReviewed": true,
+      "contentPreserved": true
+    },
+    "life": {
+      "brands": [
+        "FairLife",
+        "Mantra"
+      ],
+      "offersTested": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "longFamilyTest": true,
+      "allGeneratedPagesVisuallyReviewed": true
+    }
+  },
+  "performance": {
+    "clients": 300,
+    "investmentRecords": 3900,
+    "snapshots": 600,
+    "saveBeforeMs": 2100,
+    "saveAfterMs": 372,
+    "scope": "Synthetic browser measurement, not a guarantee for all devices"
+  },
+  "limits": [
+    "Client responses still return by JSON file; documents are separate email attachments. No server auto-reception.",
+    "A synthetic 1000-client dataset with 13000 investment records and 2000 snapshots exceeded localStorage quota in Chrome; 1000-client capacity is not certified. A larger durable storage/backend remains separate architectural work.",
+    "PDF pagination depends on entered text and print settings; review covers the tested variants, not every possible data combination."
+  ],
+  "sourcePackage": "FILIP-Uverove-studio-CRM-v3.2.zip",
+  "sourceAdaptations": [
+    "intake-schema.js: optional additional underwriting context",
+    "proposal.js and advisory.css: pagination/layout only",
+    "tools/build-loans.py: integration and questionnaire help/style",
+    "frame-bridge.js and loans-crm.js: client-owned persistence and imports"
+  ]
+}

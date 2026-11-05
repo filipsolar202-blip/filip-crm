@@ -1,0 +1,35 @@
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),{chromium,launchOptions}=require('./runtime.cjs');
+const root=path.resolve(__dirname,'../..'),fixture=require('./fixture.cjs'),intake=require('../../assets/loans/source/Ukazka-klientskych-podkladu.json');
+(async()=>{const b=await chromium.launch(launchOptions);try{
+ const c=await b.newContext({viewport:{width:1440,height:1050},acceptDownloads:true});await c.route('**/*',r=>{const u=new URL(r.request().url()),f=path.join(root,decodeURIComponent(u.pathname));if(u.hostname==='crm.test'&&f.startsWith(root+path.sep)&&fs.existsSync(f)&&fs.statSync(f).isFile())return r.fulfill({body:fs.readFileSync(f),contentType:f.endsWith('.js')?'text/javascript':f.endsWith('.css')?'text/css':'text/html'});return r.abort();});
+ const seed=structuredClone(fixture);seed.opportunities=[];seed.activities=[];await c.addInitScript(s=>{if(location.hostname==='crm.test'&&!localStorage.getItem('filip_crm_main_v1'))localStorage.setItem('filip_crm_main_v1',JSON.stringify(s));},seed);
+ const p=await c.newPage(),errors=[],dialogs=[];p.on('pageerror',e=>errors.push(e.message));p.on('dialog',async d=>{dialogs.push(d.message());if(d.type()==='confirm')await d.accept();else await d.dismiss();});await p.goto('https://crm.test/FILIP-CRM.html');await p.waitForFunction(()=>typeof state==='object');
+ const open=async id=>{await p.evaluate(id=>CrmLoans.open(id),id);await p.waitForFunction(id=>!!findClient(id).loanStudio?.data,id);await p.frameLocator('#clientLoanFrame').locator('#crmLoanStatus').filter({hasText:'uložené'}).waitFor();return p.frameLocator('#clientLoanFrame');};
+ let f=await open(1);assert.equal(await f.locator('#qName').inputValue(),seed.clients[0].name);assert.equal(await f.locator('#qIncome').inputValue(),'');
+ await f.locator('#qIncome').fill('123456');await p.evaluate(()=>CrmLoans.open(2));await p.waitForFunction(()=>!!findClient(2).loanStudio?.data);f=p.frameLocator('#clientLoanFrame');assert.equal(await f.locator('#qIncome').inputValue(),'');
+ f=await open(1);assert.equal(await f.locator('#qIncome').inputValue(),'123456');await p.reload();await p.waitForFunction(()=>typeof state==='object');f=await open(1);assert.equal(await f.locator('#qIncome').inputValue(),'123456');
+ const sample=structuredClone(intake);sample.fields.qName=seed.clients[0].name;
+ await p.evaluate(async data=>{await CrmForms.preview(data,'loan.json',1);},sample);await p.locator('#formsIdentity').check();await p.getByRole('button',{name:'Uložit odpovědi',exact:true}).click();
+ const ref=await p.evaluate(()=>findClient(1).clientForms[0].id);await p.evaluate(id=>CrmForms.openRecord(id),ref);await p.getByRole('button',{name:'Převzít do Úvěrového studia',exact:true}).click();await p.waitForFunction(()=>findClient(1).loanStudio.intakes.length===1);f=p.frameLocator('#clientLoanFrame');
+ assert.equal(await f.locator('#qName').inputValue(),seed.clients[0].name);assert.equal(await p.evaluate(()=>findClient(1).loanStudio.history.length),1);
+ // Known regression: contradictory mortgage stays separate and counts once.
+ const regression=structuredClone(sample);Object.assign(regression.fields,{hasMortgage:'yes',hasDebts:'no',oldPrincipal:'7965650',oldPayment:'30368',oldRate:'1,84',oldMonths:'270',oldFix:'11',oldFee:'0',samePledge:'yes',qIncome:'140000',qCo:'no'});
+ await p.evaluate(data=>CrmLoans.applyIntake(1,data),regression);await p.waitForFunction(()=>findClient(1).loanStudio.intakes.length===2);
+ const frame=p.frames().find(x=>x.url().includes('/loans/studio.html'));
+ assert.deepEqual(await frame.evaluate(()=>({old:$('oldEnabled').checked,solve:$('oldSolve').value,months:$('oldMonths').value,debt:$('qDebtPayment').value})),{old:true,solve:'observed',months:'270',debt:'0'});
+ await p.evaluate(data=>CrmLoans.applyIntake(1,data),regression);await p.waitForTimeout(500);assert.equal(await p.evaluate(()=>findClient(1).loanStudio.intakes.length),2);
+ assert.equal(await frame.evaluate(()=>$('oldPayment').value),'30368');
+ await p.evaluate(()=>CrmLoans.saveProposal());assert.equal(await p.evaluate(()=>findClient(1).loanStudio.proposals.length),1);await p.evaluate(()=>CrmLoans.saveProposal());assert.equal(await p.evaluate(()=>findClient(1).loanStudio.proposals.length),1);
+ await f.locator('#qIncome').fill('150000');await p.evaluate(()=>CrmLoans.flush());const proposalId=await p.evaluate(()=>findClient(1).loanStudio.proposals[0].id);await p.evaluate(id=>CrmLoans.restore(id,'proposals'),proposalId);await p.waitForFunction(()=>findClient(1).loanStudio.data.advice.qIncome==='140000');
+ await frame.locator('[data-page="sources"]').click();const event=p.waitForEvent('download');await frame.locator('#exportJson').click();const download=await event;const exported=JSON.parse(fs.readFileSync(await download.path(),'utf8'));assert.equal(exported.type,'filip-loan-calculation');assert.equal(exported.clientRef,await p.evaluate(()=>findClient(1).loanStudio.id));
+ const htmlEvent=p.waitForEvent('download');await frame.locator('#saveHtml').click();const htmlDownload=await htmlEvent;const html=fs.readFileSync(await htmlDownload.path(),'utf8');assert(!html.includes('src="frame-bridge.js'));assert(!html.includes('id="crmLoanBar"'));assert(html.includes('140000'));
+ await p.evaluate(()=>CrmLoans.newCalculation());await p.waitForFunction(()=>findClient(1).loanStudio.data.advice.qIncome==='');assert.equal(await f.locator('#qName').inputValue(),seed.clients[0].name);await p.evaluate(id=>CrmLoans.restore(id,'proposals'),proposalId);await p.waitForFunction(()=>findClient(1).loanStudio.data.advice.qIncome==='140000');
+ // Client files cannot set bank rates or advisor parameters.
+ assert((await p.evaluate(async data=>{data.status='ready';data.fields.qIncome='';try{await CrmForms.parse(data);return false;}catch{return true;}},sample)));
+ const sanit=await p.evaluate(async data=>{data.fields.rate='99';data.advisorName='Bad';return await CrmForms.parse(data);},sample);assert.equal(sanit.data.fields.rate,undefined);assert.equal(sanit.data.advisorName,undefined);
+ await p.setViewportSize({width:390,height:844});await p.screenshot({path:'/private/tmp/crm-loans-mobile.png'});assert(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));
+ await p.reload();await p.waitForFunction(()=>typeof state==='object');await open(1);assert.equal(await p.evaluate(()=>findClient(1).loanStudio.proposals.length),1);
+ await p.evaluate(()=>{const c=findClient(1),s=structuredClone(c);CrmLoans.mergeClient(c,s);CrmLoans.mergeClient(c,s);});assert.equal(await p.evaluate(()=>findClient(1).loanStudio.proposals.length),1);
+ assert.deepEqual(errors,[]);assert(dialogs.every(x=>x.includes('Převzít podklady')||x.includes('Obnovit uložený návrh')||x.includes('Založit novou kalkulaci')),dialogs.join('\n'));
+ console.log('PASS loans CRM: identity, autosave/client switch/reload, intake reader, import/archive/dedup, observed mortgage, proposal versions/restore/export, hostile fields, mobile and merge.');
+}finally{await b.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

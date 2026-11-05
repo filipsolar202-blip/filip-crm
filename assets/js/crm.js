@@ -20,6 +20,7 @@ function renderActiveViewContent() {
       notes: [['Poznámky', renderNotes]],
       campaigns: [['Kampaně', renderCampaigns]],
       forms: [['Formuláře', CrmForms.render]],
+      loanStudio: [['Úvěrové studio', CrmLoans.hub]],
       opportunities: [['Obchodní případy', renderOpportunities]],
       pipeline: [['Pipeline', renderOpportunities]],
       insuranceClaims: [['Pojistné události', renderInsuranceClaims]],
@@ -2946,7 +2947,7 @@ function mergeClientsFromModal() {
     const src = selectedMergeClientFor(k);
     if (src && src[k]) master[k] = src[k];
   });
-  clients.filter(c => c.id !== masterId).forEach(c => {mergeWealthProfiles(master, c);CrmLife.mergeClient(master,c);CrmForms.mergeClient(master,c);});
+  clients.filter(c => c.id !== masterId).forEach(c => {mergeWealthProfiles(master, c);CrmLife.mergeClient(master,c);CrmForms.mergeClient(master,c);CrmLoans.mergeClient(master,c);});
   master.aliases = [...new Set([...String(master.aliases || '').split(',').map(x => x.trim()), ...originalNames].filter(x => x && norm(x) !== norm(master.name)))].join(', ');
   const loserIds = clients.map(c => c.id).filter(id => id !== masterId),
     loserSet = new Set(loserIds.map(String));
@@ -3003,6 +3004,7 @@ function renderDuplicateWarnings() {
   el.innerHTML = `<thead><tr><th>Typ duplicity</th><th>Klient</th><th>Detail</th><th>Oprava</th></tr></thead><tbody>${rows.join('') || '<tr><td colspan="4" class="note">Vypadá to čistě. Nenašel jsem stejné klienty, smlouvy ani obchody.</td></tr>'}</tbody>`;
 }
 function showView(id, options = {}) {
+  if (!CrmLoans.flush()) return;
   if (id === 'clients') clientDirectoryMode = options.directory === true ? true : selectedClientId ? false : true;
   const navId = id === 'caseDetail' ? (caseDetailReturnView === 'opportunities' ? 'opportunities' : 'pipeline') : id;
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === navId));
@@ -4293,6 +4295,7 @@ function clientSectionAction(c) {
   return `<button class="btn primary" onclick="openQuickActivity(${c.id})">Zaznamenat kontakt</button>`;
 }
 function renderClientDetail() {
+  if (!CrmLoans.flush()) return;
   const result = withPortfolioReadContext(renderClientDetailContent);
   CrmWorkflow.mount();
   return result;
@@ -4322,6 +4325,7 @@ function renderClientDetailContent() {
     wealth: 'Majetek a plán',
     life: 'Život',
     forms: 'Formuláře',
+    loans: 'Úvěrové studio',
     opportunities: 'Obchodní případy',
     insuranceClaims: 'Pojistné události',
     contracts: 'Smlouvy',
@@ -4329,7 +4333,8 @@ function renderClientDetailContent() {
   };
   const more = {family:'Rodina',recommendations:'Doporučení',notes:'Poznámky',deals:'Obchody'}, moreActive = Object.keys(more).includes(clientSection);
   el.querySelector('.subnav').innerHTML = Object.entries(labels).map(([k, l]) => `<button class="subtab ${clientSection === k ? 'active' : ''}" onclick="clientSection='${k}';renderClientDetail()">${l}</button>`).join('') + `<details class="client-more-menu"><summary class="subtab ${moreActive ? 'active' : ''}">Více ▾</summary><div class="client-more-panel">${Object.entries(more).map(([k,l])=>`<button onclick="clientSection='${k}';this.closest('details').open=false;renderClientDetail()">${l}</button>`).join('')}<button onclick="openClientReportModal(${c.id})">Report pro klienta</button></div></details>`;
-  el.insertAdjacentHTML('beforeend', clientSection === 'overview' ? clientOverview(c, contracts, deals, acts, year) : clientSection === 'pendingInvestments' ? investmentPendingPanel(c.id) : clientSection === 'forms' ? CrmForms.view(c) : clientSection === 'life' ? CrmLife.view(c) : clientSection === 'wealth' ? clientWealthHtml(c) : clientSection === 'family' ? clientFamilyHtml(c) : clientSection === 'portfolio' ? clientPortfolio(c, contracts, deals) : clientSection === 'opportunities' ? opportunitiesMini(opps) + closedCasesHtml(state.opportunities.filter(o=>String(o.clientId)===String(c.id)&&!isOpenOpportunity(o))) : clientSection === 'insuranceClaims' ? clientInsuranceClaimsHtml(c.id) : clientSection === 'contracts' ? contractsMini(contracts) : clientSection === 'deals' ? dealsMini(deals, year) : clientSection === 'recommendations' ? recommendationsMini(c) : clientSection === 'notes' ? notesMini(notes) : historyMini(c, acts, contracts, deals));
+  el.insertAdjacentHTML('beforeend', clientSection === 'overview' ? clientOverview(c, contracts, deals, acts, year) : clientSection === 'pendingInvestments' ? investmentPendingPanel(c.id) : clientSection === 'loans' ? CrmLoans.view(c) : clientSection === 'forms' ? CrmForms.view(c) : clientSection === 'life' ? CrmLife.view(c) : clientSection === 'wealth' ? clientWealthHtml(c) : clientSection === 'family' ? clientFamilyHtml(c) : clientSection === 'portfolio' ? clientPortfolio(c, contracts, deals) : clientSection === 'opportunities' ? opportunitiesMini(opps) + closedCasesHtml(state.opportunities.filter(o=>String(o.clientId)===String(c.id)&&!isOpenOpportunity(o))) : clientSection === 'insuranceClaims' ? clientInsuranceClaimsHtml(c.id) : clientSection === 'contracts' ? contractsMini(contracts) : clientSection === 'deals' ? dealsMini(deals, year) : clientSection === 'recommendations' ? recommendationsMini(c) : clientSection === 'notes' ? notesMini(notes) : historyMini(c, acts, contracts, deals));
+  if (clientSection === 'loans') CrmLoans.mount(c);
   if (clientSection === 'life') CrmLife.mount(c);
   if (clientSection === 'wealth') CrmFamily.mount(c);
   CrmWorkspace.mount(c);
@@ -4806,10 +4811,10 @@ function renderDeals() {
   renderReferrals(y);
 }
 function allInvestmentItems() {
-  return state.clients.flatMap(c => clientInvestmentItems(c.id).map(x => ({
+  return withPortfolioReadContext(() => state.clients.flatMap(c => clientInvestmentItems(c.id).map(x => ({
     ...x,
     client: c
-  })));
+  }))));
 }
 function investmentInvestedAmount(x) {
   return +(x.invested ?? x.investedAmount ?? x.volume ?? x.amount ?? 0);
@@ -7502,13 +7507,11 @@ function saveInvestmentSnapshot() {
   selectedInvestmentClientId = clientId;
   selectedClientId = clientId;
   dedupeInvestmentSnapshotsInState(state);
-  const affectedClients = new Set(classicInvestmentItems().filter(x => investmentFundKey(x) === fundKey || investmentFundRawKey(x) === rawKey).map(x => String(x.clientId || x.client?.id || '')).filter(Boolean));
-  affectedClients.add(String(clientId));
   addActivity(clientId, 'Investice', 'Aktualizována investiční pozice: ' + product + ' · ' + money(snapshot.current) + (manualAumOverride ? ' · ruční AUM' : ` · ${num(quantity)} CP × ${num(quote.nav || nav)}`) + (redemptionAmount ? ' · odkup ' + money(redemptionAmount) : ''), true);
   if(persist()===false){state=before;return false;}
   closeModal('investmentSnapshotModal');
   renderAll();
-  saveToast(investmentSnapshotIsPending(snapshot) ? 'Nákup uložen do čekajících prostředků, mimo AUM' : manualAumOverride ? 'Hodnota klienta uložena ✓' : nav > 0 ? `Investice uložena, hodnota CP dostupná pro ${num(affectedClients.size)} klientů ✓` : 'Investice uložena s dopočtem hodnoty ✓');
+  saveToast(investmentSnapshotIsPending(snapshot) ? 'Nákup uložen do čekajících prostředků, mimo AUM' : manualAumOverride ? 'Hodnota klienta uložena ✓' : nav > 0 ? 'Investice uložena, ocenění fondu je dostupné všem jeho pozicím ✓' : 'Investice uložena s dopočtem hodnoty ✓');
 }
 function edwardCsvField(row, label) {
   const wanted = norm(label);
@@ -8463,7 +8466,7 @@ function mergeIncomingStateCore(incoming) {
         if (!c[k] && ic[k]) c[k] = ic[k];
       });
       mergeWealthProfiles(c, ic);
-      CrmLife.mergeClient(c,ic);CrmForms.mergeClient(c,ic);
+      CrmLife.mergeClient(c,ic);CrmForms.mergeClient(c,ic);CrmLoans.mergeClient(c,ic);
       count.skipped++;
     } else {
       c = {
@@ -15474,22 +15477,7 @@ function composeEmailForClient(clientId) {
   window.location.href = 'mailto:' + encodeURIComponent(email);
 }
 function composeEmailForContract(clientId, contractId = null) {
-  const c = activities_aClient(clientId),
-    email = (typeof clientEmails === 'function' ? clientEmails(c) : [c?.email]).filter(Boolean)[0] || '',
-    s = contractId ? (state.contracts || []).find(x => String(x.id) === String(contractId)) : null,
-    subject = s ? [s.type, s.product, s.company].filter(Boolean).join(' · ') : 'Smlouvy';
-  if (s) {
-    s.statuses = [...new Set([...(Array.isArray(s.statuses) ? s.statuses : []), 'email'])];
-    s.log = s.log || [];
-    s.log.push({
-      d: activities_aToday(),
-      t: 'Email klientovi' + (email ? ' na ' + email : ' · bez uložené adresy')
-    });
-  }
-  activities_aRecordEmail(clientId, 'Smlouva: ' + (s?.product || s?.type || 'bez produktu') + (email ? ' · ' + email : ' · bez uložené adresy'));
-  if (typeof persist === 'function') persist();
-  if (typeof renderAll === 'function') renderAll();
-  window.location.href = 'mailto:' + encodeURIComponent(email) + (subject ? '?subject=' + encodeURIComponent(subject) : '');
+  CrmForms.prepareContract(clientId, contractId);
 }
 function analysisRows(start, end) {
   return quickAnalysis_rows(start, end).sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.id).localeCompare(String(a.id)));
@@ -15919,8 +15907,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.11.05-3';
-const VERSION_NOTE = 'Formuláře pro klienty: odeslání, příležitosti, připomínky a čtečka odpovědí. Sbalené návody a automatické tečky v datech na telefonu.';
+const VERSION = '2026.11.05-4';
+const VERSION_NOTE = 'Úvěrové studio u klienta, nové dotazníky Auto a Nemovitost, výroční e-maily s tykáním/vykáním, úspornější PDF a rychlejší ukládání investic.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
