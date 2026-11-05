@@ -1,3 +1,8 @@
+## 2026.11.05-1
+
+- Klientské dotazníky Život FairLife/Mantra a rodinného plánu obsahují návod k otevření, vyplnění, přerušení práce a vrácení odpovědí.
+- Návod uvádí konkrétní tlačítka a názvy souborů, ruční přiložení k e-mailu a rozdíl mezi stažením a skutečným odesláním. Kontakty a výpočty se nemění.
+
 ## 2026.11.04-2
 
 - Pracovní záložky klienta mají automaticky sbalené záhlaví, kompaktní identitu a přepínač Více prostoru. Rozbalení přehledu ani zvětšení neobnovuje editor.
