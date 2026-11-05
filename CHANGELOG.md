@@ -1,3 +1,8 @@
+## 2026.11.05-2
+
+- Život → Dotazník pro klienta nyní nabízí jako hlavní volbu webový odkaz pro PC a telefon, kopírování a otevření ke zkoušce podle značky FairLife/Mantra.
+- Veřejné odkazy obsahují pouze prázdný formulář. Předvyplněná HTML příloha zůstává samostatnou volbou. Zkušební návrat odpovědí nadále probíhá souborem přes e-mail, nikoliv přímo do CRM.
+
 ## 2026.11.05-1
 
 - Klientské dotazníky Život FairLife/Mantra a rodinného plánu obsahují návod k otevření, vyplnění, přerušení práce a vrácení odpovědí.
