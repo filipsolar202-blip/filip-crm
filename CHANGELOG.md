@@ -1,3 +1,7 @@
+## 2026.11.06-6
+
+- Cestovní dotazník ihned zobrazí doplňující otázky po zaškrtnutí storna cesty. Ověřen návrat odpovědí se současným výběrem více rizik. Obnoveny verze odkazů a skriptů pro načtení aktuálních formulářů.
+
 ## 2026.11.06-5
 
 - Karta klienta: výchozí vykání nebo tykání. Dotazníky a e-maily přebírají volbu; konkrétní odeslání ji může změnit. Stávající klienti mají výchozí vykání.
