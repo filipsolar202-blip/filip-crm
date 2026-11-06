@@ -1,3 +1,8 @@
+## 2026.11.06-7
+
+- Opraven Apple Mail pomocník: seznam skrytých kopií se před komunikací s Mailem převede na nativní seznam AppleScriptu. Ověřeno skutečným vytvořením a odstraněním testovacích konceptů pro oba účty, bez odeslání.
+- Mailto používá %20 pro mezery místo znamének +. Srozumitelnější text dotazníků s podpisem odpovídající značky. Záložní otevření pošty výslovně upozorňuje na ruční výběr účtu.
+
 ## 2026.11.06-6
 
 - Cestovní dotazník ihned zobrazí doplňující otázky po zaškrtnutí storna cesty. Ověřen návrat odpovědí se současným výběrem více rizik. Obnoveny verze odkazů a skriptů pro načtení aktuálních formulářů.

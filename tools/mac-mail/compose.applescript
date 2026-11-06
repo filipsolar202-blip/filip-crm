@@ -20,7 +20,11 @@ on «event GURLGURL» incomingURL
   set bodyText to (messageData's objectForKey:"body") as text
   if toAddress contains return or toAddress contains linefeed or titleText contains return or titleText contains linefeed then error "Neplatná hlavička zprávy."
   set blindAddresses to messageData's objectForKey:"bcc"
-  if blindAddresses is missing value then set blindAddresses to {}
+  if blindAddresses is missing value then
+   set blindAddresses to {}
+  else
+   set blindAddresses to blindAddresses as list
+  end if
   repeat with blindAddress in blindAddresses
    if (blindAddress as text) contains return or (blindAddress as text) contains linefeed then error "Neplatný příjemce."
   end repeat
