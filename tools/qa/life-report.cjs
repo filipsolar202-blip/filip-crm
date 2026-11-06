@@ -26,6 +26,19 @@ const {chromium,launchOptions}=require('./runtime.cjs'),root=path.resolve(__dirn
   console.log('reference',brand,await page.locator('.report-page').evaluateAll(ps=>ps.map(p=>({title:p.querySelector('h2').textContent,height:p.getBoundingClientRect().height,text:p.innerText.length}))));await page.pdf({path:out+'/reference-'+brand+'.pdf',preferCSSPageSize:true,printBackground:true});
   assert.equal(await page.locator('.report-page').count(),6,'Reference-sized family: '+brand);assert.equal(await page.locator('.r-comparison').count(),1);assert.equal(await page.locator('.r-comparison .r-person-table').count(),3);assert(!await page.locator('.report-approved').innerText().then(s=>s.includes('V čem se nabídky liší')));await page.pdf({path:out+'/reference-'+brand+'.pdf',preferCSSPageSize:true,printBackground:true});
  }
+ // No repeated recommendation; comparison always ends with ratings, then guarantee.
+ for(const brand of ['mantra','fairlife'])for(const children of [0,2,5]){
+  await page.evaluate(({brand,children})=>{d=L.normalize(L.fresh());d.reportBrand=brand;d.adults[0].name='Fiktivní rodič';d.adults[0].income.employment=48000;d.expenses.home=25000;d.children=Array.from({length:children},(_,i)=>Object.assign(L.person(),{name:'Fiktivní dítě '+i,birth:'2016-04-10'}));L.syncCoverage(d);for(const p of [...L.active(d),...d.children])for(const [,r]of L.coverageRows(d,p)){r.current=100000;r.offers=[200000,300000,400000];}d.offers=products.slice(0,3).map((p,i)=>({productId:p.id,premium:2000+i*300}));d.recommended=0;d.message='Osobní analýza rodiny a potřeb. '.repeat(8);d.recommendationReason='Jedinečné zdůvodnění pro klienta. '.repeat(20);d.step=8;render();paginateReport();},{brand,children});
+  assert.equal(await page.locator('.r-comparison').count(),1);
+  assert.equal(await page.locator('.r-comparison .r-person-table').count(),children+1);
+  assert.equal(await page.locator('.r-comparison .r-recommend').count(),0);
+  assert.equal(await page.locator('.report-approved').innerText().then(t=>(t.match(/Jedinečné zdůvodnění pro klienta/g)||[]).length),20);
+  assert.equal(await page.locator('.r-profile').innerText().then(t=>t.includes('Jedinečné zdůvodnění')&&t.includes('Váš rozpočet')),true);
+  assert(await page.locator('.r-comparison').evaluate(p=>p.nextElementSibling.matches('.r-guarantee')&&p.querySelector('.report-body').lastElementChild.matches('.r-rating')));
+  assert(await page.locator('.report-page').evaluateAll(ps=>ps.every(p=>p.getBoundingClientRect().height<1123)));
+  if(children===0)assert(await page.locator('.r-person-table td').first().evaluate(e=>parseFloat(getComputedStyle(e).fontSize))>12);
+  if(children===2){assert.equal(await page.locator('.report-page').count(),6);await page.pdf({path:out+'/final-'+brand+'.pdf',preferCSSPageSize:true,printBackground:true});}
+ }
  // Long family / prose stress: retain content, use repeated table identities, never leave notes alone.
  await page.evaluate(()=>{d.household='partner';Object.assign(d.adults[1],{name:'Druhý dospělý',birth:'1984-05-08',job:'Druhá profese'});d.children=Array.from({length:3},(_,i)=>Object.assign(L.person(),{name:'Dítě '+(i+1),birth:'2016-04-10'}));d.message=Array(100).fill('Dlouhá osobní analýza pro kontrolu úplnosti tisku.').join(' ');L.syncCoverage(d);d.step=8;render();paginateReport();});
  assert(await page.locator('.report-approved').innerText().then(s=>s.includes('Druhý dospělý')&&s.includes('Dítě 3')));assert.equal(await page.locator('[data-layout-warning]').count(),0);assert(await page.locator('.report-page').count()<20);assert.equal(await page.locator('.report-approved').innerText().then(s=>(s.match(/Dlouhá osobní analýza pro kontrolu úplnosti tisku\./g)||[]).length),100);assert(await page.locator('.report-page').evaluateAll(ps=>ps.every(p=>p.getBoundingClientRect().height<1123)));

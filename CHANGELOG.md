@@ -1,3 +1,10 @@
+## 2026.11.06-4
+
+- PDF Mantra i FairLife: zdůvodnění doporučeného řešení je společně s profilem rodiny, nad rodinným rozpočtem. Z úvodní analýzy se nepřepisují údaje; kratší první stránka má vyváženější odsazení.
+- Srovnání ochrany má vlastní stránku, ukončenou hodnocením EUCS. Následuje rovnou garance EUCS. Opakované slovní doporučení pod cenami odstraněno; v osobní analýze zůstává právě jednou.
+- Velikost řádků se přizpůsobuje skutečnému počtu pojištěných a výšce obsahu: větší pro jednotlivce, kompaktnější pro rodinu. Zachovány všechny částky a podmínky doporučené nabídky, ceny alternativ i hodnocení.
+- Ověřeno generováním a vizuální kontrolou šestistránkových PDF obou značek; automatické kontroly jednotlivce, rodin s dvěma/pěti dětmi, dlouhého textu, úplnosti a opakovaného tisku.
+
 ## 2026.11.06-3
 
 - Obchody: samostatná evidence Mantra mezi následnými provizemi a typaři. Filtr roku/stavu, plné a vlastní BJ, očekávané příjmy, přijaté částky, datum, poznámka a historie oprav výplat.
