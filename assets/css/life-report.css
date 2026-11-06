@@ -49,3 +49,12 @@
 .report-approved.theme-fairlife .r-budget{align-items:start}
 
 .report-approved.theme-fairlife .r-rating-total th{background:#e8eef5;color:var(--navy);font-weight:650}
+
+/* Reference layout: keep family cover, prices and ratings on one comparison page. */
+.report-approved.theme-fairlife .r-comparison td,.report-approved.theme-fairlife .r-comparison th{padding:2px 4px;line-height:1.12;font-size:9.5px}
+.report-approved.theme-fairlife .r-comparison thead th{font-size:9px}
+.report-approved.theme-fairlife .r-comparison .r-person-row th{padding:4px}
+.report-approved.theme-fairlife .r-comparison .r-prices article{padding:7px}
+.report-approved.theme-fairlife .r-comparison .r-recommend{padding:10px 12px;margin:8px 0}
+.report-approved.theme-fairlife .r-comparison .eyebrow{margin-bottom:10px}
+.report-approved.theme-fairlife .r-comparison .r-sub{margin-bottom:14px}

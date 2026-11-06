@@ -1,3 +1,10 @@
+## 2026.11.06-2
+
+- Životní PDF Mantra i FairLife používá rozložení podle dodané klientské předlohy: analýza, rozpočet, rizika, výpočet, společné srovnání rodiny a garance.
+- Tabulka ochrany zobrazuje stávající krytí a pouze krytí/podmínky doporučené pojišťovny. Rizika obsažená výhradně v alternativách bez stávajícího krytí se nezobrazují. Ceny a hodnocení nabídek zůstávají podle předlohy.
+- Odstraněna klientská část „V čem se nabídky liší“. Data a porovnání v poradenské kalkulačce zůstávají zachované.
+- Zrušený předčasný odhad počtu řádků pro dělení tabulek; rozdělení podle skutečné výšky. Kompaktní tabulky FairLife při zachování vlastních barev a písma. Nadměrně dlouhý obsah se bezpečně rozloží na další strany.
+
 ## 2026.11.06-1
 
 - Oprava stránkování životních reportů: dlouhé texty a tabulky se dělí podle skutečného volného místa, nikoliv automaticky na poloviny. Text se přednostně dělí mezi větami.
