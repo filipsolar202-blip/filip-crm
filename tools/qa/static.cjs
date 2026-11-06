@@ -36,3 +36,5 @@ for(const f of fs.readdirSync(root).filter(f=>f.endsWith('.html'))){
 new vm.Script(fs.readFileSync(path.join(root,'scenario-enhancement.js'),'utf8'));
 new vm.Script(fs.readFileSync(path.join(root,'google-sync/Code.gs'),'utf8'));
 console.log(`PASS: ${names.length} unique application functions; ${scripts} legacy/entry scripts; local assets; single runtime; Apps Script and scenario syntax.`);
+
+for(const name of ['insurance-termination-rules','insurance-terminations']){new vm.Script(fs.readFileSync(path.join(root,'assets/js/'+name+'.js'),'utf8'),{filename:name+'.js'});assert.equal(html.split('src="assets/js/'+name+'.js').length,2);}

@@ -1,3 +1,11 @@
+## 2026.11.06-9 – Výpovědi pojištění aut a majetku
+
+- U smluv je průvodce Výpověď s předvyplněním, kontrolou údajů, podklady a historií.
+- Tisk výpovědi a samostatných pokynů do PDF; příprava e-mailu podle správy a oslovení klienta. PDF se k e-mailu přikládá ručně.
+- Oddělené skutečné předání klientovi, podání pojišťovně, doručení a potvrzení ukončení. Podání navazuje na jeden obchodní případ; kontrola je přednastavená za 5 dnů.
+- Katalog postupů 12 pojišťoven s oficiálními zdroji a datem kontroly. U Slavie pro majetek a u Maximy zůstává nutné potvrdit kanál podání. Neověřené produktové postupy jsou označené a před výstupem vyžadují doplnění; lhůty se neodhadují pro nepokryté produkty.
+- Zkoušeno na izolovaných datech včetně uložení/obnovení, oddělení klientů, opakovaného podání, výstupu PDF a chyb uložení. Žádné živé výpovědi se automaticky nepodávají.
+
 ## 2026.11.06-8
 
 - Všech devět dostupných formulářů má vlastní předmět a stručný osobní e-mail podle schválené varianty, ve vykání i tykání. Stejný styl používají kontroly smluv. Odesílatel a značka se nadále řídí správou klienta.

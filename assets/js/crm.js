@@ -458,7 +458,7 @@ async function copyClientMailRich(index) {
 }
 function showClientMailDrafts() {
   const mac=clientMailMacAvailable();
-  crmExtraModal('clientMailDraft','Připravený e-mail',clientMailDrafts.map((d,i)=>`<div class="mini-card"><p><b>Od: ${esc(d.from)}</b><br>Komu: ${esc(d.to||'doplníte v poště')}${d.bcc.length?` · skrytá kopie: ${num(d.bcc.length)} příjemců`:''}</p><p>${esc(d.subject)}</p><div class="actions">${mac?`<a class="btn primary" href="${esc(clientMailNativeUrl(d))}">Otevřít Apple Mail na Macu</a>`:''}<a class="btn ${mac?'':'primary'}" href="${esc(clientMailFallbackUrl(d))}">Běžná pošta – účet vyberte ručně</a>${d.body?`<button class="btn" onclick="copyClientMailRich(${i})">Kopírovat formátovaný text</button>`:''}<button class="btn" onclick="copyText(clientMailDrafts[${i}].from,'Adresa odesílatele')">Kopírovat odesílatele</button></div></div>`).join('')+`${clientMailDrafts.length===1&&clientMailDrafts[0].clientId&&!clientMailDrafts[0].externalTracking?`<div class="form-grid"><label class="field">Datum skutečného odeslání<input id="mailPreparedDate" type="date" value="${today()}" onchange="updateEmailReminder('mailPrepared')"></label><label class="field">Připomenout<input id="mailPreparedReminder" type="date" value="${emailReminderDate(today())}" oninput="this.dataset.manual='1'"></label></div><button class="btn primary" onclick="confirmPreparedClientMail()">Potvrdit skutečné odeslání</button>`:''}<p class="note">${mac?'Pomocník na Macu vybere uvedený účet. Při prvním použití povolte ovládání Mailu.':'Na iPhonu v rozepsané zprávě rozbalte pole Kopie/skrytá, Od a v poli Od vyberte uvedenou adresu.'} Běžné otevření pošty neumí vynutit odesílatele; před odesláním jej zkontrolujte. Nic se neodesílá automaticky.</p>${mac?'<details><summary>Pomocník není na tomto Macu nainstalovaný?</summary><p>Stáhněte ZIP, rozbalte jej, přesuňte FILIP CRM Mail do Aplikací a jednou otevřete. Při otevření e-mailu pak prohlížeči povolte spuštění pomocníka.</p><a class="btn" href="assets/downloads/FILIP-CRM-Mail.zip?v=2026.11.06-8" download>Stáhnout pomocníka pro Mac</a></details>':''}`);
+  crmExtraModal('clientMailDraft','Připravený e-mail',clientMailDrafts.map((d,i)=>`<div class="mini-card"><p><b>Od: ${esc(d.from)}</b><br>Komu: ${esc(d.to||'doplníte v poště')}${d.bcc.length?` · skrytá kopie: ${num(d.bcc.length)} příjemců`:''}</p><p>${esc(d.subject)}</p><div class="actions">${mac?`<a class="btn primary" href="${esc(clientMailNativeUrl(d))}">Otevřít Apple Mail na Macu</a>`:''}<a class="btn ${mac?'':'primary'}" href="${esc(clientMailFallbackUrl(d))}">Běžná pošta – účet vyberte ručně</a>${d.body?`<button class="btn" onclick="copyClientMailRich(${i})">Kopírovat formátovaný text</button>`:''}<button class="btn" onclick="copyText(clientMailDrafts[${i}].from,'Adresa odesílatele')">Kopírovat odesílatele</button></div></div>`).join('')+`${clientMailDrafts.length===1&&clientMailDrafts[0].clientId&&!clientMailDrafts[0].externalTracking?`<div class="form-grid"><label class="field">Datum skutečného odeslání<input id="mailPreparedDate" type="date" value="${today()}" onchange="updateEmailReminder('mailPrepared')"></label><label class="field">Připomenout<input id="mailPreparedReminder" type="date" value="${emailReminderDate(today())}" oninput="this.dataset.manual='1'"></label></div><button class="btn primary" onclick="confirmPreparedClientMail()">Potvrdit skutečné odeslání</button>`:''}<p class="note">${mac?'Pomocník na Macu vybere uvedený účet. Při prvním použití povolte ovládání Mailu.':'Na iPhonu v rozepsané zprávě rozbalte pole Kopie/skrytá, Od a v poli Od vyberte uvedenou adresu.'} Běžné otevření pošty neumí vynutit odesílatele; před odesláním jej zkontrolujte. Nic se neodesílá automaticky.</p>${mac?'<details><summary>Pomocník není na tomto Macu nainstalovaný?</summary><p>Stáhněte ZIP, rozbalte jej, přesuňte FILIP CRM Mail do Aplikací a jednou otevřete. Při otevření e-mailu pak prohlížeči povolte spuštění pomocníka.</p><a class="btn" href="assets/downloads/FILIP-CRM-Mail.zip?v=2026.11.06-9" download>Stáhnout pomocníka pro Mac</a></details>':''}`);
 }
 
 function clientSenderEmail(clientOrId) {
@@ -4636,7 +4636,7 @@ function contactActionButton(c) {
   return `<button class="btn slim" onclick="prepareClientEmail(${Number(c.id)})">Email</button>`;
 }
 function contractEmailButton(c, s = null) {
-  return `<button class="btn slim" onclick="event.preventDefault();composeEmailForContract(${c?.id || 'null'},${s?.id || 'null'})">Email</button>`;
+  return `<button class="btn slim" onclick="event.preventDefault();composeEmailForContract(${c?.id || 'null'},${s?.id || 'null'})">Email</button>` + CrmTerminations.button(c,s);
 }
 function contractTabDefs() {
   return [{
@@ -6790,7 +6790,7 @@ function openContractModal(clientId = null, id = null) {
   renderContractAttachments();
   byId('deleteContractBtn').style.display = id ? 'inline-flex' : 'none';
   byId('contractModalTitle').textContent = id ? 'Správa smlouvy' : 'Nová smlouva';
-  byId('sReplacementActions').innerHTML=id?`<button class="btn primary" type="button" onclick="startReplacementCase(${Number(s.id)})">Nový obchodní případ</button><div class="note">Označení smlouvy k řešení ji nepřidá do Pipeline. Po podpisu nové smlouvy vyberte tuto původní smlouvu jako náhradu: nová smlouva se ihned zobrazí u klienta a tato se uloží do její historie.</div>${replacementHistoryHtml(s)}`:'';
+  byId('sReplacementActions').innerHTML=id?`<button class="btn primary" type="button" onclick="startReplacementCase(${Number(s.id)})">Nový obchodní případ</button><div class="note">Označení smlouvy k řešení ji nepřidá do Pipeline. Po podpisu nové smlouvy vyberte tuto původní smlouvu jako náhradu: nová smlouva se ihned zobrazí u klienta a tato se uloží do její historie.</div>${CrmTerminations.button(null,s)}${replacementHistoryHtml(s)}`:'';
   openModal('contractModal');
 }
 function fkiSync_before_saveContract() {
@@ -16001,8 +16001,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.11.06-8';
-const VERSION_NOTE = 'Osobní texty všech klientských dotazníků v tykání i vykání, úprava před odesláním a formátovaná kopie s tlačítkem.';
+const VERSION = '2026.11.06-9';
+const VERSION_NOTE = 'Výpovědi aut a majetku u smluv: PDF, pokyny pojišťoven, evidence podání, kontrola a navazující obchod.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
