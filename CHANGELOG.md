@@ -1,3 +1,11 @@
+## 2026.11.06-3
+
+- Obchody: samostatná evidence Mantra mezi následnými provizemi a typaři. Filtr roku/stavu, plné a vlastní BJ, očekávané příjmy, přijaté částky, datum, poznámka a historie oprav výplat.
+- Správa Mantra určuje vlastní podíl z pojištění 67 %, z investic/FKI 50 %. Původní BJ jsou zachovány; osobní součty, cíle a grafy používají vlastní BJ. Výpočet podle ročního koeficientu; pojištění Mantra se navíc nekrátí původním 80% pravidlem běžných životních obchodů. Ostatní správa a druhy obchodů zůstávají beze změny.
+- Skutečná provize znamená vlastní přijatou částku; nedělí se znovu. Mantra se nepočítá jako výplata typaři. Samostatné platby ze Správy jsou uvedeny odděleně, nesčítají se podruhé s obchodními příjmy.
+- Správce uložený u historického obchodu zůstává rozhodující; nově založený obchod přebírá správce klienta. Žádné živé klientské záznamy nebyly při nasazení měněny.
+- Ověřeno izolovaným testem výpočtů, nezměněných plných BJ po uložení, záznamu a opravy výplaty, načtení historie po obnovení a původního dokončení obchodních případů.
+
 ## 2026.11.06-2
 
 - Životní PDF Mantra i FairLife používá rozložení podle dodané klientské předlohy: analýza, rozpočet, rizika, výpočet, společné srovnání rodiny a garance.

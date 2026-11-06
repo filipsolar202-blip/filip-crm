@@ -940,6 +940,7 @@ function leadTypeLabel(t) {
   return t === 'tipar' ? 'Typař' : t === 'referral' ? 'Doporučení' : 'Volný klient';
 }
 function leadSourceBadge(c) {
+  if (clientManagementId(c) === 'mantra') return '<span class="badge purple">Klient od Mantry</span>';
   if (!c?.leadType || c.leadType === 'direct') return '<span class="chip">Volný klient</span>';
   const cls = c.leadType === 'tipar' ? 'purple' : 'green';
   return `<span class="badge ${cls}">${esc(leadTypeLabel(c.leadType))}: ${esc(c.leadSource || 'bez jména')}</span>`;
@@ -2166,9 +2167,18 @@ function rowClassContract(s) {
   const cls = contractVisualClass(s);
   return cls === 'hot' ? 'row-hot' : cls === 'active-work' ? 'row-active' : cls === 'soon' ? 'row-soon' : 'row-ok';
 }
+function isMantraDeal(d) {
+  return !!d && !isInternalCommission(d) && recordManagementId(d) === 'mantra';
+}
+function mantraDealShare(d) {
+  if (!isMantraDeal(d)) return 1;
+  const area = areaForDeal(d);
+  return area === 'pojisteni' ? .67 : ['investice','fki'].includes(area) ? .5 : 1;
+}
+function dealGrossBJ(d) { return isInternalCommission(d) ? 0 : (+d.bj || 0); }
 function dealBJ(d) {
   if(isInternalCommission(d))return 0;
-  return +d.bj || 0;
+  return Math.round(dealGrossBJ(d) * mantraDealShare(d) * 1e8) / 1e8;
 }
 function visibleDeals() {
   return state.deals.filter(d => !d.hidden);
@@ -2190,9 +2200,9 @@ function isVolumeCategory(c) {
 function dealCash(d, y) {
   if(isInternalCommission(d))return dealActualCommission(d);
   const area = areaForDeal(d || {}), entryPct = parseMoney(d?.entryCommissionPct);
-  if (['investice', 'fki'].includes(area) && entryPct > 0 && dealVolume(d) > 0) return dealVolume(d) * entryPct / 100;
+  if (['investice', 'fki'].includes(area) && entryPct > 0 && dealVolume(d) > 0) return dealVolume(d) * entryPct / 100 * mantraDealShare(d);
   const base = dealBJ(d) * (+getPlan(y || yearOf(d.date)).bjCoef || +state.settings.bjCoef || 150);
-  return d.category === 'Životní pojištění' ? base * .8 : base;
+  return d.category === 'Životní pojištění' && !isMantraDeal(d) ? base * .8 : base;
 }
 function dealVolume(d) {
   if(isInternalCommission(d))return 0;
@@ -2220,6 +2230,7 @@ function isOtherDashboardDeal(d) {
 }
 function opportunityCash(o, y) {
   return dealCash({
+    clientId: o?.clientId, managementPartnerId: o?.managementPartnerId,
     category: opportunityCategoryToDeal(o?.category, o?.product),
     bj: +o?.bj || 0,
     amount: +o?.amount || 0,
@@ -2228,9 +2239,11 @@ function opportunityCash(o, y) {
   }, y || yearOf(o?.statusDate || today()));
 }
 function leadSourceType(c) {
+  if (clientManagementId(c) === 'mantra') return 'mantra';
   return c?.leadType === 'tipar' ? 'tipar' : c?.leadType === 'referral' ? 'referral' : 'direct';
 }
 function leadSourceName(type) {
+  if (type === 'mantra') return 'Mantra';
   return type === 'tipar' ? 'Typař' : type === 'referral' ? 'Doporučení' : 'Volný klient';
 }
 function fillDashboardFilters() {
@@ -2266,9 +2279,11 @@ function clearDashboardFilters() {
   renderDashboard();
 }
 function dealOwnerType(d) {
+  if (isMantraDeal(d)) return 'mantra';
   return d.ownerType || (d.owner ? 'tipar' : '');
 }
 function dealOwnerLabel(d) {
+  if (isMantraDeal(d)) return 'Mantra';
   if (!d.owner) return '';
   return `${d.owner}${dealOwnerType(d) === 'referral' ? ' (doporučení)' : dealOwnerType(d) === 'tipar' ? ' (typař)' : ''}`;
 }
@@ -3170,6 +3185,7 @@ function managementDeals(partnerId, year) {
   return visibleDeals().filter(d => recordManagementId(d) === partnerId && (!year || yearOf(d.date) === +year));
 }
 function managementClaimForDeal(d, partner) {
+  if (isMantraDeal(d)) return dealActualCommissionIsSet(d) ? dealActualCommission(d) : dealCash(d, yearOf(d.date));
   const gross = dealActualCommissionIsSet(d) ? dealActualCommission(d) : dealCash(d, yearOf(d.date));
   return gross * (+partner.acquisitionSharePct || 0) / 100;
 }
@@ -3188,14 +3204,14 @@ function renderManagement() {
     aum=investments.reduce((s,x)=>s+x.aum,0), gross=deals.reduce((s,d)=>s+(dealActualCommissionIsSet(d)?dealActualCommission(d):dealCash(d,year)),0),
     acquisitionClaim=deals.reduce((s,d)=>s+managementClaimForDeal(d,partner),0), trailGross=investments.reduce((s,x)=>s+x.annualTrailGross,0), trailClaim=trailGross*(+partner.trailSharePct||0)/100,
     payouts=(state.managementPayouts||[]).filter(x=>x.partnerId===partner.id&&yearOf(x.date)===year), received=payouts.reduce((s,x)=>s+(+x.amount||0),0);
-  byId('managementMetrics').innerHTML=`<div class="metric"><span class="note">Klientů</span><b>${num(clients.length)}</b></div><div class="metric"><span class="note">${partner.own?'Moje AUM':'Partnerské AUM mimo moje AUM'}</span><b>${money(aum)}</b></div><div class="metric"><span class="note">Hrubá provize obchodů ${year}</span><b>${money(gross)}</b></div><div class="metric"><span class="note">Můj nárok z obchodů</span><b>${money(acquisitionClaim)}</b><small>${num(partner.acquisitionSharePct||0)} %</small></div><div class="metric"><span class="note">Odhad následných ročně</span><b>${money(trailClaim)}</b><small>${num(partner.trailSharePct||0)} % z ${money(trailGross)}</small></div><div class="metric"><span class="note">Přijato ${year}</span><b>${money(received)}</b></div>`;
+  byId('managementMetrics').innerHTML=`<div class="metric"><span class="note">Klientů</span><b>${num(clients.length)}</b></div><div class="metric"><span class="note">${partner.own?'Moje AUM':'Partnerské AUM mimo moje AUM'}</span><b>${money(aum)}</b></div><div class="metric"><span class="note">Provize obchodů ${year}${partner.id==='mantra'?' · můj podíl':''}</span><b>${money(gross)}</b></div><div class="metric"><span class="note">Můj nárok z obchodů</span><b>${money(acquisitionClaim)}</b><small>${partner.id==='mantra'?'Pojištění 67 % · investice/FKI 50 %':num(partner.acquisitionSharePct||0)+' %'}</small></div><div class="metric"><span class="note">Odhad následných ročně</span><b>${money(trailClaim)}</b><small>${num(partner.trailSharePct||0)} % z ${money(trailGross)}</small></div><div class="metric"><span class="note">Přijato ${year}</span><b>${money(received)}</b></div>`;
   byId('managementClientsTable').innerHTML=`<thead><tr><th>Klient</th><th>Kontakt</th><th>Případů</th><th>Obchodů ${year}</th><th>AUM</th><th></th></tr></thead><tbody>${clients.map(c=>{const row=investments.find(x=>x.client.id===c.id);return`<tr><td><b>${esc(clientName(c))}</b></td><td>${esc(c.phone||c.email||'')}</td><td class="num">${num(clientOpenOpportunities(c.id).length)}</td><td class="num">${num(deals.filter(d=>String(d.clientId)===String(c.id)).length)}</td><td class="money">${money(row?.aum||0)}</td><td><button class="btn slim" onclick="selectedClientId=${Number(c.id)};showView('clients')">Klient</button></td></tr>`}).join('')||'<tr><td colspan="6" class="note">Tomuto správci zatím není přiřazený žádný klient.</td></tr>'}</tbody>`;
-  byId('managementDealsTable').innerHTML=`<thead><tr><th>Datum</th><th>Klient / produkt</th><th>BJ</th><th>Hrubá provize</th><th>Můj nárok</th><th>Stav</th></tr></thead><tbody>${deals.sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(d=>{const dg=dealActualCommissionIsSet(d)?dealActualCommission(d):dealCash(d,year);return`<tr><td>${esc(d.date||'')}</td><td><b>${esc(clientName(findClient(d.clientId)))}</b><br><span class="note">${esc(d.product||d.category||'')}</span></td><td class="num">${num(dealBJ(d))}</td><td class="money">${money(dg)}</td><td class="money">${money(managementClaimForDeal(d,partner))}</td><td>${d.commissionPaid?'<span class="badge green">vyplaceno producentem</span>':'<span class="badge orange">očekáváno</span>'}</td></tr>`}).join('')||'<tr><td colspan="6" class="note">V tomto roce nejsou obchody tohoto správce.</td></tr>'}</tbody>`;
+  byId('managementDealsTable').innerHTML=`<thead><tr><th>Datum</th><th>Klient / produkt</th><th>BJ</th><th>${partner.id==='mantra'?'Moje provize':'Hrubá provize'}</th><th>Můj nárok</th><th>Stav</th></tr></thead><tbody>${deals.sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(d=>{const dg=dealActualCommissionIsSet(d)?dealActualCommission(d):dealCash(d,year);return`<tr><td>${esc(d.date||'')}</td><td><b>${esc(clientName(findClient(d.clientId)))}</b><br><span class="note">${esc(d.product||d.category||'')}</span></td><td class="num">${num(dealBJ(d))}</td><td class="money">${money(dg)}</td><td class="money">${money(managementClaimForDeal(d,partner))}</td><td>${d.commissionPaid?'<span class="badge green">vyplaceno producentem</span>':'<span class="badge orange">očekáváno</span>'}</td></tr>`}).join('')||'<tr><td colspan="6" class="note">V tomto roce nejsou obchody tohoto správce.</td></tr>'}</tbody>`;
   byId('managementAumTable').innerHTML=`<thead><tr><th>Klient</th><th>Fondů / pozic</th><th>Vloženo</th><th>AUM</th><th>Hrubá následná ročně</th><th>Můj odhad</th></tr></thead><tbody>${investments.map(x=>`<tr><td><b>${esc(clientName(x.client))}</b></td><td class="num">${num(x.items.length)}</td><td class="money">${money(x.invested)}</td><td class="money"><b>${money(x.aum)}</b></td><td class="money">${money(x.annualTrailGross)}</td><td class="money">${money(x.annualTrailGross*(+partner.trailSharePct||0)/100)}</td></tr>`).join('')||'<tr><td colspan="6" class="note">Klienti tohoto správce zatím nemají investice ani FKI.</td></tr>'}</tbody>`;
   byId('managementPayoutsTable').innerHTML=`<thead><tr><th>Datum</th><th>Typ</th><th>Částka</th><th>Poznámka</th><th></th></tr></thead><tbody>${payouts.sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(x=>`<tr><td>${esc(x.date||'')}</td><td>${esc({acquisition:'Počáteční provize',trail:'Následná provize',other:'Ostatní / dorovnání'}[x.type]||x.type||'')}</td><td class="money"><b>${money(x.amount)}</b></td><td>${esc(x.note||'')}</td><td><button class="btn slim red" onclick="deleteManagementPayout(${Number(x.id)})">Smazat</button></td></tr>`).join('')||'<tr><td colspan="5" class="note">Zatím není zaznamenaná žádná přijatá výplata.</td></tr>'}</tbody>`;
 }
 function openManagementPartnerModal() {
-  byId('managementPartnerSettings').innerHTML=managementPartners().map((p,i)=>`<div class="mini-card management-partner-setting" data-partner-index="${i}"><div class="form-grid"><div class="field"><label>Název firmy / skupiny</label><input data-k="company" value="${esc(p.company||'')}"></div><div class="field"><label>Kontaktní osoba</label><input data-k="name" value="${esc(p.name||'')}"></div><div class="field"><label>Můj podíl z počáteční provize %</label><input data-k="acquisitionSharePct" type="number" min="0" max="100" step="0.1" value="${esc(p.acquisitionSharePct??0)}"></div><div class="field"><label>Můj podíl z následné provize %</label><input data-k="trailSharePct" type="number" min="0" max="100" step="0.1" value="${esc(p.trailSharePct??0)}"></div></div><p class="note">${p.own?'Výchozí vlastní správa.':'Partnerské AUM se nezapočítá do vlastního AUM.'}</p></div>`).join('');openModal('managementPartnerModal');
+  byId('managementPartnerSettings').innerHTML=managementPartners().map((p,i)=>`<div class="mini-card management-partner-setting" data-partner-index="${i}"><div class="form-grid"><div class="field"><label>Název firmy / skupiny</label><input data-k="company" value="${esc(p.company||'')}"></div><div class="field"><label>Kontaktní osoba</label><input data-k="name" value="${esc(p.name||'')}"></div><div class="field"><label>Můj podíl z počáteční provize % (u Mantry platí pojištění 67 %, investice/FKI 50 %)</label><input data-k="acquisitionSharePct" type="number" min="0" max="100" step="0.1" value="${esc(p.acquisitionSharePct??0)}"></div><div class="field"><label>Můj podíl z následné provize %</label><input data-k="trailSharePct" type="number" min="0" max="100" step="0.1" value="${esc(p.trailSharePct??0)}"></div></div><p class="note">${p.own?'Výchozí vlastní správa.':'Partnerské AUM se nezapočítá do vlastního AUM.'}</p></div>`).join('');openModal('managementPartnerModal');
 }
 function saveManagementPartners() {
   document.querySelectorAll('[data-partner-index]').forEach(row=>{const p=state.managementPartners[+row.dataset.partnerIndex];if(!p)return;row.querySelectorAll('[data-k]').forEach(el=>p[el.dataset.k]=el.type==='number'?Math.max(0,Math.min(100,parseMoney(el.value))):el.value.trim());});persist();closeModal('managementPartnerModal');renderAll();saveToast('Nastavení správců uloženo');
@@ -4759,6 +4775,7 @@ function dealRowClass(d) {
 function toggleDealPaid(id, checked) {
   const d = state.deals.find(x => String(x.id) === String(id));
   if (!d) return;
+  if (isMantraDeal(d)) return openMantraPayment(id, checked);
   d.commissionPaid = !!checked;
   persist();
   renderAll();
@@ -4770,7 +4787,35 @@ function toggleDealHidden(id, checked) {
   persist();
   renderAll();
 }
+// Mantra is incoming partner income, never an outgoing referrer payment.
+function mantraMoney(amount) { return decimal(amount,2)+' Kč'; }
+function renderMantraLedger() {
+  const box=byId('mantraLedger');if(!box)return;
+  const year=val('mantraLedgerYear')||'',status=val('mantraLedgerStatus')||'all';
+  const all=state.deals.filter(isMantraDeal),years=[...new Set(all.map(d=>yearOf(d.date)))].filter(Boolean).sort((a,b)=>b-a);
+  const rows=all.filter(d=>(!year||yearOf(d.date)===+year)&&(status==='all'||(status==='paid')===dealPaid(d))).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+  const sum=fn=>rows.reduce((a,d)=>a+fn(d),0),extras=(state.managementPayouts||[]).filter(x=>x.partnerId==='mantra'&&(!year||yearOf(x.date)===+year));
+  box.innerHTML=`<div class="toolbar"><div><h3>Mantra · příjmy ze spolupráce</h3><p class="note">Pojištění 67 % · investice a FKI 50 %. Plné BJ zůstávají v záznamu, do vašeho výkonu jde váš podíl. Přijatá provize je vaše skutečná částka bez dalšího krácení. Ostatní druhy obchodů se nemění.</p></div><div class="filters"><select id="mantraLedgerYear" onchange="renderMantraLedger()"><option value="">Všechny roky</option>${years.map(y=>`<option ${String(y)===year?'selected':''} value="${y}">${y}</option>`).join('')}</select><select id="mantraLedgerStatus" onchange="renderMantraLedger()">${[['all','Všechny obchody'],['unpaid','Čeká na výplatu'],['paid','Vyplacené']].map(([v,t])=>`<option value="${v}" ${status===v?'selected':''}>${t}</option>`).join('')}</select></div></div><div class="metric-strip"><div class="metric"><span class="note">Plné BJ</span><b>${decimal(sum(dealGrossBJ))}</b></div><div class="metric"><span class="note">Moje BJ</span><b>${decimal(sum(dealBJ))}</b></div><div class="metric"><span class="note">Očekáváno u nevyplacených</span><b>${mantraMoney(sum(d=>dealExpectedCommission(d)))}</b></div><div class="metric"><span class="note">Skutečně přijato u obchodů</span><b>${mantraMoney(sum(dealPaidActualCommission))}</b></div></div><div class="table-wrap"><table><thead><tr><th>Klient / obchod</th><th>Datum obchodu</th><th>Plné BJ</th><th>Můj podíl</th><th>Moje BJ</th><th>Očekávaný příjem</th><th>Skutečně přijato</th><th>Výplata</th><th>Akce</th></tr></thead><tbody>${rows.map(d=>`<tr><td><b>${esc(clientName(findClient(d.clientId)))}</b><br>${esc(d.product||d.category||'')} · ${esc(d.company||'')}${d.hidden?' · skrytý obchod':''}</td><td>${esc(d.date||'')}</td><td>${decimal(dealGrossBJ(d))}</td><td>${num(mantraDealShare(d)*100)} %</td><td>${decimal(dealBJ(d))}</td><td>${mantraMoney(dealCash(d))}</td><td>${dealPaid(d)&&dealActualCommissionIsSet(d)?mantraMoney(dealActualCommission(d)):'—'}</td><td><span class="badge ${dealPaid(d)?'green':'orange'}">${dealPaid(d)?'Vyplaceno':'Bez záznamu výplaty'}</span><br>${dealPaid(d)?esc(d.mantraPaidDate||''):''}${dealPaid(d)&&!dealActualCommissionIsSet(d)?'<br>Doplňte skutečnou částku':''}<br>${esc(d.mantraPaymentNote||'')}${d.mantraPaymentHistory?.length?`<details><summary>Historie (${d.mantraPaymentHistory.length})</summary>${d.mantraPaymentHistory.map(h=>`<p>${esc(h.changedAt)} · ${h.paid?'vyplaceno':'oprava stavu'} · ${mantraMoney(h.amount)} · ${esc(h.date||'')} · ${esc(h.note||'')}</p>`).join('')}</details>`:''}</td><td><button class="btn slim" onclick="openMantraPayment(${Number(d.id)},true)">${dealPaid(d)?'Upravit výplatu':'Zapsat přijetí'}</button>${dealPaid(d)?`<button class="btn slim" onclick="openMantraPayment(${Number(d.id)},false)">Opravit stav</button>`:''}<button class="btn slim" onclick="openDealModal(${Number(d.clientId)},${Number(d.id)})">Obchod</button></td></tr>`).join('')||'<tr><td colspan="9">Zatím žádné obchody ve správě Mantry v tomto výběru.</td></tr>'}</tbody></table></div>${extras.length?`<details><summary>Samostatné přijaté platby ve Správě (${extras.length})</summary><p class="note">Tyto platby nejsou přiřazené k obchodům, proto nejsou přičtené do součtu výše. Před označením obchodu ověřte, zda už zde není jeho výplata.</p>${extras.map(x=>`<p>${esc(x.date)} · ${mantraMoney(x.amount)} · ${esc(x.note||'')}</p>`).join('')}</details>`:''}`;
+}
+function openMantraPayment(id, paid=true) {
+  const d=state.deals.find(d=>String(d.id)===String(id));if(!isMantraDeal(d))return;
+  crmExtraModal('mantraPaymentModal',paid?'Přijatá provize od Mantry':'Opravit stav výplaty Mantra',`<p><b>${esc(clientName(findClient(d.clientId)))}</b> · ${esc(d.product||d.category||'')}</p><p class="note">${paid?'Zadejte částku, kterou jste skutečně přijal pro sebe. Již se nekrátí podílem.':'Obchod se vrátí mezi nevyplacené. Původní údaj zůstane v historii.'}</p><div class="form-grid"><div class="field"><label>Moje přijatá provize Kč</label><input id="mantraPaymentAmount" inputmode="decimal" value="${esc(dealActualCommissionIsSet(d)?d.actualCommission:'')}" ${paid?'':'readonly'}></div><div class="field"><label>Datum přijetí</label><input id="mantraPaymentDate" type="date" value="${esc(d.mantraPaidDate||today())}"></div><div class="field full"><label>Doklad / poznámka</label><textarea id="mantraPaymentNote">${esc(d.mantraPaymentNote||'')}</textarea></div></div><div class="actions"><button class="btn primary" onclick="saveMantraPayment(${Number(d.id)},${!!paid})">${paid?'Uložit přijatou platbu':'Potvrdit opravu stavu'}</button></div>`);
+}
+function saveMantraPayment(id,paid) {
+  const d=state.deals.find(d=>String(d.id)===String(id));if(!isMantraDeal(d))return;
+  const raw=val('mantraPaymentAmount').trim(),amount=parseMoney(raw),date=val('mantraPaymentDate'),note=val('mantraPaymentNote').trim();
+  if(paid&&(!/^-?\d+(?:[.,]\d{1,2})?$/.test(raw.replace(/\s/g,''))||!Number.isFinite(amount)||!date))return alert('Vyplň skutečně přijatou částku a datum přijetí.');
+  const previous={paid:dealPaid(d),amount:dealActualCommissionIsSet(d)?d.actualCommission:null,date:d.mantraPaidDate||'',note:d.mantraPaymentNote||''};
+  d.mantraPaymentHistory=d.mantraPaymentHistory||[];
+  d.mantraPaymentHistory.push({changedAt:new Date().toISOString(),paid,amount:paid?amount:previous.amount,date,note,previous});
+  d.commissionPaid=!!paid;
+  if(paid){d.actualCommission=amount;d.mantraPaidDate=date;}
+  d.mantraPaymentNote=note;
+  persist();closeModal('mantraPaymentModal');renderAll();saveToast('Výplata Mantra uložena');
+}
+
 function renderDeals() {
+  renderMantraLedger();
   renderRecurringCommissions();
   renderMonthTabs();
   const q = norm(val('dealSearch')),
@@ -4806,7 +4851,7 @@ function renderDeals() {
   const newClients = newClientsInMonth(y, selectedMonth),
     table = byId('dealsTable');
   table.className = 'compact-table';
-  table.innerHTML = `<thead><tr><th>Klient / správa</th><th>Kategorie</th><th>Společnost</th><th>Produkt</th><th>Datum</th><th>Objem Kč</th><th>BJ</th><th>Oček. provize</th><th class="paid-col">Zapl.</th><th>Skutečná provize</th><th>Typař / doporučení</th><th>Skrýt</th><th></th></tr></thead><tbody>${rows.map(x => `<tr class="${dealRowClass(x.d)}"><td><b>${esc(clientName(x.c))}</b><br>${managementBadge(x.d)}${x.d.hidden ? '<br><span class="badge">skryto</span>' : isLateUnpaid(x.d) ? '<br><span class="badge red">3+ měsíce bez provize</span>' : ''}</td><td>${esc(x.d.category || areaLabel(areaForDeal(x.d)))}</td><td>${esc(x.d.company || '')}</td><td><b>${esc(x.d.product || '')}</b></td><td>${esc(x.d.date || '')}</td><td class="money">${money(dealVolume(x.d))}</td><td class="num">${num(dealBJ(x.d))}</td><td class="money">${money(dealCash(x.d, y))}</td><td class="paid-col"><input class="paid-check" type="checkbox" ${dealPaid(x.d) ? 'checked' : ''} onchange="toggleDealPaid(${x.d.id},this.checked)"></td><td class="money">${money(dealNetCommission(x.d, y))}</td><td><b>${esc(dealOwnerLabel(x.d) || '')}</b>${dealOwnerType(x.d) === 'tipar' ? `<br><span class="note">${num(dealOwnerPct(x.d))} % · ${money(dealOwnerPayout(x.d, y))} · ${x.d.ownerPaid ? 'vyplaceno' : 'nevyplaceno'}</span>` : ''}</td><td class="paid-col"><input class="paid-check" type="checkbox" ${x.d.hidden ? 'checked' : ''} onchange="toggleDealHidden(${x.d.id},this.checked)"></td><td><button class="icon-btn" title="Upravit obchod" onclick="selectedClientId=${x.c?.id || 'null'};openDealModal(${x.d.clientId},${x.d.id})">✎</button> <button class="btn slim red" onclick="deleteDeal(${x.d.id})">Smazat</button></td></tr>`).join('') || '<tr><td colspan="13" class="note">V tomto měsíci zatím nejsou žádné viditelné obchody.</td></tr>'}<tr><th colspan="5">Celkem za ${MONTHS[selectedMonth]}<br><span class="note">Noví klienti: ${num(newClients)} · skryto: ${num(totalHidden)}</span></th><th class="money">Investice ${money(totals.inv)}<br>Hypotéky ${money(totals.mort)}</th><th class="num">${num(totals.bj)}</th><th class="money">${money(totals.cash)}</th><th></th><th class="money">${money(totals.net)}</th><th colspan="3">Typaři ${money(totals.payout)} · ${num(totals.count)} viditelných obchodů</th></tr></tbody>`;
+  table.innerHTML = `<thead><tr><th>Klient / správa</th><th>Kategorie</th><th>Společnost</th><th>Produkt</th><th>Datum</th><th>Objem Kč</th><th>BJ</th><th>Oček. provize</th><th class="paid-col">Zapl.</th><th>Skutečná provize</th><th>Zdroj / spolupráce</th><th>Skrýt</th><th></th></tr></thead><tbody>${rows.map(x => `<tr class="${dealRowClass(x.d)}"><td><b>${esc(clientName(x.c))}</b><br>${managementBadge(x.d)}${x.d.hidden ? '<br><span class="badge">skryto</span>' : isLateUnpaid(x.d) ? '<br><span class="badge red">3+ měsíce bez provize</span>' : ''}</td><td>${esc(x.d.category || areaLabel(areaForDeal(x.d)))}</td><td>${esc(x.d.company || '')}</td><td><b>${esc(x.d.product || '')}</b></td><td>${esc(x.d.date || '')}</td><td class="money">${money(dealVolume(x.d))}</td><td class="num">${decimal(dealBJ(x.d))}${isMantraDeal(x.d)?`<br><small>z ${num(dealGrossBJ(x.d))} BJ · ${num(mantraDealShare(x.d)*100)} %</small>`:""}</td><td class="money">${money(dealCash(x.d, y))}</td><td class="paid-col"><input class="paid-check" type="checkbox" ${dealPaid(x.d) ? 'checked' : ''} onchange="toggleDealPaid(${x.d.id},this.checked)"></td><td class="money">${money(dealNetCommission(x.d, y))}</td><td><b>${esc(dealOwnerLabel(x.d) || '')}</b>${dealOwnerType(x.d) === 'tipar' ? `<br><span class="note">${num(dealOwnerPct(x.d))} % · ${money(dealOwnerPayout(x.d, y))} · ${x.d.ownerPaid ? 'vyplaceno' : 'nevyplaceno'}</span>` : ''}</td><td class="paid-col"><input class="paid-check" type="checkbox" ${x.d.hidden ? 'checked' : ''} onchange="toggleDealHidden(${x.d.id},this.checked)"></td><td><button class="icon-btn" title="Upravit obchod" onclick="selectedClientId=${x.c?.id || 'null'};openDealModal(${x.d.clientId},${x.d.id})">✎</button> <button class="btn slim red" onclick="deleteDeal(${x.d.id})">Smazat</button></td></tr>`).join('') || '<tr><td colspan="13" class="note">V tomto měsíci zatím nejsou žádné viditelné obchody.</td></tr>'}<tr><th colspan="5">Celkem za ${MONTHS[selectedMonth]}<br><span class="note">Noví klienti: ${num(newClients)} · skryto: ${num(totalHidden)}</span></th><th class="money">Investice ${money(totals.inv)}<br>Hypotéky ${money(totals.mort)}</th><th class="num">${num(totals.bj)}</th><th class="money">${money(totals.cash)}</th><th></th><th class="money">${money(totals.net)}</th><th colspan="3">Typaři ${money(totals.payout)} · ${num(totals.count)} viditelných obchodů</th></tr></tbody>`;
   renderOwners(y);
   renderReferrals(y);
 }
@@ -6840,6 +6885,7 @@ function syncDealOwnerDefaults() {
 }
 function syncDealManagementDefault() {
   fillManagementSelect('dManagementPartner', clientManagementId(val('dClient')));
+  updateDealExpectedCommission();
 }
 function dealCategoryCreatesContract(category) {
   return !['FKI', 'Investice', 'Následná provize'].includes(category);
@@ -6924,6 +6970,7 @@ function updateOpportunityCommissionEstimate() {
 }
 function updateDealExpectedCommission() {
   const current = {
+    clientId: +val('dClient'), managementPartnerId: val('dManagementPartner'),
     category: val('dCategory'),
     bj: parseMoney(val('dBj')),
     amount: parseMoney(val('dAmount')),
@@ -6931,6 +6978,8 @@ function updateDealExpectedCommission() {
     date: val('dDate') || today()
   }, expected = dealCash(current, yearOf(current.date));
   setVal('dExpectedCommission', money(expected));
+  setText('mantraDealPreview', isMantraDeal(current) ? `Mantra · Zadávej plné BJ před rozdělením. Můj podíl ${num(mantraDealShare(current)*100)} %: ${decimal(dealBJ(current))} BJ · ${mantraMoney(expected)}. Skutečnou provizi zadej jako částku přijatou pro sebe, dále se nekrátí.` : '');
+  ['dOwner','dOwnerType','dOwnerCommissionPct','dOwnerPaid'].forEach(id=>{if(byId(id))byId(id).closest('.field').style.display=isMantraDeal(current)?'none':'';});
   setVal('dEntryCommissionEstimate', ['Investice','FKI'].includes(current.category) && current.entryCommissionPct > 0 ? money(current.amount * current.entryCommissionPct / 100) : 'Doplň sazbu fondu');
 }
 function syncDealContractDefaults(forceType = false) {
@@ -7797,7 +7846,7 @@ function fkiSync_before_moveDealToOpportunity() {
       company: val('dCompany').trim() || d.company || '',
       product: val('dProduct').trim() || d.product || '',
       amount: parseMoney(val('dAmount')) || dealVolume(d),
-      bj: parseMoney(val('dBj')) || dealBJ(d),
+      bj: parseMoney(val('dBj')) || dealGrossBJ(d),
       expectedDate: val('dContractAnniv') || '',
       owner: val('dOwner').trim() || d.owner || '',
       ownerType: val('dOwner').trim() ? val('dOwnerType') : d.ownerType || '',
@@ -7925,7 +7974,7 @@ function fkiSync_before_saveDeal() {
       s.status = 'podepsano';
       s.createDeal = 'yes';
       s.dealDate = d.date;
-      s.dealBj = dealBJ(d);
+      s.dealBj = dealGrossBJ(d);
       s.expectedCommission = dealExpectedCommission(d, yearOf(d.date));
       s.dealOwner = d.owner;
       s.dealOwnerType = d.ownerType;
@@ -15907,8 +15956,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.11.06-2';
-const VERSION_NOTE = 'Reporty Mantra a FairLife podle šestidílné předlohy; tabulka krytí pouze doporučené nabídky, bez detailů rozdílů alternativ.';
+const VERSION = '2026.11.06-3';
+const VERSION_NOTE = 'Mantra: můj podíl 67 % u pojištění a 50 % u investic/FKI, samostatná evidence příchozích výplat v Obchodech.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
@@ -16234,7 +16283,7 @@ function finishContractReplacement(d,linked) {
     const snapshot={...previous};delete snapshot.replacementHistory;
     linked.replacementHistory=[...(previous.replacementHistory||[]),{effectiveDate:d.replacementEffectiveDate,signedDate:d.replacementSignedDate,dealId:d.id,contract:snapshot}];
     linked.effectiveDate=d.replacementEffectiveDate;linked.updatedAt=today();
-    linked.createDeal='yes';linked.dealDate=d.date;linked.dealBj=dealBJ(d);linked.expectedCommission=dealExpectedCommission(d,yearOf(d.date));linked.dealOwner=d.owner;linked.dealOwnerType=d.ownerType;
+    linked.createDeal='yes';linked.dealDate=d.date;linked.dealBj=dealGrossBJ(d);linked.expectedCommission=dealExpectedCommission(d,yearOf(d.date));linked.dealOwner=d.owner;linked.dealOwnerType=d.ownerType;
     linked.attachments=[];delete linked.caseVolume;
     d.replacedContractId=previous.id;
     const oldDeals=state.deals.filter(old=>old.id!==d.id&&(String(old.contractId)===String(previous.id)||String(old.fromContractId)===String(previous.id)||String(old.id)===String(previous.fromDealId)));

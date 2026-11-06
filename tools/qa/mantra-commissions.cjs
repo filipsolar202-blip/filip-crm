@@ -1,0 +1,24 @@
+// Only synthetic data, isolated browser storage and no external network.
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const {chromium,launchOptions}=require('./runtime.cjs'),root=path.resolve(__dirname,'../..');
+(async()=>{const browser=await chromium.launch(launchOptions);try{
+ const ctx=await browser.newContext({viewport:{width:1440,height:1100}});
+ await ctx.route('**/*',r=>{const u=new URL(r.request().url()),p=path.join(root,decodeURIComponent(u.pathname));return u.hostname==='crm.test'&&p.startsWith(root+path.sep)&&fs.existsSync(p)&&fs.statSync(p).isFile()?r.fulfill({body:fs.readFileSync(p),contentType:p.endsWith('.js')?'text/javascript':p.endsWith('.css')?'text/css':'text/html'}):r.abort();});
+ const seed={clients:[{id:1,name:'QA vlastní',managementPartnerId:'filip'},{id:2,name:'QA spolupráce',managementPartnerId:'mantra'}],settings:{bjCoef:150},deals:[{id:10,clientId:2,category:'Životní pojištění',product:'QA pojištění',bj:215,date:'2026-11-06',owner:'QA nesprávný tipař',ownerType:'tipar',ownerCommissionPct:20,managementPartnerId:'mantra',createContract:false},{id:11,clientId:1,category:'Životní pojištění',bj:215,date:'2026-11-06',createContract:false}]};
+ await ctx.addInitScript(s=>{if(location.hostname==='crm.test'&&!localStorage.getItem('filip_crm_main_v1'))localStorage.setItem('filip_crm_main_v1',JSON.stringify(s));},seed);
+ const page=await ctx.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.dismiss());await page.goto('https://crm.test/FILIP-CRM.html');await page.waitForFunction(()=>typeof state==='object');
+ const calc=await page.evaluate(()=>{const d=state.deals.find(d=>d.id===10),own=state.deals.find(d=>d.id===11);const cash=x=>dealCash({...d,...x},2026);return {bj:dealBJ(d),gross:d.bj,cash:dealCash(d,2026),owner:dealOwnerLabel(d),payout:dealOwnerPayout(d),claim:managementClaimForDeal(d,managementPartner('mantra')),ownBj:dealBJ(own),ownCash:dealCash(own,2026),nonlife:cash({category:'Neživotní pojištění'}),inv:cash({category:'Investice',bj:100}),fki:cash({category:'FKI',amount:1000000,entryCommissionPct:3}),zero:cash({bj:0}),negative:cash({bj:-215}),opp:opportunityCash({clientId:2,category:'Životní pojištění',bj:215},2026),override:dealBJ({...d,managementPartnerId:'filip'}),owners:ownerRows(2026).length};});
+ assert.deepEqual(calc,{bj:144.05,gross:215,cash:21607.5,owner:'Mantra',payout:0,claim:21607.5,ownBj:215,ownCash:25800,nonlife:21607.5,inv:7500,fki:15000,zero:0,negative:-21607.5,opp:21607.5,override:215,owners:0});
+ await page.evaluate(()=>{showView('deals');openDealModal(2,10);});assert.equal(await page.locator('#dBj').inputValue(),'215');assert.match(await page.locator('#mantraDealPreview').innerText(),/144,05/);
+ await page.evaluate(()=>{setVal('dCreateContract','no');saveDeal();});assert.equal(await page.evaluate(()=>state.deals.find(d=>d.id===10).bj),215);
+ assert.equal(await page.evaluate(()=>dealBJ(state.deals.find(d=>d.id===10))),144.05);
+ await page.evaluate(()=>{showView('deals');openMantraPayment(10,true);});
+ await page.locator('#mantraPaymentAmount').fill('21607,50');await page.locator('#mantraPaymentDate').fill('2026-11-06');await page.locator('#mantraPaymentNote').fill('QA příchozí platba');await page.evaluate(()=>saveMantraPayment(10,true));
+ assert.deepEqual(await page.evaluate(()=>{const d=state.deals.find(d=>d.id===10);return [dealPaid(d),dealPaidActualCommission(d),dealNetCommission(d,2026),dealExpectedCommission(d,2026),d.mantraPaymentHistory.length,dealBJ(d)];}),[true,21607.5,21607.5,0,1,144.05]);
+ await page.reload();await page.waitForFunction(()=>typeof state==='object');assert.equal(await page.evaluate(()=>state.deals.find(d=>d.id===10).mantraPaymentHistory.length),1);
+ await page.evaluate(()=>{showView('deals');openMantraPayment(10,false);saveMantraPayment(10,false);});assert.deepEqual(await page.evaluate(()=>{const d=state.deals.find(d=>d.id===10);return [dealPaid(d),dealPaidActualCommission(d),dealExpectedCommission(d),d.mantraPaymentHistory.length,d.mantraPaymentHistory[1].previous.amount];}),[false,0,21607.5,2,21607.5]);
+ assert.equal(await page.locator('#mantraLedger').count(),1);assert.match(await page.locator('#mantraLedger').innerText(),/144,05/);
+ assert.equal(await page.evaluate(()=>{const a=byId('recurringCommissions'),b=byId('mantraLedger'),c=byId('dealsOwnerTable');return !!(a.compareDocumentPosition(b)&4)&&!!(b.compareDocumentPosition(c)&4);}),true);
+ await page.locator('#mantraLedger').screenshot({path:'/private/tmp/mantra-ledger.png'});
+ assert.deepEqual(errors,[]);console.log('PASS: Mantra shares, unchanged gross BJ, own-client regression, exact income, incoming payment history/reload, layout and referrer exclusion.');
+ }finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});
