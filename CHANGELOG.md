@@ -1,3 +1,9 @@
+## 2026.11.06-8
+
+- Všech devět dostupných formulářů má vlastní předmět a stručný osobní e-mail podle schválené varianty, ve vykání i tykání. Stejný styl používají kontroly smluv. Odesílatel a značka se nadále řídí správou klienta.
+- Předmět a text jsou u všech formulářů viditelné a upravitelné před přípravou konceptu; ukládají se do evidence odeslání. Pokyny vždy vysvětlují vrácení stažených odpovědí e-mailem.
+- Formátovaný text lze z přípravy e-mailu zkopírovat do schránky a vložit do těla konceptu. Obsahuje tlačítko místo dlouhého odkazu; automatické otevření Apple Mailu nadále používá prostý text.
+
 ## 2026.11.06-7
 
 - Opraven Apple Mail pomocník: seznam skrytých kopií se před komunikací s Mailem převede na nativní seznam AppleScriptu. Ověřeno skutečným vytvořením a odstraněním testovacích konceptů pro oba účty, bez odeslání.

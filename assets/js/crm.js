@@ -444,9 +444,21 @@ function prepareClientEmail(clientOrId, message={}) {
   clientMailDrafts=[{clientId:(typeof clientOrId==='object'?clientOrId?.id:clientOrId)||null,externalTracking:!!message.externalTracking,from:clientSenderEmail(clientOrId),to:message.to??clientEmails(typeof clientOrId==='object'?clientOrId:findClient(clientOrId))[0]??'',subject:message.subject||'',body:message.body||'',bcc:message.bcc||[]}];
   showClientMailDrafts();
 }
+function clientMailHtml(draft) {
+ const paragraphs=String(draft.body||'').split(/\n\n+/).map(part=>{
+  const match=part.match(/^Vyplnit dotazník:\n(https:\/\/filipsolar202-blip\.github\.io\/filip-crm\/\S+)$/);
+  return match?`<p style="margin:24px 0"><a href="${esc(match[1])}" style="display:inline-block;background:#174d70;color:#ffffff;text-decoration:none;padding:14px 22px;border-radius:10px;font-weight:600">Vyplnit dotazník →</a></p>`:`<p style="margin:0 0 18px">${esc(part).replace(/\n/g,'<br>')}</p>`;
+ });
+ return `<div style="max-width:600px;font-family:Arial,sans-serif;font-size:16px;line-height:1.6;color:#183247">${paragraphs.join('')}</div>`;
+}
+async function copyClientMailRich(index) {
+ const draft=clientMailDrafts[index];if(!draft)return;
+ try{await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([clientMailHtml(draft)],{type:'text/html'}),'text/plain':new Blob([draft.body],{type:'text/plain'})})]);saveToast('Zkopírováno. Vložte do těla konceptu v Mailu pomocí Cmd+V.');}
+ catch{alert('Prohlížeč nepovolil kopírování formátovaného textu. Povolte přístup ke schránce nebo použijte prostý text v připraveném e-mailu.');}
+}
 function showClientMailDrafts() {
   const mac=clientMailMacAvailable();
-  crmExtraModal('clientMailDraft','Připravený e-mail',clientMailDrafts.map((d,i)=>`<div class="mini-card"><p><b>Od: ${esc(d.from)}</b><br>Komu: ${esc(d.to||'doplníte v poště')}${d.bcc.length?` · skrytá kopie: ${num(d.bcc.length)} příjemců`:''}</p><p>${esc(d.subject)}</p><div class="actions">${mac?`<a class="btn primary" href="${esc(clientMailNativeUrl(d))}">Otevřít Apple Mail na Macu</a>`:''}<a class="btn ${mac?'':'primary'}" href="${esc(clientMailFallbackUrl(d))}">Běžná pošta – účet vyberte ručně</a><button class="btn" onclick="copyText(clientMailDrafts[${i}].from,'Adresa odesílatele')">Kopírovat odesílatele</button></div></div>`).join('')+`${clientMailDrafts.length===1&&clientMailDrafts[0].clientId&&!clientMailDrafts[0].externalTracking?`<div class="form-grid"><label class="field">Datum skutečného odeslání<input id="mailPreparedDate" type="date" value="${today()}" onchange="updateEmailReminder('mailPrepared')"></label><label class="field">Připomenout<input id="mailPreparedReminder" type="date" value="${emailReminderDate(today())}" oninput="this.dataset.manual='1'"></label></div><button class="btn primary" onclick="confirmPreparedClientMail()">Potvrdit skutečné odeslání</button>`:''}<p class="note">${mac?'Pomocník na Macu vybere uvedený účet. Při prvním použití povolte ovládání Mailu.':'Na iPhonu v rozepsané zprávě rozbalte pole Kopie/skrytá, Od a v poli Od vyberte uvedenou adresu.'} Běžné otevření pošty neumí vynutit odesílatele; před odesláním jej zkontrolujte. Nic se neodesílá automaticky.</p>${mac?'<details><summary>Pomocník není na tomto Macu nainstalovaný?</summary><p>Stáhněte ZIP, rozbalte jej, přesuňte FILIP CRM Mail do Aplikací a jednou otevřete. Při otevření e-mailu pak prohlížeči povolte spuštění pomocníka.</p><a class="btn" href="assets/downloads/FILIP-CRM-Mail.zip?v=2026.11.06-7" download>Stáhnout pomocníka pro Mac</a></details>':''}`);
+  crmExtraModal('clientMailDraft','Připravený e-mail',clientMailDrafts.map((d,i)=>`<div class="mini-card"><p><b>Od: ${esc(d.from)}</b><br>Komu: ${esc(d.to||'doplníte v poště')}${d.bcc.length?` · skrytá kopie: ${num(d.bcc.length)} příjemců`:''}</p><p>${esc(d.subject)}</p><div class="actions">${mac?`<a class="btn primary" href="${esc(clientMailNativeUrl(d))}">Otevřít Apple Mail na Macu</a>`:''}<a class="btn ${mac?'':'primary'}" href="${esc(clientMailFallbackUrl(d))}">Běžná pošta – účet vyberte ručně</a>${d.body?`<button class="btn" onclick="copyClientMailRich(${i})">Kopírovat formátovaný text</button>`:''}<button class="btn" onclick="copyText(clientMailDrafts[${i}].from,'Adresa odesílatele')">Kopírovat odesílatele</button></div></div>`).join('')+`${clientMailDrafts.length===1&&clientMailDrafts[0].clientId&&!clientMailDrafts[0].externalTracking?`<div class="form-grid"><label class="field">Datum skutečného odeslání<input id="mailPreparedDate" type="date" value="${today()}" onchange="updateEmailReminder('mailPrepared')"></label><label class="field">Připomenout<input id="mailPreparedReminder" type="date" value="${emailReminderDate(today())}" oninput="this.dataset.manual='1'"></label></div><button class="btn primary" onclick="confirmPreparedClientMail()">Potvrdit skutečné odeslání</button>`:''}<p class="note">${mac?'Pomocník na Macu vybere uvedený účet. Při prvním použití povolte ovládání Mailu.':'Na iPhonu v rozepsané zprávě rozbalte pole Kopie/skrytá, Od a v poli Od vyberte uvedenou adresu.'} Běžné otevření pošty neumí vynutit odesílatele; před odesláním jej zkontrolujte. Nic se neodesílá automaticky.</p>${mac?'<details><summary>Pomocník není na tomto Macu nainstalovaný?</summary><p>Stáhněte ZIP, rozbalte jej, přesuňte FILIP CRM Mail do Aplikací a jednou otevřete. Při otevření e-mailu pak prohlížeči povolte spuštění pomocníka.</p><a class="btn" href="assets/downloads/FILIP-CRM-Mail.zip?v=2026.11.06-8" download>Stáhnout pomocníka pro Mac</a></details>':''}`);
 }
 
 function clientSenderEmail(clientOrId) {
@@ -15989,8 +16001,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.11.06-7';
-const VERSION_NOTE = 'Apple Mail: opravené otevření konceptu ve správném účtu a čitelné zprávy bez znamének plus.';
+const VERSION = '2026.11.06-8';
+const VERSION_NOTE = 'Osobní texty všech klientských dotazníků v tykání i vykání, úprava před odesláním a formátovaná kopie s tlačítkem.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
