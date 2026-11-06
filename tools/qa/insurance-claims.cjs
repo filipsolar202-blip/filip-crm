@@ -233,8 +233,8 @@ async function run() {
     await page.evaluate(() => { const previous = editingClientId; editingClientId = 1; deleteClient(); editingClientId = previous; });
     assert.match(dialogs.pop(), /Klienta nelze smazat/);
     await page.evaluate(() => { const previous = editingContractId; editingContractId = 10; fkiSync_before_deleteContract(); editingContractId = previous; });
-    assert.match(dialogs.pop(), /Smlouvu nelze smazat/);
-    assert.equal(await financialState(page), baseline, 'resolved claims still protect their client and linked policy');
+    assert.match(dialogs.pop(), /pojistných událostí se odpojí smlouva/);
+    assert.equal(await financialState(page), baseline, 'cancelling policy deletion preserves the linked policy and claim');
 
     // JSON and the actual Google Apps Script chunking protocol preserve all content.
     const payload = await page.evaluate(() => googleSyncPayload());

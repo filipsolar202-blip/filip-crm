@@ -1,3 +1,12 @@
+## 2026.11.06-5
+
+- Karta klienta: výchozí vykání nebo tykání. Dotazníky a e-maily přebírají volbu; konkrétní odeslání ji může změnit. Stávající klienti mají výchozí vykání.
+- Formuláře: mazlíčci, zaměstnanecká odpovědnost, cestovní pojištění a pojistné události. Osobní odkazy předvyplňují známé kontakty a vybranou smlouvu; osobní údaje jsou v části odkazu za #, proto se odkaz předává pouze určenému klientovi. Rodné číslo a interní poznámky v odkazu nejsou.
+- Odpovědi se načítají do čitelného archivu klienta. Pojistná událost se přebírá do návrhu záznamu se smlouvou a podklady, bez duplicit a bez automatického nahlášení pojišťovně. Investiční formulář zůstává připravovaný.
+- Připomenutí formuláře nebo individuálního e-mailu se předvyplní na datum odeslání + 5 kalendářních dní, lze je upravit nebo vyprázdnit. Otevření konceptu samo nezapisuje kontakt. Odeslání potvrzuje poradce po skutečném odeslání.
+- Odesílatel se vybírá podle správy klienta: FairLife f.solar@fair-life.cz, Mantra filip.solar@mantra-finance.cz. Pomocník pro Mac otevře koncept Apple Mailu ve správném účtu; nic neodesílá. Vyžaduje existující účet a souhlas macOS. iPhone a běžné mailto vyžadují kontrolu/výběr účtu Od ručně.
+- Podklady pro otázky: oficiální zdroje pojišťoven v assets/forms/research-sources.json. Formuláře shromažďují podklady, neurčují pojistitelnost ani nárok na plnění.
+
 ## 2026.11.06-4
 
 - PDF Mantra i FairLife: zdůvodnění doporučeného řešení je společně s profilem rodiny, nad rodinným rozpočtem. Z úvodní analýzy se nepřepisují údaje; kratší první stránka má vyváženější odsazení.

@@ -419,6 +419,38 @@ function managementPartners() {
 function managementPartner(id) {
   return managementPartners().find(x => String(x.id) === String(id)) || managementPartners()[0] || {id:'filip',name:'Filip Solár',company:'Vlastní správa',own:true};
 }
+let clientMailDrafts=[];
+function emailReminderDate(date) {const [y,m,d]=String(date).split('-').map(Number),next=new Date(y,m-1,d+5);return next.getFullYear()+'-'+String(next.getMonth()+1).padStart(2,'0')+'-'+String(next.getDate()).padStart(2,'0');}
+function updateEmailReminder(prefix) {const el=byId(prefix+'Reminder');if(el&&!el.dataset.manual)el.value=emailReminderDate(val(prefix+'Date'));}
+function confirmPreparedClientMail() {
+ const d=clientMailDrafts[0];if(!d?.clientId||d.recorded)return;
+ const date=val('mailPreparedDate'),reminder=val('mailPreparedReminder');
+ if(!date||date>today()||reminder&&reminder<date)return alert('Zkontrolujte datum odeslání a připomenutí.');
+ const before=structuredClone(state);addActivity(d.clientId,'Email',d.subject||'Odeslán e-mail klientovi',true);const a=state.activities.at(-1);a.date=date;a.completedAt=date;a.senderEmail=d.from;
+ if(reminder)state.activities.push({id:activities_aUid(),clientId:d.clientId,type:'Email',recordKind:'activity',date:reminder,text:'Připomenout e-mail · '+(d.subject||'kontakt klienta'),completed:false,outcome:'agreed',createdAt:today()});
+ if(!persist()){state=before;return;}d.recorded=true;closeModal('clientMailDraft');renderAll();saveToast('Odeslání a připomenutí uloženo');
+}
+function clientMailMacAvailable() {return /Mac/i.test(navigator.platform)&&navigator.maxTouchPoints<2;}
+function clientMailNativeUrl(draft) {
+  const bytes=new TextEncoder().encode(JSON.stringify(draft));let binary='';bytes.forEach(x=>binary+=String.fromCharCode(x));
+  return 'filipcrm-mail://compose?payload='+encodeURIComponent(btoa(binary));
+}
+function clientMailFallbackUrl(draft) {
+  const q=new URLSearchParams({subject:draft.subject,body:draft.body});if(draft.bcc?.length)q.set('bcc',draft.bcc.join(','));
+  return 'mailto:'+encodeURIComponent(draft.to)+'?'+q.toString();
+}
+function prepareClientEmail(clientOrId, message={}) {
+  clientMailDrafts=[{clientId:(typeof clientOrId==='object'?clientOrId?.id:clientOrId)||null,externalTracking:!!message.externalTracking,from:clientSenderEmail(clientOrId),to:message.to??clientEmails(typeof clientOrId==='object'?clientOrId:findClient(clientOrId))[0]??'',subject:message.subject||'',body:message.body||'',bcc:message.bcc||[]}];
+  showClientMailDrafts();
+}
+function showClientMailDrafts() {
+  const mac=clientMailMacAvailable();
+  crmExtraModal('clientMailDraft','Připravený e-mail',clientMailDrafts.map((d,i)=>`<div class="mini-card"><p><b>Od: ${esc(d.from)}</b><br>Komu: ${esc(d.to||'doplníte v poště')}${d.bcc.length?` · skrytá kopie: ${num(d.bcc.length)} příjemců`:''}</p><p>${esc(d.subject)}</p><div class="actions">${mac?`<a class="btn primary" href="${esc(clientMailNativeUrl(d))}">Otevřít Apple Mail na Macu</a>`:''}<a class="btn ${mac?'':'primary'}" href="${esc(clientMailFallbackUrl(d))}">Otevřít běžnou poštu</a><button class="btn" onclick="copyText(clientMailDrafts[${i}].from,'Adresa odesílatele')">Kopírovat odesílatele</button></div></div>`).join('')+`${clientMailDrafts.length===1&&clientMailDrafts[0].clientId&&!clientMailDrafts[0].externalTracking?`<div class="form-grid"><label class="field">Datum skutečného odeslání<input id="mailPreparedDate" type="date" value="${today()}" onchange="updateEmailReminder('mailPrepared')"></label><label class="field">Připomenout<input id="mailPreparedReminder" type="date" value="${emailReminderDate(today())}" oninput="this.dataset.manual='1'"></label></div><button class="btn primary" onclick="confirmPreparedClientMail()">Potvrdit skutečné odeslání</button>`:''}<p class="note">${mac?'Pomocník na Macu vybere uvedený účet. Při prvním použití povolte ovládání Mailu.':'Na iPhonu v rozepsané zprávě rozbalte pole Kopie/skrytá, Od a v poli Od vyberte uvedenou adresu.'} Běžné otevření pošty neumí vynutit odesílatele; před odesláním jej zkontrolujte. Nic se neodesílá automaticky.</p>${mac?'<details><summary>Pomocník není na tomto Macu nainstalovaný?</summary><p>Stáhněte ZIP, rozbalte jej, přesuňte FILIP CRM Mail do Aplikací a jednou otevřete. Při otevření e-mailu pak prohlížeči povolte spuštění pomocníka.</p><a class="btn" href="assets/downloads/FILIP-CRM-Mail.zip" download>Stáhnout pomocníka pro Mac</a></details>':''}`);
+}
+
+function clientSenderEmail(clientOrId) {
+  return clientManagementId(clientOrId)==='mantra'?'filip.solar@mantra-finance.cz':'f.solar@fair-life.cz';
+}
 function clientManagementId(clientOrId) {
   const c = typeof clientOrId === 'object' ? clientOrId : findClient(clientOrId);
   return c?.managementPartnerId || 'filip';
@@ -3932,7 +3964,7 @@ function contactGrid(c) {
     literal = v => esc(JSON.stringify(v));
   return `<div class="contact-grid">
   <div class="contact-link"><span>☎</span><b>Tel</b>${phone ? `<button class="contact-value" onclick="copyText(${literal(phone)},'Telefon')">${esc(phone)}</button><div class="contact-actions"><button class="copy-btn" onclick="copyText(${literal(phone)},'Telefon')">Kopírovat</button><a class="copy-btn" href="tel:${encodeURIComponent(phone)}">Volat</a></div>` : '<span>bez telefonu</span>'}</div>
-  <div class="contact-link"><span>@</span><b>E-mail</b>${email ? `<a class="contact-value" href="mailto:${encodeURIComponent(email)}">${esc(email)}</a><div class="contact-actions"><button class="copy-btn" onclick="copyText(${literal(email)},'E-mail')">Kopírovat</button><a class="copy-btn" href="mailto:${encodeURIComponent(email)}">Napsat</a></div>` : '<span>bez e-mailu</span>'}</div>
+  <div class="contact-link"><span>@</span><b>E-mail</b>${email ? `<a class="contact-value" href="mailto:${encodeURIComponent(email)}" onclick="event.preventDefault();prepareClientEmail(${Number(c.id)})">${esc(email)}</a><div class="contact-actions"><button class="copy-btn" onclick="copyText(${literal(email)},'E-mail')">Kopírovat</button><a class="copy-btn" href="mailto:${encodeURIComponent(email)}" onclick="event.preventDefault();prepareClientEmail(${Number(c.id)})">Napsat</a></div>` : '<span>bez e-mailu</span>'}</div>
   <div class="contact-link"><span>⌂</span><b>Adresa</b>${addr ? `<a class="contact-value" href="https://maps.google.com/?q=${encodeURIComponent(addr)}" target="_blank" rel="noopener">${esc(addr)}</a><div class="contact-actions"><button class="copy-btn" onclick="copyText(${literal(addr)},'Adresa')">Kopírovat</button><a class="copy-btn" href="https://maps.google.com/?q=${encodeURIComponent(addr)}" target="_blank" rel="noopener">Mapa</a></div>` : '<span>bez adresy</span>'}</div>
 </div>`;
 }
@@ -4044,7 +4076,7 @@ function confirmCampaignEmail() {
     body = val('campaignBody').trim(),
     segment = val('campaignSegment') || 'all',
     selected = campaignRecipientRows.filter(x => campaignSelectedClientIds.has(String(x.client.id)));
-  if (!splitEmails(sender).length) return alert('Doplň platný vlastní e-mail do pole Komu.');
+
   if (!subject) return alert('Doplň předmět e-mailu.');
   if (!body) return alert('Doplň text zprávy.');
   if (!selected.length) return alert('Vyber alespoň jednoho příjemce.');
@@ -4060,8 +4092,10 @@ function confirmCampaignEmail() {
   persist();
   renderCampaignHistory();
   renderCampaignRecipients(true);
-  const query = new URLSearchParams({bcc:emails.join(','),subject,body});
-  campaignLaunchMailto(`mailto:${encodeURIComponent(sender)}?${query.toString()}`);
+  const groups=new Map();selected.forEach(x=>{const from=clientSenderEmail(x.client);if(!groups.has(from))groups.set(from,new Set());groups.get(from).add(x.email);});
+  clientMailDrafts=[...groups].map(([from,bcc])=>({from,to:from,subject,body,bcc:[...bcc]}));
+  state.campaigns.at(-1).sender='Podle správce klienta';state.campaigns.at(-1).senderGroups=clientMailDrafts.map(d=>({from:d.from,recipients:d.bcc}));persist();
+  showClientMailDrafts();
 }
 function clientGivenRecommendations(c) {
   return sourceReferralRecords(c).filter(r => r.type === 'referral').length;
@@ -4586,7 +4620,7 @@ function contactActionButton(c) {
   if (!c) return '';
   if (c.contactPref === 'whatsapp') return `<a class="btn slim" href="${c.phone ? 'https://wa.me/' + normId(c.phone) : '#'}" target="_blank">WhatsApp</a>`;
   if (c.contactPref === 'telefon') return `<a class="btn slim" href="${c.phone ? 'tel:' + encodeURIComponent(c.phone) : '#'}">Telefon</a>`;
-  return `<a class="btn slim" href="${c.email ? 'mailto:' + encodeURIComponent(c.email) : '#'}">Email</a>`;
+  return `<button class="btn slim" onclick="prepareClientEmail(${Number(c.id)})">Email</button>`;
 }
 function contractEmailButton(c, s = null) {
   return `<button class="btn slim" onclick="event.preventDefault();composeEmailForContract(${c?.id || 'null'},${s?.id || 'null'})">Email</button>`;
@@ -6375,6 +6409,7 @@ function openClientModal(id = null) {
   setVal('cBirthId', c.birthId || '');
   setVal('cAddress', c.address || '');
   setVal('cLeadType', c.leadType || 'direct');
+  setVal('cCommunicationTone', c.communicationTone || 'formal');
   setVal('cLeadSource', c.leadSource || '');
   setVal('cLeadDate', c.leadDate || c.createdAt || today());
   setVal('cLeadCommissionPct', c.leadCommissionPct || '');
@@ -6424,6 +6459,7 @@ function saveClient() {
     birthId: val('cBirthId').trim(),
     address: val('cAddress').trim(),
     leadType: val('cLeadType') || 'direct',
+    communicationTone: val('cCommunicationTone') === 'informal' ? 'informal' : 'formal',
     leadSource: val('cLeadType') === 'direct' ? '' : val('cLeadSource').trim(),
     leadDate: val('cLeadType') === 'direct' ? '' : val('cLeadDate') || today(),
     leadCommissionPct: val('cLeadType') === 'tipar' ? parseMoney(val('cLeadCommissionPct')) : 0,
@@ -15518,13 +15554,9 @@ function createActivityFromOpportunity() {
   if (typeof saveToast === 'function') saveToast('Aktivita naplánovaná k obchodnímu případu');
 }
 function composeEmailForClient(clientId) {
-  const c = activities_aClient(clientId),
-    email = (typeof clientEmails === 'function' ? clientEmails(c) : [c?.email]).filter(Boolean)[0] || '';
-  activities_aRecordEmail(clientId, 'Odeslán e-mail klientovi' + (email ? ' na ' + email : ' · bez uložené adresy'));
-  if (typeof persist === 'function') persist();
-  if (typeof renderAll === 'function') renderAll();
-  window.location.href = 'mailto:' + encodeURIComponent(email);
+  prepareClientEmail(clientId);
 }
+
 function composeEmailForContract(clientId, contractId = null) {
   CrmForms.prepareContract(clientId, contractId);
 }
@@ -15956,8 +15988,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.11.06-4';
-const VERSION_NOTE = 'PDF Mantra a FairLife: zdůvodnění s profilem rodiny, celé srovnání na vlastní stránce, bez opakovaného doporučení.';
+const VERSION = '2026.11.06-5';
+const VERSION_NOTE = 'Tykání/vykání podle klienta, připomenutí za 5 dní, čtyři nové dotazníky a výběr odesílatele podle správce.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';

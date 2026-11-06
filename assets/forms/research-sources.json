@@ -1,0 +1,55 @@
+{
+  "checkedAt": "2026-11-06",
+  "scope": "Podklady pro otázky, nikoli posouzení pojistitelnosti nebo nároku. Přílohy klient přikládá samostatně.",
+  "forms": [
+    {
+      "id": "pets",
+      "topics": [
+        "Druh, věk, plemeno, identifikace čipem",
+        "Zdravotní stav, léčba, očkování, veterinář",
+        "Požadovaná rizika a stávající smlouva"
+      ],
+      "sources": [
+        "https://www.petexpert.cz/vpp",
+        "https://sjednat.generaliceska.cz/pojisteni-majetku/mazlicek/?marketingCode=porsche",
+        "https://www.generaliceska.cz/documents/20183/29884/7.00.002_05-24_v06.pdf/8cc836e5-43b6-41ea-a7d2-1f085da09446"
+      ]
+    },
+    {
+      "id": "liability",
+      "topics": [
+        "Zaměstnavatel, povolání, příjem",
+        "Řízení vozidel, stroje, pracovní činnost, rozsah území",
+        "Svěřené věci, zvláštní rizika, limit a spoluúčast"
+      ],
+      "sources": [
+        "https://www.koop.cz/pojisteni/pojisteni-odpovednosti/pojisteni-odpovednosti-z-povolani"
+      ]
+    },
+    {
+      "id": "travel",
+      "topics": [
+        "Destinace, termín, účel, účastníci",
+        "Sporty, práce, zdravotní okolnosti",
+        "Storno, cena cesty, datum rezervace, požadované krytí"
+      ],
+      "sources": [
+        "https://www.allianz.cz/cs_CZ/pojisteni/cestovani/cestovni-pojisteni-allianz-travel/kratkodobe.html"
+      ]
+    },
+    {
+      "id": "claims",
+      "topics": [
+        "Pojišťovna, smlouva, číslo škody",
+        "Datum, místo, popis, dotčené osoby a věci",
+        "Nahlášení, policie, škoda a dostupné doklady"
+      ],
+      "sources": [
+        "https://www.koop.cz/navody-a-dokumenty/reseni-skody/zivotni-a-urazove-pojisteni",
+        "https://www.koop.cz/dokumenty-ke-stazeni/dokumenty-k-pojisteni-osob/formulare-a-dokumenty-pro-pojistne-udalosti",
+        "https://www.koop.cz/ver/1745835794000/file/edee/2025/04/Formular-hlaseni-pojistne-udalosti-FORM-20250428-122257.pdf",
+        "https://www.cpp.cz/klientsky-servis/reseni-skody/strucny-popis-postupu-pro-havarijni-pojisteni-107726"
+      ]
+    }
+  ]
+}

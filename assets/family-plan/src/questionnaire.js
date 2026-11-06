@@ -2,6 +2,7 @@ import {crisisTables,crisisOf} from './plan-data.js';
 import {fairLifeLogo} from './brand-assets.js';
 import {newIntake,intakeErrors,parseIntake,roles,choices,criticalQuestions,budgetLabels} from './intake-contract.js';
 const root=document.getElementById('questionnaire');let draft=newIntake(),step=0,errors=[],success=false;
+if(window.FormContext){draft.self.name=FormContext.fields.clientName||'';draft.self.birth=FormContext.fields.birth||'';draft.manual.contact=[FormContext.fields.email,FormContext.fields.phone,FormContext.fields.address].filter(Boolean).join(' · ');}
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const steps=['O vás','Vaši blízcí','Co vlastníte','Co splácíte','Důležité věci','Peníze a pomoc','Kontrola'];
 const titles=['Začneme u vás.','Kdo patří do vaší rodiny?','Co vaše rodina vlastní?','Co ještě zbývá splatit?','Pět věcí, které nesmíme přehlédnout.','Co rodina potřebuje každý den?','Ještě poslední kontrola.'];

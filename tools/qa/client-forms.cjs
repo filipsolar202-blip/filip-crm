@@ -6,7 +6,7 @@ const {chromium,launchOptions}=require('./runtime.cjs'),root=path.resolve(__dirn
  const seed=structuredClone(fixture);seed.opportunities=[];seed.activities=[];seed.deals=[];
  await ctx.addInitScript(s=>{if(location.hostname==='crm.test'&&!localStorage.getItem('filip_crm_main_v1'))localStorage.setItem('filip_crm_main_v1',JSON.stringify(s));},seed);
  const p=await ctx.newPage(),errors=[],dialogs=[];p.on('pageerror',e=>errors.push(e.message));p.on('dialog',async d=>{dialogs.push(d.message());await d.dismiss();});await p.goto('https://crm.test/FILIP-CRM.html');await p.waitForFunction(()=>typeof state==='object');
- await p.locator('[data-view="forms"]').click();assert.equal(await p.locator('.forms-grid article').count(),10);assert.equal(await p.locator('.forms-grid .badge').count(),5);
+ await p.locator('[data-view="forms"]').click();assert.equal(await p.locator('.forms-grid article').count(),10);assert.equal(await p.locator('.forms-grid .badge').count(),1);
  await p.evaluate(()=>CrmForms.prepare('life',1));const url=await p.locator('#formsLink').inputValue();assert(!url.includes('Alfa'));assert(url.includes('#request='));assert.equal(await p.evaluate(()=>state.opportunities.length),0);
  await p.locator('#formsReminder').fill('2099-01-01');await p.locator('#formsConfirm').click();const request=await p.evaluate(()=>findClient(1).clientForms[0].id);
  assert.deepEqual(await p.evaluate(()=>({n:state.opportunities.length,s:state.opportunities[0].status,last:clientLastContact(findClient(1))===state.opportunities[0].lastContactDate,rem:state.activities.filter(a=>!a.completed).length})),{n:1,s:'Opportunity',last:true,rem:1});

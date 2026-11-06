@@ -3,7 +3,7 @@ const INSURANCE_CLAIM_STATUSES = {
   reported: 'Nahlášeno', collecting: 'Kompletace', sent: 'Odesláno pojišťovně',
   review: 'Posouzení', resolved: 'Vyřízeno', rejected: 'Zamítnuto', cancelled: 'Zrušeno'
 };
-const INSURANCE_CLAIM_CATEGORIES = ['Životní', 'Úraz / děti', 'Auto', 'Majetek', 'Odpovědnost', 'Ostatní'];
+const INSURANCE_CLAIM_CATEGORIES = ['Životní', 'Úraz / děti', 'Auto', 'Majetek', 'Odpovědnost', 'Cestovní', 'Mazlíčci', 'Ostatní'];
 const INSURANCE_CLAIM_CLOSED = new Set(['resolved', 'rejected', 'cancelled']);
 const INSURANCE_CLAIM_FIELDS = ['clientId','contractId','title','category','status','incidentDate','recordedDate','reportedDate','sentDate','resolvedDate','insurer','claimNumber','description','requestedAmount','paidAmount','outcome','nextStep','nextDate'];
 const INSURANCE_CLAIM_LABELS = {clientId:'Klient',contractId:'Smlouva',title:'Název',category:'Druh pojištění',status:'Stav',incidentDate:'Datum události',recordedDate:'Datum evidence',reportedDate:'Nahlášeno pojišťovně',sentDate:'Odesláno pojišťovně',resolvedDate:'Datum uzavření',insurer:'Pojišťovna',claimNumber:'Číslo události',description:'Co se stalo',requestedAmount:'Požadované plnění',paidAmount:'Vyplaceno',outcome:'Výsledek',nextStep:'Další krok',nextDate:'Termín dalšího kroku'};
