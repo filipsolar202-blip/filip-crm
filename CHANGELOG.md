@@ -1,3 +1,9 @@
+## 2026.11.06-1
+
+- Oprava stránkování životních reportů: dlouhé texty a tabulky se dělí podle skutečného volného místa, nikoliv automaticky na poloviny. Text se přednostně dělí mezi větami.
+- Krátké pokračování s doplňujícími poznámkami využije volné místo následující stránky, pokud se vejde bez přetečení. Opakovaný tisk začíná z původního obsahu a nepřidává další fragmenty.
+- Zachovaný design Mantra i FairLife, obsah, výpočty a nabídky. Ověřeno 0–3 nabídkami, dlouhou analýzou pro rodinu, úplností textu, výškou A4 a opakovaným tiskem.
+
 ## 2026.11.05-4
 
 - Úvěrové studio v3.2 integrované přímo u klienta: předvyplnění známé identity, samostatné rozepsané kalkulace, historie, uložené návrhy a převzetí vráceného dotazníku. Přepnutí klienta ukládá poslední změny; import archivuje původní výpočet.

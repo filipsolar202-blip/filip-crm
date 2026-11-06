@@ -329,21 +329,23 @@ document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)r
 /* Paginate measured report content without changing the calculation data. */
 function paginateReport(){
  const report=document.querySelector('.report-approved');if(!report||!report.offsetWidth)return;
+ if(report._unpaginatedHTML===undefined)report._unpaginatedHTML=report.innerHTML;else report.innerHTML=report._unpaginatedHTML;
  const limit=1118;
  const splitBlock=node=>{
-  const copy=node.cloneNode(true),table=node.matches('table')?node:node.querySelector('table');
-  if(table){
-   const rows=Array.from(table.querySelectorAll('tbody>tr'));
-   if(rows.length<2)return null;
-   const copied=copy.matches('table')?copy:copy.querySelector('table'),n=Math.ceil(rows.length/2);
-   Array.from(copied.querySelectorAll('tbody>tr')).slice(0,n).forEach(e=>e.remove());rows.slice(n).forEach(e=>e.remove());return copy;
-  }
-  // Split a group between complete children whenever possible.
-  if(node.children.length>1){const n=Math.ceil(node.children.length/2);Array.from(copy.children).slice(0,n).forEach(e=>e.remove());Array.from(node.children).slice(n).forEach(e=>e.remove());return copy;}
-  if(node.children.length===1&&node.childNodes.length===1){const rest=splitBlock(node.firstElementChild);if(rest){copy.replaceChildren(rest);return copy;}}
-  // Long prose is divided at a word boundary; retain the enclosing card style.
-  const words=node.textContent.trim().split(/\s+/);if(words.length<30)return null;
-  const n=Math.ceil(words.length/2);node.textContent=words.slice(0,n).join(' ');copy.textContent=words.slice(n).join(' ');return copy;
+  // Keep the largest prefix that actually fits, rather than halving content.
+  const original=node.cloneNode(true),copy=node.cloneNode(true);
+  const table=node.matches('table')?node:node.children.length===1&&node.firstElementChild.matches('table')?node.firstElementChild:null;
+  let length,apply,min=1,boundary=n=>n;
+  if(table){const rows=Array.from(table.querySelectorAll('tbody>tr')).map(r=>r.cloneNode(true));length=rows.length;
+   apply=n=>{table.querySelector('tbody').replaceChildren(...rows.slice(0,n).map(r=>r.cloneNode(true)));const t=copy.matches('table')?copy:copy.querySelector('table');t.querySelector('tbody').replaceChildren(...rows.slice(n).map(r=>r.cloneNode(true)));};
+  }else if(node.children.length>1){const children=Array.from(original.childNodes);length=children.length;apply=n=>{node.replaceChildren(...children.slice(0,n).map(x=>x.cloneNode(true)));copy.replaceChildren(...children.slice(n).map(x=>x.cloneNode(true)));};
+  }else if(node.children.length===1&&node.childNodes.length===1){const rest=splitBlock(node.firstElementChild);if(rest){copy.replaceChildren(rest);return copy;}return null;
+  }else{const words=node.textContent.trim().split(/\s+/);if(words.length<30)return null;length=words.length;min=10;boundary=n=>{for(let i=n;i>=10;i--)if(/[.!?]$/.test(words[i-1]))return i;return n;};apply=n=>{node.textContent=words.slice(0,n).join(' ');copy.textContent=words.slice(n).join(' ');};}
+  if(length<2)return null;
+  let low=min,high=length-min,best=0;
+  while(low<=high){const n=Math.floor((low+high)/2);apply(n);if(node.closest('.report-page').getBoundingClientRect().height<=limit+1){best=n;low=n+1;}else high=n-1;}
+  if(!best){node.replaceChildren(...Array.from(original.childNodes).map(x=>x.cloneNode(true)));return null;}
+  apply(boundary(best));return copy;
  };
  const content=body=>Array.from(body.children).filter(e=>!e.matches('.eyebrow,h2,.r-sub'));
  const continuation=page=>{
@@ -360,12 +362,23 @@ function paginateReport(){
    while(page.getBoundingClientRect().height>limit+1){
     const list=content(body),last=list.at(-1);if(!last)break;
     if(list.length===1){const rest=splitBlock(last);if(rest){target.insertBefore(rest,content(target)[0]||null);continue;}page.dataset.layoutWarning='true';break;}
+    const remainder=splitBlock(last);
+    if(remainder){target.insertBefore(remainder,content(target)[0]||null);continue;}
     target.insertBefore(last,content(target)[0]||null);
     const previous=content(body).at(-1);if(previous?.matches('h3,h4'))target.insertBefore(previous,content(target)[0]||null);
    }
    if(!content(target).length)next.remove();
   }
   page=page.nextElementSibling;
+ }
+ // A short continuation of notes can share the following section's free space.
+ for(const tail of Array.from(report.children)){
+  const title=tail.querySelector('.report-body>h2'),next=tail.nextElementSibling;
+  if(!next||!title?.textContent.endsWith(' · pokračování'))continue;
+  const body=tail.querySelector('.report-body'),blocks=content(body);
+  if(!blocks.length||blocks.map(x=>x.textContent).join('').length>600||!blocks.every(x=>x.matches('h3,h4,.r-note,.r-card,.r-analysis')))continue;
+  const target=next.querySelector('.report-body');blocks.forEach(x=>target.append(x));
+  if(next.getBoundingClientRect().height<=limit+1)tail.remove();else blocks.forEach(x=>body.append(x));
  }
  const pages=Array.from(report.querySelectorAll(':scope > .report-page'));
  pages.forEach((p,i)=>{const footer=p.querySelector('.report-bottom');footer.textContent=(i+1)+' / '+pages.length;const eyebrow=p.querySelector('.eyebrow');eyebrow.textContent=eyebrow.textContent.replace(/^\d+\s*\//,String(i+1).padStart(2,'0')+' /');});
