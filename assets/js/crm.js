@@ -458,7 +458,7 @@ async function copyClientMailRich(index) {
 }
 function showClientMailDrafts() {
   const mac=clientMailMacAvailable();
-  crmExtraModal('clientMailDraft','Připravený e-mail',clientMailDrafts.map((d,i)=>`<div class="mini-card"><p><b>Od: ${esc(d.from)}</b><br>Komu: ${esc(d.to||'doplníte v poště')}${d.bcc.length?` · skrytá kopie: ${num(d.bcc.length)} příjemců`:''}</p><p>${esc(d.subject)}</p><div class="actions">${mac?`<a class="btn primary" href="${esc(clientMailNativeUrl(d))}">Otevřít Apple Mail na Macu</a>`:''}<a class="btn ${mac?'':'primary'}" href="${esc(clientMailFallbackUrl(d))}">Běžná pošta – účet vyberte ručně</a>${d.body?`<button class="btn" onclick="copyClientMailRich(${i})">Kopírovat formátovaný text</button>`:''}<button class="btn" onclick="copyText(clientMailDrafts[${i}].from,'Adresa odesílatele')">Kopírovat odesílatele</button></div></div>`).join('')+`${clientMailDrafts.length===1&&clientMailDrafts[0].clientId&&!clientMailDrafts[0].externalTracking?`<div class="form-grid"><label class="field">Datum skutečného odeslání<input id="mailPreparedDate" type="date" value="${today()}" onchange="updateEmailReminder('mailPrepared')"></label><label class="field">Připomenout<input id="mailPreparedReminder" type="date" value="${emailReminderDate(today())}" oninput="this.dataset.manual='1'"></label></div><button class="btn primary" onclick="confirmPreparedClientMail()">Potvrdit skutečné odeslání</button>`:''}<p class="note">${mac?'Pomocník na Macu vybere uvedený účet. Při prvním použití povolte ovládání Mailu.':'Na iPhonu v rozepsané zprávě rozbalte pole Kopie/skrytá, Od a v poli Od vyberte uvedenou adresu.'} Běžné otevření pošty neumí vynutit odesílatele; před odesláním jej zkontrolujte. Nic se neodesílá automaticky.</p>${mac?'<details><summary>Pomocník není na tomto Macu nainstalovaný?</summary><p>Stáhněte ZIP, rozbalte jej, přesuňte FILIP CRM Mail do Aplikací a jednou otevřete. Při otevření e-mailu pak prohlížeči povolte spuštění pomocníka.</p><a class="btn" href="assets/downloads/FILIP-CRM-Mail.zip?v=2026.11.06-9" download>Stáhnout pomocníka pro Mac</a></details>':''}`);
+  crmExtraModal('clientMailDraft','Připravený e-mail',clientMailDrafts.map((d,i)=>`<div class="mini-card"><p><b>Od: ${esc(d.from)}</b><br>Komu: ${esc(d.to||'doplníte v poště')}${d.bcc.length?` · skrytá kopie: ${num(d.bcc.length)} příjemců`:''}</p><p>${esc(d.subject)}</p><div class="actions">${mac?`<a class="btn primary" href="${esc(clientMailNativeUrl(d))}">Otevřít Apple Mail na Macu</a>`:''}<a class="btn ${mac?'':'primary'}" href="${esc(clientMailFallbackUrl(d))}">Běžná pošta – účet vyberte ručně</a>${d.body?`<button class="btn" onclick="copyClientMailRich(${i})">Kopírovat formátovaný text</button>`:''}<button class="btn" onclick="copyText(clientMailDrafts[${i}].from,'Adresa odesílatele')">Kopírovat odesílatele</button></div></div>`).join('')+`${clientMailDrafts.length===1&&clientMailDrafts[0].clientId&&!clientMailDrafts[0].externalTracking?`<div class="form-grid"><label class="field">Datum skutečného odeslání<input id="mailPreparedDate" type="date" value="${today()}" onchange="updateEmailReminder('mailPrepared')"></label><label class="field">Připomenout<input id="mailPreparedReminder" type="date" value="${emailReminderDate(today())}" oninput="this.dataset.manual='1'"></label></div><button class="btn primary" onclick="confirmPreparedClientMail()">Potvrdit skutečné odeslání</button>`:''}<p class="note">${mac?'Pomocník na Macu vybere uvedený účet. Při prvním použití povolte ovládání Mailu.':'Na iPhonu v rozepsané zprávě rozbalte pole Kopie/skrytá, Od a v poli Od vyberte uvedenou adresu.'} Běžné otevření pošty neumí vynutit odesílatele; před odesláním jej zkontrolujte. Nic se neodesílá automaticky.</p>${mac?'<details><summary>Pomocník není na tomto Macu nainstalovaný?</summary><p>Stáhněte ZIP, rozbalte jej, přesuňte FILIP CRM Mail do Aplikací a jednou otevřete. Při otevření e-mailu pak prohlížeči povolte spuštění pomocníka.</p><a class="btn" href="assets/downloads/FILIP-CRM-Mail.zip?v=2026.11.07-1" download>Stáhnout pomocníka pro Mac</a></details>':''}`);
 }
 
 function clientSenderEmail(clientOrId) {
@@ -1517,7 +1517,13 @@ function invType(r) {
 }
 function invProductType(r) {
   const raw = String(r?.['Typ produktu'] || r?.['Produktový typ'] || '').trim();
-  if (raw) return raw;
+  // Older fund editors stored the fund name as its product category.
+  // 'Retail Parks' describes the assets, not a retail/OPF product.
+  if (raw && norm(raw) !== norm(r?.Fond || '')) return raw;
+  if (raw) {
+    const isin = norm(invIsin(r)), master = isin && state.fundValues?.['isin|' + isin];
+    if (master?.area === 'fki') return 'FKI';
+  }
   const f = norm((r?.Fond || '') + ' ' + invCompany(r));
   if (f.includes('vigo') || f.includes('public') || f.includes('wood opf') || f.includes('opf')) return 'Retail / OPF';
   if (f.includes('dip')) return 'DIP';
@@ -5599,7 +5605,7 @@ function liquidity_oldLoadFk() {
     fv = fundNavValue(key,f?.isin);
   setVal('fkFundCompany', fv.company || f?.company || '');
   setVal('fkFundName', fv.fond || f?.product || '');
-  setVal('fkFundProduct', fv.product || f?.kind || 'FK');
+  setVal('fkFundProduct', 'FKI');
   setVal('fkFundIsin', fv.isin || f?.isin || '');
   setVal('fkFundType', fv.typ || f?.typ || '');
   setVal('fkFundNav', fv.nav || '');
@@ -11034,6 +11040,11 @@ function commissions_fkKey(isin, fond, company, typ) {
   return commissions_cNorm(isin) ? ['isin', commissions_cNorm(isin)].join('|') : ['fond', commissions_cNorm(cleanInvFundName(fond, company)), commissions_cNorm(typ)].join('|');
 }
 function commissions_applyFkFundMerge(keys, newKey, data) {
+  data = {...data, product:'FKI'};
+  // Include the old ordinary-investment catalogue entry for the same ISIN.
+  Object.entries(state.fundValues || {}).forEach(([key,value]) => {
+    if (data.isin && commissions_cNorm(value?.isin) === commissions_cNorm(data.isin)) keys.add(key);
+  });
   if (data.nav > 0) {
     const quote = publishFundNav(newKey,data.nav,data.date,{...data,area:'fki'});
     data = {...data,nav:quote.nav,date:quote.date,_navUpdatedAt:quote.updatedAt};
@@ -13666,7 +13677,7 @@ function loadFkRecordFundDefaults() {
   if (!f) return;
   setVal('fkRecCompany', fv.company || f.company || '');
   setVal('fkRecFund', fv.fond || f.product || '');
-  setVal('fkRecProduct', fv.product || 'FKI');
+  setVal('fkRecProduct', 'FKI');
   setVal('fkRecIsin', fv.isin || f.isin || '');
   setVal('fkRecType', fv.typ || f.typ || '');
   if (fv.nav) setVal('fkRecNav', fv.nav);
@@ -16001,8 +16012,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.11.06-9';
-const VERSION_NOTE = 'Výpovědi aut a majetku u smluv: PDF, pokyny pojišťoven, evidence podání, kontrola a navazující obchod.';
+const VERSION = '2026.11.07-1';
+const VERSION_NOTE = 'Oprava zařazení fondů: název Retail Parks nemění FKI na běžné investice; sjednocení katalogu podle ISIN zachovává klientské pozice.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
