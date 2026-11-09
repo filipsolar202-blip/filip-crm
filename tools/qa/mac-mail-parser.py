@@ -5,7 +5,7 @@ source=source.replace('on «event GURLGURL» incomingURL','on decodeDraft(incomi
 a=source.index('  tell application "Mail"');b=source.index(' on error errorText',a)
 source=source[:a]+'  if class of blindAddresses is not list then error "BCC must be a native AppleScript list"\n  return fromAddress & "|" & toAddress & "|" & titleText\n'+source[b:]
 a=source.index('  display dialog errorText');b=source.index('\n end try',a);source=source[:a]+'  error errorText'+source[b:]
-source=source[:source.index('\non run')]+ '\non run args\n return my decodeDraft(item 1 of args)\nend run\n'
+source=source[:source.index('\non run')]+ '\non makePDF(d)\n return \"/private/tmp/test.pdf\"\nend makePDF\n'+ '\non run args\n return my decodeDraft(item 1 of args)\nend run\n'
 with tempfile.TemporaryDirectory(prefix='crm-mail-qa-') as directory:
  p=pathlib.Path(directory)/'parser.applescript';p.write_text(source)
  def parse(d):
@@ -14,6 +14,6 @@ with tempfile.TemporaryDirectory(prefix='crm-mail-qa-') as directory:
  data={'from':'f.solar@fair-life.cz','to':'test@example.invalid','subject':'Žluťoučký test','body':'Ahoj,\nzkouška.','bcc':['copy@example.invalid'],'pdfDocument':None}
  result=parse(data);assert result.returncode==0,result.stderr
  assert result.stdout.strip()=='f.solar@fair-life.cz|test@example.invalid|Žluťoučký test'
- for patch in [{'from':'filip.solar@mantra-finance.cz'}]:assert parse(dict(data,**patch)).returncode==0
+ for patch in [{'from':'filip.solar@mantra-finance.cz'},{'pdfDocument':{'name':'Test.pdf','html':'<p>Test</p>'}}]:assert parse(dict(data,**patch)).returncode==0
  for patch in [{'from':'wrong@example.invalid'},{'subject':'Test\nBcc: wrong@example.invalid'},{'bcc':['a@example.invalid\nBcc: b@example.invalid']}]:assert parse(dict(data,**patch)).returncode!=0
 print('PASS Mac helper URL decoding, UTF-8, two allowed senders, header rejection. Mail never opened.')
