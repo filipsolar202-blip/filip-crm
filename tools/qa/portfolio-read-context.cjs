@@ -40,5 +40,15 @@ const {chromium,launchOptions}=require('./runtime.cjs'),root=path.resolve(__dirn
  assert.deepEqual(result.cached,result.original,'render indexes preserve all uncached valuation/ownership/source/pending results');
  assert.deepEqual(result.original.owners,['1','1','2','','','1','','','2','1'],'ambiguous identity and explicit unassigned producer records stay isolated');
  result.coverage.forEach(row=>assert.deepEqual(row.scoped,row.direct));assert.deepEqual(result.dateChange,[31]);assert.equal(result.before,115);assert.equal(result.after,130);assert.equal(result.invalidated,140);assert.equal(result.replaced,150);assert.equal(result.alternate,160);assert.equal(result.throws,true);assert.equal(result.clean,true);assert.deepEqual(errors,[]);
+ const legacy=await page.evaluate(()=>{
+  state=normalizeState({...def(),clients:[{id:1,name:'Test Anna',birthId:'0151110047'},{id:2,name:'Test Eva',birthId:'0251110047'}],investmentRecords:[]});
+  const row={Investor:'Test Anna','RČ':'151110047',ClientID:'RC_151110047',Fond:'Test fund','rp.ISIN':'CZQA00000001','Typ produktu':'FKI','Typ transakce':'Platba','Čistá investice':200000,'Datum připsání platby':'2024-10-30','Datum emise':'2025-02-06'};
+  state.investmentRecords=[row];
+  const check=()=>({owner:portfolioRecordClientId(row),positions:fkiPortfolio_fkiRecordsForClientKey(1,invPositionKey(row)).length});
+  const direct=check(),cached=withPortfolioReadContext(check);
+  row.Investor='Test Eva';const conflict=withPortfolioReadContext(()=>portfolioRecordClientId(row));
+  return {direct,cached,conflict};
+ });
+ assert.deepEqual(legacy.direct,{owner:'1',positions:1});assert.deepEqual(legacy.cached,legacy.direct);assert.equal(legacy.conflict,'');
  console.log('PASS portfolio read context: equivalence, identity ambiguity, client/source isolation, shared NAV tie-break, pending principal, invalidation, state replacement, alternate state and exception cleanup.');
 }finally{await browser.close();}})().catch(error=>{console.error(error);process.exitCode=1;});

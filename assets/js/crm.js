@@ -458,7 +458,7 @@ async function copyClientMailRich(index) {
 }
 function showClientMailDrafts() {
   const mac=clientMailMacAvailable();
-  crmExtraModal('clientMailDraft','Připravený e-mail',clientMailDrafts.map((d,i)=>`<div class="mini-card"><p><b>Od: ${esc(d.from)}</b><br>Komu: ${esc(d.to||'doplníte v poště')}${d.bcc.length?` · skrytá kopie: ${num(d.bcc.length)} příjemců`:''}</p><p>${esc(d.subject)}</p><div class="actions">${mac?`<a class="btn primary" href="${esc(clientMailNativeUrl(d))}">Otevřít Apple Mail na Macu</a>`:''}<a class="btn ${mac?'':'primary'}" href="${esc(clientMailFallbackUrl(d))}">Běžná pošta – účet vyberte ručně</a>${d.body?`<button class="btn" onclick="copyClientMailRich(${i})">Kopírovat formátovaný text</button>`:''}<button class="btn" onclick="copyText(clientMailDrafts[${i}].from,'Adresa odesílatele')">Kopírovat odesílatele</button></div></div>`).join('')+`${clientMailDrafts.length===1&&clientMailDrafts[0].clientId&&!clientMailDrafts[0].externalTracking?`<div class="form-grid"><label class="field">Datum skutečného odeslání<input id="mailPreparedDate" type="date" value="${today()}" onchange="updateEmailReminder('mailPrepared')"></label><label class="field">Připomenout<input id="mailPreparedReminder" type="date" value="${emailReminderDate(today())}" oninput="this.dataset.manual='1'"></label></div><button class="btn primary" onclick="confirmPreparedClientMail()">Potvrdit skutečné odeslání</button>`:''}<p class="note">${mac?'Pomocník na Macu vybere uvedený účet. Při prvním použití povolte ovládání Mailu.':'Na iPhonu v rozepsané zprávě rozbalte pole Kopie/skrytá, Od a v poli Od vyberte uvedenou adresu.'} Běžné otevření pošty neumí vynutit odesílatele; před odesláním jej zkontrolujte. Nic se neodesílá automaticky.</p>${mac?'<details><summary>Pomocník není na tomto Macu nainstalovaný?</summary><p>Stáhněte ZIP, rozbalte jej, přesuňte FILIP CRM Mail do Aplikací a jednou otevřete. Při otevření e-mailu pak prohlížeči povolte spuštění pomocníka.</p><a class="btn" href="assets/downloads/FILIP-CRM-Mail.zip?v=2026.11.09-3" download>Stáhnout pomocníka pro Mac</a></details>':''}`);
+  crmExtraModal('clientMailDraft','Připravený e-mail',clientMailDrafts.map((d,i)=>`<div class="mini-card"><p><b>Od: ${esc(d.from)}</b><br>Komu: ${esc(d.to||'doplníte v poště')}${d.bcc.length?` · skrytá kopie: ${num(d.bcc.length)} příjemců`:''}</p><p>${esc(d.subject)}</p><div class="actions">${mac?`<a class="btn primary" href="${esc(clientMailNativeUrl(d))}">Otevřít Apple Mail na Macu</a>`:''}<a class="btn ${mac?'':'primary'}" href="${esc(clientMailFallbackUrl(d))}">Běžná pošta – účet vyberte ručně</a>${d.body?`<button class="btn" onclick="copyClientMailRich(${i})">Kopírovat formátovaný text</button>`:''}<button class="btn" onclick="copyText(clientMailDrafts[${i}].from,'Adresa odesílatele')">Kopírovat odesílatele</button></div></div>`).join('')+`${clientMailDrafts.length===1&&clientMailDrafts[0].clientId&&!clientMailDrafts[0].externalTracking?`<div class="form-grid"><label class="field">Datum skutečného odeslání<input id="mailPreparedDate" type="date" value="${today()}" onchange="updateEmailReminder('mailPrepared')"></label><label class="field">Připomenout<input id="mailPreparedReminder" type="date" value="${emailReminderDate(today())}" oninput="this.dataset.manual='1'"></label></div><button class="btn primary" onclick="confirmPreparedClientMail()">Potvrdit skutečné odeslání</button>`:''}<p class="note">${mac?'Pomocník na Macu vybere uvedený účet. Při prvním použití povolte ovládání Mailu.':'Na iPhonu v rozepsané zprávě rozbalte pole Kopie/skrytá, Od a v poli Od vyberte uvedenou adresu.'} Běžné otevření pošty neumí vynutit odesílatele; před odesláním jej zkontrolujte. Nic se neodesílá automaticky.</p>${mac?'<details><summary>Pomocník není na tomto Macu nainstalovaný?</summary><p>Stáhněte ZIP, rozbalte jej, přesuňte FILIP CRM Mail do Aplikací a jednou otevřete. Při otevření e-mailu pak prohlížeči povolte spuštění pomocníka.</p><a class="btn" href="assets/downloads/FILIP-CRM-Mail.zip?v=2026.11.09-4" download>Stáhnout pomocníka pro Mac</a></details>':''}`);
 }
 
 function clientSenderEmail(clientOrId) {
@@ -10273,10 +10273,18 @@ function fkiPortfolio_recordKey(r) {
   return typeof invRecordKey === 'function' ? invRecordKey(r) : JSON.stringify(r);
 }
 function fkiPortfolio_fkiRecordsForClientKey(clientId, key) {
-  return (state.investmentRecords || []).filter(r => portfolioRecordClientId(r) === String(clientId) && invPositionKey(r) === key);
+  return portfolioReadOwnedRecords(clientId).filter(r => !r.portfolioReplacedBy && invPositionKey(r) === key);
 }
 function fkiPortfolio_fkiProposalRows(clientId) {
   return clientOpenOpportunities(clientId).filter(o => opportunityArea(o) === 'fki' || o.category === 'FKI');
+}
+// Legacy spreadsheets dropped a leading zero from birth IDs. Accept only a
+// unique existing zero-prefixed client whose name independently agrees.
+function portfolioRecordStrongMatches(record, strong, exact, lookup) {
+  if (exact && [...exact].length) return exact;
+  if (!/^\d{9}$/.test(strong)) return exact || [];
+  const candidates = [...(lookup('0' + strong) || [])];
+  return candidates.length === 1 && clientMatchesName(candidates[0], invInvestor(record)) ? candidates : exact || [];
 }
 function portfolioRecordClientId(record) {
   if (portfolioReadContext?.state === state) {
@@ -10287,8 +10295,8 @@ function portfolioRecordClientId(record) {
     if (Object.prototype.hasOwnProperty.call(record || {},'_providerClientId')) {
       owner = record._providerClientId != null && index.ids.has(String(record._providerClientId)) ? String(record._providerClientId) : '';
     } else if (strong) {
-      const matches = index.strong.get(strong);
-      owner = matches?.size === 1 ? String(matches.values().next().value.id) : '';
+      const matches = portfolioRecordStrongMatches(record, strong, index.strong.get(strong), value => index.strong.get(value));
+      owner = matches && [...matches].length === 1 ? String([...matches][0].id) : '';
     } else if (index.ids.has(invClientId(record))) {
       owner = String(index.ids.get(invClientId(record)).id);
     } else {
@@ -10307,7 +10315,7 @@ function portfolioRecordClientId(record) {
   }
   const strong = normalizeStrongId(invBirthId(record)) || (/^RC[_-]/i.test(invClientId(record)) ? normalizeStrongId(invClientId(record).replace(/^RC[_-]?/i,'')) : '');
   if (strong) {
-    const matches = clients.filter(c => normalizeStrongId(c.birthId) === strong);
+    const matches = [...portfolioRecordStrongMatches(record, strong, clients.filter(c => normalizeStrongId(c.birthId) === strong), value => clients.filter(c => normalizeStrongId(c.birthId) === value))];
     return matches.length === 1 ? String(matches[0].id) : '';
   }
   const direct = clients.find(c => String(c.id) === invClientId(record));
@@ -13911,6 +13919,9 @@ function renderInvestmentFunds(funds) {
   }).join('')}</tbody></table></div>${rows.some(f => f.key === selectedInvestmentFundKey) ? renderInvestmentFundClients(selected) : ''}</div>`).join('') || '<div class="note">Zatím tu nejsou investiční fondy.</div>'}`;
 }
 function renderInvestments() {
+  return withPortfolioReadContext(renderInvestmentsContent);
+}
+function renderInvestmentsContent() {
   const list = byId('investmentClientList'),
     detail = byId('investmentDetail');
   if (!list || !detail) return;
@@ -14345,6 +14356,9 @@ function liquidity_prevFkiCard(row) {
   return `<div class="investment-detail-head"><div class="avatar">${esc(initials(c.name))}</div><div><div class="eyebrow">FK karta klienta</div><h2>${esc(clientName(c))}</h2><div class="chips"><span class="badge purple">${num(items.length)} fondů</span><span class="badge ${stats.readyCount ? 'green' : 'red'}">${num(stats.readyCount)}/${num(stats.total)} k odkupu</span>${stats.next ? `<span class="badge red">nejbližší ${liquidity_fmtDate(stats.next)}</span>` : ''}<span class="chip">${esc(row.providers.join(' · ') || 'bez společnosti')}</span>${locked.length ? `<span class="badge orange">${num(locked.length)} zamčeno mimo AUM</span>` : '<span class="badge green">AUM aktivní</span>'}</div></div><div class="actions"><button class="btn slim" onclick="selectedClientId=${c.id};showView('clients');clientSection='portfolio';renderClients()">Klient</button><button class="btn slim" onclick="setFkMode('funds')">Fondy</button><button class="btn slim" onclick="openFkRecordModal(${c.id})">+ FKI záznam</button><button class="btn slim primary" onclick="openInvestmentScenarioModal(${c.id},'FKI')">+ Nová investice</button></div></div><div class="investment-summary"><div class="metric"><span class="note">Aktuálně vloženo netto</span><b>${money(invested)}</b></div><div class="metric"><span class="note">Aktuální hodnota</span><b>${money(aum)}</b></div><div class="metric"><span class="note">Aktuální výnos</span><b class="${gain >= 0 ? 'green' : 'red'}">${money(gain)}</b><small>${gainPct.toFixed(1)} %</small></div><div class="metric"><span class="note">Odkupy připravené</span><b class="${stats.readyCount ? 'green' : 'red'}">${num(stats.readyCount)} / ${num(stats.total)}</b><small>${stats.next ? 'další ' + liquidity_fmtDate(stats.next) : 'bez čekajícího termínu'}</small></div></div>${renderInvestmentAllocation(items, aum)}<div class="mini-card"><div class="toolbar"><div><div class="eyebrow">Detail investičních fondů</div><h3>Fondy klienta, daňový test a odkup</h3></div><button class="btn" onclick="openFkClientReportModal(${c.id})">Report FKI + investice</button></div><div class="fki-work-list">${items.sort((a, b) => b.rawAmount - a.rawAmount).map(x => liquidity_fkiCard(x, c.id)).join('') || '<p class="note">Klient zatím nemá FKI fondy.</p>'}</div></div>`;
 }
 function renderFk() {
+  return withPortfolioReadContext(renderFkContent);
+}
+function renderFkContent() {
   const list = liquidity_q('fkClientList'),
     detail = liquidity_q('fkDetail');
   if (!list || !detail) return;
@@ -16012,8 +16026,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.11.09-3';
-const VERSION_NOTE = 'Výpovědi: dopisové PDF, adresy pojišťoven, datum ukončení a nesouhlas s navýšením. Avant: ochrana proti duplicitám při ztracené počáteční nule RČ.';
+const VERSION = '2026.11.09-4';
+const VERSION_NOTE = 'Obnovené nákupní pozice u starších záznamů s chybějící počáteční nulou RČ. Rychlejší přepínání klientů v FKI a Investicích; hodnoty a zámky zachovány.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
