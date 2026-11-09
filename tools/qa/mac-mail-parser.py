@@ -11,7 +11,7 @@ with tempfile.TemporaryDirectory(prefix='crm-mail-qa-') as directory:
  def parse(d):
   payload=base64.b64encode(json.dumps(d,ensure_ascii=False).encode()).decode()
   return subprocess.run(['osascript',str(p),'filipcrm-mail://compose?payload='+payload],text=True,capture_output=True)
- data={'from':'f.solar@fair-life.cz','to':'test@example.invalid','subject':'Žluťoučký test','body':'Ahoj,\nzkouška.','bcc':['copy@example.invalid']}
+ data={'from':'f.solar@fair-life.cz','to':'test@example.invalid','subject':'Žluťoučký test','body':'Ahoj,\nzkouška.','bcc':['copy@example.invalid'],'pdfDocument':None}
  result=parse(data);assert result.returncode==0,result.stderr
  assert result.stdout.strip()=='f.solar@fair-life.cz|test@example.invalid|Žluťoučký test'
  for patch in [{'from':'filip.solar@mantra-finance.cz'}]:assert parse(dict(data,**patch)).returncode==0
