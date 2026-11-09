@@ -48,7 +48,7 @@ const fixture = {
     await page.goto('https://crm.test/FILIP-CRM.html');
     await page.waitForFunction(()=>typeof providerImportBuildPlan==='function'&&typeof providerImportOpenFile==='function');
     const reset = async (patch={}) => page.evaluate(seed=>{
-      state=normalizeState(seed);clientInvestmentSummaryCache.clear();clientPensionSummaryCache.clear();clientDirectoryStatsCache=null;
+      state=normalizeState(seed);clientDirectoryStatsCache=null;
       persist();if(document.getElementById('providerImportModal'))closeModal('providerImportModal');
     },{...structuredClone(fixture),...patch});
     const snapshot = () => page.evaluate(()=>JSON.stringify(state));
@@ -126,6 +126,41 @@ const fixture = {
     const old=await build([avant({'Aktuální hodnota investice':105000,'Poslední schválená hodnota do':'2026-01-31'})],{fileName:'old.xlsx',reportDate:'2026-02-01'});
     assert.notEqual(old.entries[0].status,'auto','an older valuation cannot silently replace a newer accepted one');
     assert.equal((await commit(old)).ok,true);assert.equal((await records())[0].value,125000);
+
+    // Per-field decisions retain the other differences and survive a repeated report.
+    await reset({investmentRecords:[legacy({Pokyn:'1001'})]});
+    const partial=await build([avant({'Čistá investice':105000})]);
+    assert.equal((await commit(partial)).ok,true);
+    const decideField=(action,fields)=>page.evaluate(({bid,eid,action,fields})=>providerImportResolve(bid,eid,action,fields),{bid:partial.id,eid:partial.entries[0].id,action,fields});
+    assert.equal((await decideField('accept',['amount'])).ok,true);
+    assert.equal((await records())[0].raw['Čistá investice'],105000);
+    assert.equal((await records())[0].value,130000);
+    assert.equal(await page.evaluate(()=>state.providerImports[0].entries[0].status),'pending');
+    assert.equal((await decideField('accept',['current'])).ok,false,'valuation cannot be split');
+    assert.equal((await decideField('dismiss',['current','nav','valuationDate'])).ok,true);
+    assert.equal(await page.evaluate(()=>state.providerImports[0].entries[0].status),'reviewed');
+    assert.equal((await records())[0].value,130000,'dismiss never deletes or overwrites the investment');
+    await page.reload();
+    const remembered=await build([avant({'Čistá investice':105000})]);
+    assert.equal(remembered.entries[0].status,'reviewed');
+    const changedAgain=await build([avant({'Čistá investice':105000,'Aktuální hodnota investice':140000})]);
+    assert.equal(changedAgain.entries[0].status,'pending','changed report must be reviewed again');
+
+    // The preview stages decisions without changing CRM; safe rows stay collapsed.
+    await reset({investmentRecords:[legacy({Pokyn:'1001'})]});
+    await openWorkbook([avant({'Čistá investice':105000})]);
+    const beforeChoices=await records();
+    await page.locator('[data-group="amount"]').selectOption('accept');
+    await page.locator('[data-group="valuation"]').selectOption('keep');
+    assert.deepEqual(await records(),beforeChoices,'preview choices do not write portfolio');
+    await page.locator('#providerImportCommitButton').click();
+    assert.equal((await records())[0].raw['Čistá investice'],105000);
+    assert.equal((await records())[0].value,130000);
+    assert.equal(await page.locator('#providerImportBody .provider-review-entry').count(),0);
+    await openWorkbook([avant({'Čistá investice':105000})]);
+    assert.equal(await page.locator('#providerImportBody .provider-review-entry').count(),0,'remembered rows are collapsed');
+    await page.getByLabel(/Zobrazit i bezpečné/).check();
+    assert.equal(await page.locator('#providerImportBody .provider-review-entry').count(),1);
 
     // 4. Strong identity wins over names; unresolved and ambiguous owners never create clients/assets.
     await reset({clients:[...fixture.clients,{id:3,name:'QA Alfa Investor',birthId:'9203030009'}]});

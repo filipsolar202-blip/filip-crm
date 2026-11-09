@@ -248,8 +248,8 @@
     batch.entries.forEach(entry=>{
       if(entry.targetKey&&!entry.incoming.missing&&targetCounts.get(canonical(entry.targetKey))>1){entry.status='pending';entry.canAccept=false;entry.reason='Více řádků výpisu míří na stejnou pozici CRM. Nejprve ověř jednotlivé pokyny.';}
       entry.inputFingerprint=hash({provider:batch.provider,clientId:entry.clientId,incoming:sourceComparable(entry.incoming)});
-      const old=(source.providerImports||[]).flatMap(b=>b.entries||[]).find(e=>e.inputFingerprint===entry.inputFingerprint&&['kept','accepted'].includes(e.status)&&e.targetHash===entry.targetHash&&e.contextHash===entry.contextHash);
-      if(old&&(old.status==='kept'||entry.status==='unchanged')){entry.status=old.status;entry.reason=old.status==='kept'?'U stejného údaje a nezměněné pozice bylo dříve zvoleno ponechání CRM.':'Stejná data byla již přijata.';entry.resolvedAt=old.resolvedAt;}
+      const old=(source.providerImports||[]).flatMap(b=>b.entries||[]).find(e=>e.inputFingerprint===entry.inputFingerprint&&(['kept','accepted','dismissed','reviewed'].includes(e.status)||e.status==='pending'&&Object.keys(e.fieldDecisions||{}).length>0)&&e.targetHash===entry.targetHash&&e.contextHash===entry.contextHash);
+      if(old&&(old.status!=='accepted'||entry.status==='unchanged')){entry.status=old.status;entry.reason=old.status==='pending'?entry.reason+' Již provedená rozhodnutí jsou zachována.':'Stejné údaje u nezměněné pozice již byly zkontrolovány. Rozhodnutí je zachováno v historii.';entry.resolvedAt=old.resolvedAt;entry.fieldDecisions=copy(old.fieldDecisions||{});}
     });
     return batch;
   }
@@ -296,7 +296,7 @@
     if(row.transactionType==='Odkup'&&(fields.has('amount')||valuationChanged)){record.providerValuation=record.providerValuation||{provider:batch.provider,date:row.valuationDate};record.providerValuation.redemptionValue=Math.abs(number(record['Čistá investice'])||0);}
     record._providerClientId=client.id;if(batch.provider==='avant')record._providerTransactionKey=row.key;
     record._providerSource=sourceSnapshot(row,batch.provider);record._providerImportedAt=timestamp();record._updatedAt=timestamp();
-    if(kind==='record'&&!manual(record,kind))record.fkiValuationMode='statement';
+    if(kind==='record'&&valuationChanged&&!manual(record,kind))record.fkiValuationMode='statement';
     const nextTarget=targetFor(record,kind);if(kind==='record')remapReferences(oldKey,nextTarget.key,batch);
     entry.targetKey=nextTarget;entry.recordKey=kind==='record'?nextTarget.key:'';entry.targetHash=hash(record);entry.contextHash=contextHash(state,entry.clientId,entry.isin,record);entry.updatedAt=timestamp();
     return record;
@@ -313,22 +313,46 @@
     const existing=(state.providerImports||[]).find(b=>b.fingerprint===batch.fingerprint);
     if(batch.duplicateOf&&existing&&existing.appliedStateSignature===signature(state))return {ok:true,batchId:existing.id,applied:0,duplicate:true};
     if(existing&&!same(existing.id,batch.replacesBatchId))return {ok:false,error:'Výpis již byl uložen. Načti náhled znovu.'};
-    return atomic(()=>{const saved=copy(batch);let applied=0;for(const entry of saved.entries){if(entry.status==='auto'){applyEntry(entry,saved);applied++;}}saved.updatedAt=timestamp();saved.appliedStateSignature=signature(state);delete saved.sourceSignature;delete saved.duplicateOf;state.providerImports=state.providerImports||[];const index=state.providerImports.findIndex(b=>same(b.id,saved.id));if(index>=0)state.providerImports[index]=saved;else state.providerImports.push(saved);return {ok:true,batchId:saved.id,applied,duplicate:false};});
+    return atomic(()=>{const saved=copy(batch);let applied=0;for(const entry of saved.entries){if(entry.plannedDecisions?.length){for(const d of entry.plannedDecisions)applied+=decide(entry,saved,d.action,d.fields);delete entry.plannedDecisions;}else if(entry.status==='auto'){applyEntry(entry,saved);applied++;}}saved.updatedAt=timestamp();saved.appliedStateSignature=signature(state);delete saved.sourceSignature;delete saved.duplicateOf;state.providerImports=state.providerImports||[];const index=state.providerImports.findIndex(b=>same(b.id,saved.id));if(index>=0)state.providerImports[index]=saved;else state.providerImports.push(saved);return {ok:true,batchId:saved.id,applied,duplicate:false};});
+  }
+  function providerImportDecisionGroups(entry) {
+    if(entry.newPosition||!entry.changes?.length)return [{key:'entry',label:'Celá položka',fields:[]}];
+    const groups=[],valuation=['current','nav','valuationDate'];
+    for(const c of entry.changes){
+      const key=valuation.includes(c.field)?'valuation':c.field;
+      if(groups.some(g=>g.key===key))continue;
+      groups.push({key,label:key==='valuation'?'Ocenění (hodnota, NAV a datum)':c.label||c.field,fields:key==='valuation'?valuation.filter(f=>!empty(entry.incoming[f])):[c.field]});
+    }
+    return groups;
+  }
+  function decide(entry,batch,action,selectedFields) {
+    if(!['accept','keep','dismiss'].includes(action))throw new Error('Neznámé rozhodnutí.');
+    if(action==='accept'&&!entry.canAccept)throw new Error('Tato položka vyžaduje ruční doplnění nebo opravu vazby v CRM.');
+    const groups=providerImportDecisionGroups(entry),decisions=entry.fieldDecisions||{};
+    if(Array.isArray(selectedFields)){
+      if(!selectedFields.length||selectedFields.some(f=>!Object.hasOwn(LABELS,f)))throw new Error('Vyber platné údaje importu.');
+      if(entry.newPosition)throw new Error('Nová transakce se přijímá jako celek.');
+      for(const group of groups)if(group.fields.some(f=>selectedFields.includes(f))&&!group.fields.every(f=>selectedFields.includes(f)))throw new Error('Aktuální hodnotu, NAV a datum ocenění přijmi společně.');
+    }
+    const chosen=groups.filter(g=>!decisions[g.key]&&(!Array.isArray(selectedFields)||g.fields.some(f=>selectedFields.includes(f))));
+    if(!chosen.length)return 0;
+    if(action==='accept')applyEntry(entry,batch,entry.newPosition?undefined:chosen.flatMap(g=>g.fields));
+    const at=timestamp();entry.fieldDecisions=decisions;
+    for(const g of chosen)decisions[g.key]={action,fields:g.fields,at,changes:copy(entry.changes.filter(c=>g.fields.includes(c.field)))};
+    const complete=groups.every(g=>decisions[g.key]);
+    const actions=new Set(groups.map(g=>decisions[g.key]?.action));
+    entry.status=complete?(actions.size===1?({accept:'accepted',keep:'kept',dismiss:'dismissed'}[action]):'reviewed'):'pending';
+    entry.updatedAt=at;if(complete)entry.resolvedAt=at;
+    entry.acceptedFields=Object.values(decisions).filter(d=>d.action==='accept').flatMap(d=>d.fields);
+    const record=findTarget(state,entry.targetKey);
+    if(record&&complete){entry.targetHash=hash(record);entry.contextHash=contextHash(state,entry.clientId,entry.isin,record);}
+    return action==='accept'?1:0;
   }
   function providerImportResolve(batchId,entryId,action,selectedFields) {
-    if(!['accept','keep'].includes(action))return {ok:false,error:'Neznámé rozhodnutí.'};
     const batch=(state.providerImports||[]).find(b=>same(b.id,batchId)),entry=batch?.entries?.find(e=>same(e.id,entryId));
     if(!entry)return {ok:false,error:'Položka kontroly nebyla nalezena.'};
     if(entry.status!=='pending')return {ok:true,batchId:batch.id,applied:0,duplicate:true};
-    if(action==='accept'&&!entry.canAccept)return {ok:false,error:'Tato položka vyžaduje ruční doplnění nebo opravu vazby v CRM.'};
-    if(Array.isArray(selectedFields)&&selectedFields.some(field=>!Object.hasOwn(LABELS,field)))return {ok:false,error:'Vybrané pole není součástí importu.'};
-    if(action==='accept'&&Array.isArray(selectedFields)){
-      if(!selectedFields.length)return {ok:false,error:'Vyber alespoň jedno pole nebo ponech CRM.'};
-      const valuationFields=['current','nav','valuationDate'].filter(field=>!empty(entry.incoming[field]));
-      if(valuationFields.some(field=>selectedFields.includes(field))&&!valuationFields.every(field=>selectedFields.includes(field)))return {ok:false,error:'Aktuální hodnotu, NAV a datum ocenění přijmi společně, aby se datum nepřiřadilo ke staré hodnotě.'};
-      if(entry.newPosition)return {ok:false,error:'Nová transakce se přijímá jako celek.'};
-    }
-    return atomic(()=>{if(action==='accept')applyEntry(entry,batch,selectedFields);entry.status=action==='accept'?'accepted':'kept';entry.resolvedAt=timestamp();entry.updatedAt=entry.resolvedAt;entry.acceptedFields=action==='accept'?(Array.isArray(selectedFields)?selectedFields:entry.changes.map(x=>x.field)):[];batch.updatedAt=entry.resolvedAt;batch.appliedStateSignature=signature(state);return {ok:true,batchId:batch.id,applied:action==='accept'?1:0,duplicate:false};});
+    return atomic(()=>{const applied=decide(entry,batch,action,selectedFields);batch.updatedAt=timestamp();batch.appliedStateSignature=signature(state);return {ok:true,batchId:batch.id,applied,duplicate:false};});
   }
-  Object.assign(window,{providerImportParseAvant,providerImportParseCodya,providerImportBuildPlan,providerImportCommit,providerImportResolve});
+  Object.assign(window,{providerImportParseAvant,providerImportParseCodya,providerImportBuildPlan,providerImportCommit,providerImportResolve,providerImportDecisionGroups});
 })();
