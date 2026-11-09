@@ -162,6 +162,23 @@ const fixture = {
     await page.getByLabel(/Zobrazit i bezpečné/).check();
     assert.equal(await page.locator('#providerImportBody .provider-review-entry').count(),1);
 
+    // A retained explicit RC_ link resolves a lost leading zero, never another person's ID.
+    const leading=avant({'RČ':'0151110047'});
+    await reset({clients:[{id:1,name:'QA Alfa Investor',birthId:'0151110047'}],investmentRecords:[legacy({'RČ':'151110047',ClientID:'RC_0151110047',Pokyn:'1001'})]});
+    const zeroPlan=await build([leading]);
+    assert.equal(zeroPlan.entries[0].newPosition,undefined);
+    assert.equal(zeroPlan.entries[0].canAccept,true);
+    assert.equal((await commit(zeroPlan)).ok,true);
+    assert.equal((await resolve(zeroPlan.id,zeroPlan.entries[0].id,'accept')).ok,true);
+    assert.equal((await records()).length,1);
+    const linked={...(await records())[0].raw,'RČ':'0151110047'};
+    await reset({clients:[{id:1,name:'QA Alfa Investor',birthId:'0151110047'}],investmentRecords:[linked,legacy({'RČ':'151110047',ClientID:'RC_0151110047',Pokyn:'1001'})]});
+    const duplicates=await build([leading]);
+    assert.equal(duplicates.entries[0].canAccept,false,'an imported plus legacy copy requires reconciliation');
+    assert.equal(duplicates.entries[0].identityConflict,true);
+    await reset({clients:[{id:1,name:'QA Alfa Investor',birthId:'0151110047'}],investmentRecords:[legacy({'RČ':'999999999',ClientID:'RC_0151110047',Pokyn:'1001'})]});
+    const conflict=await build([leading]);assert.equal(conflict.entries[0].targetKey,null,'a genuinely different RČ is not repaired by a client link');
+
     // 4. Strong identity wins over names; unresolved and ambiguous owners never create clients/assets.
     await reset({clients:[...fixture.clients,{id:3,name:'QA Alfa Investor',birthId:'9203030009'}]});
     const unlinked=await build([

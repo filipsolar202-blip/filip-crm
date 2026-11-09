@@ -96,9 +96,16 @@
 
   function clientIds(client) {const generic=identifier(client.birthId||client['RČ']||client.rc||''),ico=identifier(client.companyId||client.ico||client['IČO']||'');return {generic,ico};}
   function clientMatches(client,row) {const ids=clientIds(client);return row.birthId?ids.generic===row.birthId:!!row.companyId&&(ids.ico===row.companyId||ids.generic===row.companyId);}
+  // Old spreadsheets sometimes lost the leading zero in RČ. Only repair identity
+  // when the explicit RC_ link already preserves the full, matching identifier.
+  function recordBirthId(record) {
+    const raw=normalizedIds(record).birthId,prefixed=/^RC[_-]/i.test(s(record.ClientID))?identifier(s(record.ClientID).replace(/^RC[_-]/i,'')):'';
+    if(raw&&prefixed&&/^0\d{9}$/.test(prefixed)&&/^\d{9}$/.test(raw)&&prefixed.slice(1)===raw)return prefixed;
+    return raw||prefixed;
+  }
   function recordOwner(record,client,row) {
-    const ids=normalizedIds(record),rc=ids.birthId||(/^RC[_-]/i.test(s(record.ClientID))?identifier(s(record.ClientID).replace(/^RC[_-]/i,'')):'');
-    if(ids.birthId&&row.birthId&&ids.birthId!==row.birthId||ids.companyId&&row.companyId&&ids.companyId!==row.companyId)return false;
+    const ids=normalizedIds(record),rc=recordBirthId(record);
+    if(rc&&row.birthId&&rc!==row.birthId||ids.companyId&&row.companyId&&ids.companyId!==row.companyId)return false;
     if(record._providerClientId!=null)return same(record._providerClientId,client.id);
     if(row.birthId&&rc)return rc===row.birthId;
     if(row.companyId&&ids.companyId)return ids.companyId===row.companyId;
@@ -108,7 +115,7 @@
     const ids=normalizedIds(record),prefixed=/^RC[_-]/i.test(s(record.ClientID))?identifier(s(record.ClientID).replace(/^RC[_-]/i,'')):'';
     return (source.clients||[]).filter(client=>{
       if(record._providerClientId!=null&&!same(record._providerClientId,client.id))return false;
-      if(ids.birthId||ids.companyId||prefixed)return clientMatches(client,{...ids,birthId:ids.birthId||prefixed});
+      if(ids.birthId||ids.companyId||prefixed)return clientMatches(client,{...ids,birthId:recordBirthId(record)});
       return record._providerClientId!=null?same(record._providerClientId,client.id):/^\d+$/.test(s(record.ClientID))&&same(record.ClientID,client.id);
     });
   }
@@ -196,11 +203,11 @@
     entry.status='auto';entry.reason='Jednoznačná shoda a novější ocenění při stejném základu investice.';
   }
   function providerImportBuildPlan(source,parsed) {
-    const stamp=timestamp(),batch={id:uuid(),schemaVersion:1,provider:parsed.provider,area:parsed.area,fileName:parsed.fileName,reportDate:parsed.reportDate,createdAt:stamp,updatedAt:stamp,fingerprint:'',entries:[],errors:[...(parsed.errors||[])],warnings:[...(parsed.warnings||[])],sourceSignature:signature(source)};
+    const stamp=timestamp(),batch={id:uuid(),schemaVersion:2,provider:parsed.provider,area:parsed.area,fileName:parsed.fileName,reportDate:parsed.reportDate,createdAt:stamp,updatedAt:stamp,fingerprint:'',entries:[],errors:[...(parsed.errors||[])],warnings:[...(parsed.warnings||[])],sourceSignature:signature(source)};
     const normalizedRows=(parsed.rows||[]).map(row=>{const x=copy(row);delete x.rowNumber;return x;}).sort((a,b)=>canonical(a).localeCompare(canonical(b)));
     batch.fingerprint=parsed.provider+':'+hash({area:parsed.area,reportDate:parsed.provider==='codya'?parsed.reportDate:'',rows:normalizedRows});
     const previous=(source.providerImports||[]).find(b=>b.fingerprint===batch.fingerprint);
-    if(previous){batch.id=previous.id;batch.createdAt=previous.createdAt;batch.replacesBatchId=previous.id;if(previous.appliedStateSignature===batch.sourceSignature){batch.duplicateOf=previous.id;batch.entries=copy(previous.entries||[]);return batch;}}
+    if(previous){batch.id=previous.id;batch.createdAt=previous.createdAt;batch.replacesBatchId=previous.id;if(previous.schemaVersion===2&&previous.appliedStateSignature===batch.sourceSignature){batch.duplicateOf=previous.id;batch.entries=copy(previous.entries||[]);return batch;}}
     const addressed=new Set(),strongClients=new Set();
     for(const row of parsed.rows||[]){
       const entry=newEntry(row);batch.entries.push(entry);
@@ -210,12 +217,12 @@
       const client=clients[0];entry.clientId=client.id;entry.contextHash=contextHash(source,client.id,entry.isin,row);strongClients.add(s(client.id));
       const owned=(source.investmentRecords||[]).filter(r=>!r.portfolioReplacedBy&&recordOwner(r,client,row));
       if(parsed.provider==='avant'){
-        const fundRows=owned.filter(r=>recordIsin(r)===row.isin),exact=fundRows.filter(r=>r._providerTransactionKey===row.key),legacy=exact.length?[]:fundRows.filter(r=>!r._providerTransactionKey&&exactLegacy(r,row)),matches=exact.length?exact:legacy;
+        const fundRows=owned.filter(r=>recordIsin(r)===row.isin),exact=fundRows.filter(r=>r._providerTransactionKey===row.key),legacy=fundRows.filter(r=>!r._providerTransactionKey&&exactLegacy(r,row)),matches=[...exact,...legacy];
         fundRows.forEach(r=>{if(matches.includes(r))addressed.add(rawRecordKey(r));});
         if(row.errors?.length){entry.reason=row.errors.join(' ');continue;}
         if(batch.errors.length){entry.reason=batch.errors.join(' ');continue;}
         if(!['Platba','Odkup'].includes(row.transactionType)){entry.reason='Převod nebo konverzi zpracuj ručně po kontrole obou stran pohybu. Výpis se uchová pro kontrolu.';continue;}
-        if(matches.length>1){entry.reason='Více pozic odpovídá jedné transakci. Vyber správnou vazbu ručně v evidenci.';continue;}
+        if(matches.length>1){entry.identityConflict=true;entry.reason='Více pozic odpovídá jedné transakci. Vyber správnou vazbu ručně v evidenci.';continue;}
         if(matches.length===1){finishExisting(entry,matches[0],'record',source,'avant');continue;}
         const otherSameFund=owned.filter(r=>recordIsin(r)===row.isin);
         const ambiguous=otherSameFund.some(r=>{const basis=recordBasis(r),order=identifier(r.Pokyn||r._providerSource?.orderId),contract=identifier(r.Spis||r._providerSource?.contractRef);return !order||order===row.orderId||basis.paymentDate===row.paymentDate||contract&&row.contractRef===contract;});
@@ -249,7 +256,7 @@
       if(entry.targetKey&&!entry.incoming.missing&&targetCounts.get(canonical(entry.targetKey))>1){entry.status='pending';entry.canAccept=false;entry.reason='Více řádků výpisu míří na stejnou pozici CRM. Nejprve ověř jednotlivé pokyny.';}
       entry.inputFingerprint=hash({provider:batch.provider,clientId:entry.clientId,incoming:sourceComparable(entry.incoming)});
       const old=(source.providerImports||[]).flatMap(b=>b.entries||[]).find(e=>e.inputFingerprint===entry.inputFingerprint&&(['kept','accepted','dismissed','reviewed'].includes(e.status)||e.status==='pending'&&Object.keys(e.fieldDecisions||{}).length>0)&&e.targetHash===entry.targetHash&&e.contextHash===entry.contextHash);
-      if(old&&(old.status!=='accepted'||entry.status==='unchanged')){entry.status=old.status;entry.reason=old.status==='pending'?entry.reason+' Již provedená rozhodnutí jsou zachována.':'Stejné údaje u nezměněné pozice již byly zkontrolovány. Rozhodnutí je zachováno v historii.';entry.resolvedAt=old.resolvedAt;entry.fieldDecisions=copy(old.fieldDecisions||{});}
+      if(old&&!entry.identityConflict&&(old.status!=='accepted'||entry.status==='unchanged')){entry.status=old.status;entry.reason=old.status==='pending'?entry.reason+' Již provedená rozhodnutí jsou zachována.':'Stejné údaje u nezměněné pozice již byly zkontrolovány. Rozhodnutí je zachováno v historii.';entry.resolvedAt=old.resolvedAt;entry.fieldDecisions=copy(old.fieldDecisions||{});}
     });
     return batch;
   }
