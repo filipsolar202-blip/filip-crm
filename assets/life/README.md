@@ -17,3 +17,12 @@ Aktualizace výpočetního jádra musí současně aktualizovat hlavní kalkula�
 ## Úprava klientského reportu 4. 11. 2026
 
 `calculator.html` nově přesouvá identitu do úvodu, filtruje nabídky podle produktu/ceny se zachováním jejich indexů a upravuje stránkování. FairLife vzhled je oddělen v `assets/css/life-report.css`; Mantra má původní styl i ikonu. Výpočty v jádru, dotazníky a ukládání dat nejsou touto úpravou měněny. Tiskové scénáře včetně více osob a dlouhých textů ověřuje `tools/qa/life-report.cjs`.
+
+
+## Kombinované nabídky (2026-11-09)
+
+Každá ze tří nabídek podporuje `components` (nejvýše 4 smlouvy) s `productId`, `premium`, `kind: new|retained` a volitelným `label` pro neznámý produkt. Staré nabídky bez `components` zůstávají kompatibilní. `coverage[person][risk].allocations[offer]` uchovává částky ve stejném pořadí jako smlouvy. `Life.syncOffers` odvozuje celkovou cenu a krytí, nikdy nepřičítá historický sloupec `current`. Cena zůstává neznámá, dokud nejsou vyplněny všechny části.
+
+Orientační kombinované hodnocení není oficiálním ratingem EUCS: v jednom řádku rizika váží rating podle přidělených částek, v kategorii průměruje aktivní řádky a celkem aktivní kategorie. Obecné podmínky jsou aritmetickým průměrem produktů. Chybějící rating kterékoliv relevantní části vede k neznámé kategorii/celku. Podmínky a verze zachované smlouvy musí odpovídat zvolenému produktu; jinak použít vlastní název bez ratingu.
+
+Kontroly: `tools/qa/life-combinations.cjs`, `life-crm.cjs`, `life-report.cjs`.

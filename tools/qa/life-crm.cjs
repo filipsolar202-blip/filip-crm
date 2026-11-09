@@ -22,6 +22,11 @@ const {chromium,launchOptions}=require('./runtime.cjs'),root=path.resolve(__dirn
  assert.equal(await page.locator('#oCompany').inputValue(),'NN');assert.equal(await page.locator('#oAmount').inputValue(),'1350');await page.evaluate(()=>saveOpportunity());
  let cases=await page.evaluate(()=>state.opportunities);assert.equal(cases.length,1);assert.equal(cases[0].status,'Nabídka');assert.equal(cases[0].bj,0);assert.equal(cases[0].lifeProposal.variant,0);assert.ok(cases[0].automation);
  await frame.locator('#crmLifeCase').click();await page.locator('#lifeCasePreview').getByRole('button',{name:'Otevřít případ k uložení'}).click();await page.evaluate(()=>saveOpportunity());assert.equal(await page.evaluate(()=>state.opportunities.length),1);
+ frame=await open(1);
+ // Combined offer survives the bridge and updates the same linked case without duplication.
+ await page.locator('#clientLifeFrame').evaluate(el=>el.contentWindow.eval("d.offers[0].components=[{productId:'allianz-zivot',premium:900,kind:'new',label:''},{productId:'generali-bel-mondo-20',premium:450,kind:'retained',label:''}];render();"));
+ await frame.locator('#crmLifeSave').click();await page.waitForFunction(()=>findClient(1).lifeInsurance.data.offers[0].components?.length===2);
+ await frame.locator('#crmLifeCase').click();await page.locator('#lifeCasePreview').getByRole('button',{name:'Otevřít případ k uložení'}).click();assert.equal(await page.locator('#oCompany').inputValue(),'Allianz + Generali Česká');assert.equal(await page.locator('#oAmount').inputValue(),'1350');assert((await page.locator('#oNote').inputValue()).includes('Zachovaná smlouva'));await page.evaluate(()=>saveOpportunity());assert.equal(await page.evaluate(()=>state.opportunities.length),1);
  // A real browser-storage failure keeps the draft and allows a successful retry.
  await page.evaluate(()=>{window.qaStorageSet=Storage.prototype.setItem;Storage.prototype.setItem=function(){throw new DOMException('QA full','QuotaExceededError');};});
  await frame.locator('[data-step="1"]').click();await frame.locator('[data-path="adults.0.job"]').fill('QA po chybě zápisu');await page.waitForFunction(()=>findClient(1).lifeInsurance.data.adults[0].job==='QA po chybě zápisu');assert.equal(await page.evaluate(()=>CrmLife.flush()),false);assert(dialogs.pop().includes('nepovedlo uložit'));
