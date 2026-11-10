@@ -119,6 +119,26 @@ def attachment_ref(contract_id, attachment, collection="contracts"):
     return f"{collection}/{safe_name(contract_id, 'bez-zaznamu')}/{att_id}_{name}"
 
 
+def store_client_file(client_id, data):
+    name = safe_name(data.get("name"), "podklad")
+    if Path(name).suffix.lower() not in {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".docx", ".xlsx", ".pptx", ".txt"}:
+        raise ValueError("Nepodporovaný formát podkladu")
+    mime, content = decode_data_url(data.get("dataUrl"))
+    if not content or len(content) > 10 * 1024 * 1024:
+        raise ValueError("Podklad musí mít nejvýše 10 MB")
+    digest = hashlib.sha256(content).hexdigest()
+    ref = f"clientDocuments/{safe_name(client_id, 'klient')}/{digest}_{name}"
+    target = ATTACHMENT_DIR / ref
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if not target.exists():
+        with tempfile.NamedTemporaryFile(dir=target.parent, delete=False) as f:
+            f.write(content)
+            temp_path = f.name
+        os.replace(temp_path, target)
+    return {"name": data.get("name") or name, "size": len(content), "type": mime,
+            "fileRef": ref, "storage": "disk"}
+
+
 def externalize_attachments(state):
     changed = 0
     records = [("contracts", row) for row in state.get("contracts", [])] if isinstance(state, dict) else []
@@ -162,6 +182,13 @@ def externalize_attachments(state):
             if collection != "insuranceClaims":
                 attachment.pop("dataUrl", None)
             changed += 1
+    for client in state.get("clients", []):
+        for document in client.get("documents", []):
+            for entry in [document] + document.get("revisions", []):
+                file = entry.get("file")
+                if isinstance(file, dict) and file.get("dataUrl"):
+                    entry["file"] = store_client_file(client.get("id"), file)
+                    changed += 1
     return changed
 
 
@@ -170,6 +197,7 @@ def counts(state):
     contracts = state.get("contracts") or []
     claims = state.get("insuranceClaims") or []
     attachments = sum(len(c.get("attachments") or []) for c in contracts + claims if isinstance(c, dict))
+    attachments += sum(len(c.get("documents") or []) for c in state.get("clients", []) if isinstance(c, dict))
     return {
         "clients": len(state.get("clients") or []),
         "contracts": len(contracts),
@@ -258,7 +286,7 @@ class Handler(BaseHTTPRequestHandler):
             ref = unquote((qs.get("ref") or [""])[0])
             target = (ATTACHMENT_DIR / ref).resolve()
             root = ATTACHMENT_DIR.resolve()
-            if not str(target).startswith(str(root)) or not target.exists():
+            if root not in target.parents or not target.is_file():
                 json_response(self, 404, {"ok": False, "error": "Soubor nenalezen."})
                 return
             mime = "application/octet-stream"
@@ -296,6 +324,13 @@ class Handler(BaseHTTPRequestHandler):
             payload = json.loads(raw.decode("utf-8") or "{}")
         except Exception as e:
             json_response(self, 400, {"ok": False, "error": "Neplatný JSON: " + str(e)})
+            return
+        if parsed.path == "/client-file":
+            try:
+                file = store_client_file(payload.get("clientId"), payload)
+                json_response(self, 200, {"ok": True, "file": file})
+            except Exception as e:
+                json_response(self, 400, {"ok": False, "error": str(e)})
             return
         if parsed.path == "/state":
             state = payload.get("state")

@@ -458,7 +458,7 @@ async function copyClientMailRich(index) {
 }
 function showClientMailDrafts() {
   const mac=clientMailMacAvailable();
-  crmExtraModal('clientMailDraft','Připravený e-mail',clientMailDrafts.map((d,i)=>`<div class="mini-card"><p><b>Od: ${esc(d.from)}</b><br>Komu: ${esc(d.to||'doplníte v poště')}${d.bcc.length?` · skrytá kopie: ${num(d.bcc.length)} příjemců`:''}</p><p>${esc(d.subject)}</p>${d.pdfDocument?`<p><b>Příloha: ${esc(d.pdfDocument.name)}</b><br>Aktualizovaný pomocník na Macu vytvoří PDF a přiloží jej. U běžné pošty a na telefonu přiložte PDF ručně.</p>`:''}<div class="actions">${mac?`<a class="btn primary" href="${esc(clientMailNativeUrl(d))}">${d.pdfDocument?'Otevřít Apple Mail včetně PDF':'Otevřít Apple Mail na Macu'}</a>`:''}<a class="btn ${mac?'':'primary'}" href="${esc(clientMailFallbackUrl(d))}">Běžná pošta – účet vyberte ručně</a>${d.body?`<button class="btn" onclick="copyClientMailRich(${i})">Kopírovat formátovaný text</button>`:''}<button class="btn" onclick="copyText(clientMailDrafts[${i}].from,'Adresa odesílatele')">Kopírovat odesílatele</button></div></div>`).join('')+`${clientMailDrafts.length===1&&clientMailDrafts[0].clientId&&!clientMailDrafts[0].externalTracking?`<div class="form-grid"><label class="field">Datum skutečného odeslání<input id="mailPreparedDate" type="date" value="${today()}" onchange="updateEmailReminder('mailPrepared')"></label><label class="field">Připomenout<input id="mailPreparedReminder" type="date" value="${emailReminderDate(today())}" oninput="this.dataset.manual='1'"></label></div><button class="btn primary" onclick="confirmPreparedClientMail()">Potvrdit skutečné odeslání</button>`:''}<p class="note">${mac?'Pomocník na Macu vybere uvedený účet. Při prvním použití povolte ovládání Mailu.':'Na iPhonu v rozepsané zprávě rozbalte pole Kopie/skrytá, Od a v poli Od vyberte uvedenou adresu.'} Běžné otevření pošty neumí vynutit odesílatele; před odesláním jej zkontrolujte. Nic se neodesílá automaticky.</p>${mac?'<details><summary>Pomocník není na tomto Macu nainstalovaný?</summary><p>Stáhněte ZIP, rozbalte jej, přesuňte FILIP CRM Mail do Aplikací a jednou otevřete. Při otevření e-mailu pak prohlížeči povolte spuštění pomocníka.</p><a class="btn" href="assets/downloads/FILIP-CRM-Mail.zip?v=2026.11.09-8" download>Stáhnout pomocníka pro Mac</a></details>':''}`);
+  crmExtraModal('clientMailDraft','Připravený e-mail',clientMailDrafts.map((d,i)=>`<div class="mini-card"><p><b>Od: ${esc(d.from)}</b><br>Komu: ${esc(d.to||'doplníte v poště')}${d.bcc.length?` · skrytá kopie: ${num(d.bcc.length)} příjemců`:''}</p><p>${esc(d.subject)}</p>${d.pdfDocument?`<p><b>Příloha: ${esc(d.pdfDocument.name)}</b><br>Aktualizovaný pomocník na Macu vytvoří PDF a přiloží jej. U běžné pošty a na telefonu přiložte PDF ručně.</p>`:''}<div class="actions">${mac?`<a class="btn primary" href="${esc(clientMailNativeUrl(d))}">${d.pdfDocument?'Otevřít Apple Mail včetně PDF':'Otevřít Apple Mail na Macu'}</a>`:''}<a class="btn ${mac?'':'primary'}" href="${esc(clientMailFallbackUrl(d))}">Běžná pošta – účet vyberte ručně</a>${d.body?`<button class="btn" onclick="copyClientMailRich(${i})">Kopírovat formátovaný text</button>`:''}<button class="btn" onclick="copyText(clientMailDrafts[${i}].from,'Adresa odesílatele')">Kopírovat odesílatele</button></div></div>`).join('')+`${clientMailDrafts.length===1&&clientMailDrafts[0].clientId&&!clientMailDrafts[0].externalTracking?`<div class="form-grid"><label class="field">Datum skutečného odeslání<input id="mailPreparedDate" type="date" value="${today()}" onchange="updateEmailReminder('mailPrepared')"></label><label class="field">Připomenout<input id="mailPreparedReminder" type="date" value="${emailReminderDate(today())}" oninput="this.dataset.manual='1'"></label></div><button class="btn primary" onclick="confirmPreparedClientMail()">Potvrdit skutečné odeslání</button>`:''}<p class="note">${mac?'Pomocník na Macu vybere uvedený účet. Při prvním použití povolte ovládání Mailu.':'Na iPhonu v rozepsané zprávě rozbalte pole Kopie/skrytá, Od a v poli Od vyberte uvedenou adresu.'} Běžné otevření pošty neumí vynutit odesílatele; před odesláním jej zkontrolujte. Nic se neodesílá automaticky.</p>${mac?'<details><summary>Pomocník není na tomto Macu nainstalovaný?</summary><p>Stáhněte ZIP, rozbalte jej, přesuňte FILIP CRM Mail do Aplikací a jednou otevřete. Při otevření e-mailu pak prohlížeči povolte spuštění pomocníka.</p><a class="btn" href="assets/downloads/FILIP-CRM-Mail.zip?v=2026.11.10-1" download>Stáhnout pomocníka pro Mac</a></details>':''}`);
 }
 
 function clientSenderEmail(clientOrId) {
@@ -610,7 +610,7 @@ function diskFileUrl(ref) {
 }
 function diskStateWeight(source) {
   const keys=['clients','contracts','deals','opportunities','insuranceClaims','notes','activities','workPilots','workOutputs','investmentRecords','investmentSnapshots','providerImports','analysisEntries','delegationProcesses'];
-  return keys.reduce((sum,key)=>sum+(Array.isArray(source?.[key])?source[key].length:0),0) + (source?.insuranceClaims || []).reduce((sum, claim) => sum + (claim.history?.length || 0) + (claim.attachments?.length || 0), 0) + (source?.activities || []).filter(a => a.work && typeof a.work === 'object').length + (source?.providerImports || []).reduce((sum, batch) => sum + (batch.entries?.length || 0), 0);
+  return (source?.clients||[]).reduce((n,c)=>n+(c.documents||[]).length+(c.emailArchive||[]).length,0)+keys.reduce((sum,key)=>sum+(Array.isArray(source?.[key])?source[key].length:0),0) + (source?.insuranceClaims || []).reduce((sum, claim) => sum + (claim.history?.length || 0) + (claim.attachments?.length || 0), 0) + (source?.activities || []).filter(a => a.work && typeof a.work === 'object').length + (source?.providerImports || []).reduce((sum, batch) => sum + (batch.entries?.length || 0), 0);
 }
 function queueDiskSave(reason = 'autosave') {
   if (!diskLoadDone) return;
@@ -3013,7 +3013,7 @@ function mergeClientsFromModal() {
     const src = selectedMergeClientFor(k);
     if (src && src[k]) master[k] = src[k];
   });
-  clients.filter(c => c.id !== masterId).forEach(c => {mergeWealthProfiles(master, c);CrmLife.mergeClient(master,c);CrmForms.mergeClient(master,c);CrmLoans.mergeClient(master,c);});
+  clients.filter(c => c.id !== masterId).forEach(c => {mergeWealthProfiles(master, c);CrmLife.mergeClient(master,c);CrmForms.mergeClient(master,c);CrmLoans.mergeClient(master,c);CrmLibrary.merge(master,c);});
   master.aliases = [...new Set([...String(master.aliases || '').split(',').map(x => x.trim()), ...originalNames].filter(x => x && norm(x) !== norm(master.name)))].join(', ');
   const loserIds = clients.map(c => c.id).filter(id => id !== masterId),
     loserSet = new Set(loserIds.map(String));
@@ -4354,6 +4354,7 @@ function clientNextAction(clientId) {
   return rows.sort((a,b) => a.date.localeCompare(b.date))[0] || null;
 }
 function clientSectionAction(c) {
+  if (clientSection === 'emails' || clientSection === 'documents') return '';
   if (clientSection === 'insuranceClaims') return `<button class="btn primary" onclick="openInsuranceClaim(${Number(c.id)})">+ Pojistná událost</button>`;
   if (clientSection === 'wealth') return `<button class="btn primary" onclick="wealthExportPreview(${c.id})">Export majetku</button>`;
   if (clientSection === 'portfolio') return `<button class="btn primary" onclick="openInvestmentScenarioModal(${c.id},'Investice')">+ Investice</button>`;
@@ -4377,7 +4378,7 @@ function renderClientDetailContent() {
     el.innerHTML = '<div class="note">Vyber nebo přidej klienta.</div>';
     return;
   }
-  if (clientSection === 'emails') clientSection = 'overview';
+
   const contracts = clientContracts(c.id),
     deals = clientDeals(c.id),
     acts = clientActivities(c.id),
@@ -4399,15 +4400,18 @@ function renderClientDetailContent() {
     opportunities: 'Obchodní případy',
     insuranceClaims: 'Pojistné události',
     contracts: 'Smlouvy',
+    documents: 'Podklady',
+    emails: 'E-maily',
     history: 'Timeline'
   };
   const more = {family:'Rodina',recommendations:'Doporučení',notes:'Poznámky',deals:'Obchody'}, moreActive = Object.keys(more).includes(clientSection);
   el.querySelector('.subnav').innerHTML = Object.entries(labels).map(([k, l]) => `<button class="subtab ${clientSection === k ? 'active' : ''}" onclick="clientSection='${k}';renderClientDetail()">${l}</button>`).join('') + `<details class="client-more-menu"><summary class="subtab ${moreActive ? 'active' : ''}">Více ▾</summary><div class="client-more-panel">${Object.entries(more).map(([k,l])=>`<button onclick="clientSection='${k}';this.closest('details').open=false;renderClientDetail()">${l}</button>`).join('')}<button onclick="openClientReportModal(${c.id})">Report pro klienta</button></div></details>`;
-  el.insertAdjacentHTML('beforeend', clientSection === 'overview' ? clientOverview(c, contracts, deals, acts, year) : clientSection === 'pendingInvestments' ? investmentPendingPanel(c.id) : clientSection === 'loans' ? CrmLoans.view(c) : clientSection === 'forms' ? CrmForms.view(c) : clientSection === 'life' ? CrmLife.view(c) : clientSection === 'wealth' ? clientWealthHtml(c) : clientSection === 'family' ? clientFamilyHtml(c) : clientSection === 'portfolio' ? clientPortfolio(c, contracts, deals) : clientSection === 'opportunities' ? opportunitiesMini(opps) + closedCasesHtml(state.opportunities.filter(o=>String(o.clientId)===String(c.id)&&!isOpenOpportunity(o))) : clientSection === 'insuranceClaims' ? clientInsuranceClaimsHtml(c.id) : clientSection === 'contracts' ? contractsMini(contracts) : clientSection === 'deals' ? dealsMini(deals, year) : clientSection === 'recommendations' ? recommendationsMini(c) : clientSection === 'notes' ? notesMini(notes) : historyMini(c, acts, contracts, deals));
+  el.insertAdjacentHTML('beforeend', clientSection === 'documents' ? CrmLibrary.view(c) : clientSection === 'emails' ? CrmLibrary.view(c,'email') : clientSection === 'overview' ? clientOverview(c, contracts, deals, acts, year) : clientSection === 'pendingInvestments' ? investmentPendingPanel(c.id) : clientSection === 'loans' ? CrmLoans.view(c) : clientSection === 'forms' ? CrmForms.view(c) : clientSection === 'life' ? CrmLife.view(c) : clientSection === 'wealth' ? clientWealthHtml(c) : clientSection === 'family' ? clientFamilyHtml(c) : clientSection === 'portfolio' ? clientPortfolio(c, contracts, deals) : clientSection === 'opportunities' ? opportunitiesMini(opps) + closedCasesHtml(state.opportunities.filter(o=>String(o.clientId)===String(c.id)&&!isOpenOpportunity(o))) : clientSection === 'insuranceClaims' ? clientInsuranceClaimsHtml(c.id) : clientSection === 'contracts' ? contractsMini(contracts) : clientSection === 'deals' ? dealsMini(deals, year) : clientSection === 'recommendations' ? recommendationsMini(c) : clientSection === 'notes' ? notesMini(notes) : historyMini(c, acts, contracts, deals));
   if (clientSection === 'loans') CrmLoans.mount(c);
   if (clientSection === 'life') CrmLife.mount(c);
   if (clientSection === 'wealth') CrmFamily.mount(c);
   CrmWorkspace.mount(c);
+  CrmLibrary.mount(c);
   if (clientSection === 'overview') el.insertAdjacentHTML('beforeend', clientFamilyHtml(c) + clientReferralOverview(c));
 }
 function clientInvestmentSummary(clientId) {
@@ -4624,6 +4628,7 @@ function dealsMini(rows, year) {
 }
 function historyMini(c, acts, contracts, deals) {
   const notes = clientNotes(c.id), opportunities = state.opportunities.filter(o=>String(o.clientId)===String(c.id)), items = [
+    ...CrmLibrary.history(c),
     ...acts.map(a => ({kind:'activity', d:a.date, time:a.time || '', title:a.type || 'Aktivita', text:a.text || '', meta:a.outcome === 'realized' || a.completed ? 'Dokončeno' : 'Naplánováno'})),
     ...notes.map(n => ({kind:'note', d:n.date, time:'', title:n.title || 'Poznámka', text:n.text || n.body || '', meta:noteTags(n).join(' · ')})),
     ...opportunities.flatMap(o => (o.history || []).map(l => ({kind:'case', d:l.d, time:l.time || '', title:'Obchodní případ · ' + (o.product || o.category || ''), text:l.t || '', meta:caseStage(o.status)}))),
@@ -8581,7 +8586,7 @@ function mergeIncomingStateCore(incoming) {
         if (!c[k] && ic[k]) c[k] = ic[k];
       });
       mergeWealthProfiles(c, ic);
-      CrmLife.mergeClient(c,ic);CrmForms.mergeClient(c,ic);CrmLoans.mergeClient(c,ic);
+      CrmLife.mergeClient(c,ic);CrmForms.mergeClient(c,ic);CrmLoans.mergeClient(c,ic);CrmLibrary.merge(c,ic);
       count.skipped++;
     } else {
       c = {
@@ -9041,6 +9046,7 @@ function backupCountValue(s, key) {
   if (key === 'workflowSteps') return [...(s.opportunities||[]),...(s.deals||[])].reduce((n,x)=>n+(x.automation?.steps?.length||0),0);
   if (key === 'investments') return (s.investmentRecords || []).length;
   if (key === 'providerImportEntries') return (s.providerImports || []).reduce((n,batch) => n+(batch.entries?.length || 0),0);
+  if(key==='clientDocuments'||key==='clientEmails')return (s.clients||[]).reduce((n,c)=>n+(c[key==='clientDocuments'?'documents':'emailArchive']||[]).length,0);
   if (key === 'claimHistory' || key === 'claimAttachments') return (s.insuranceClaims || []).reduce((n, claim) => n + (claim[key === 'claimHistory' ? 'history' : 'attachments']?.length || 0), 0);
   if (key === 'workActivities') return (s.activities || []).filter(a => a.work && typeof a.work === 'object' && Object.keys(a.work).length).length;
   if (key === 'workTimeEntries') return (s.activities || []).filter(a => ['actual','estimate'].includes(a.work?.timeKind) && a.duration != null && a.duration !== '' && Number.isFinite(+a.duration) && +a.duration >= 0).length;
@@ -13274,6 +13280,8 @@ function criticalBackupCounts(s = state) {
     opportunities: s.opportunities.length,
     insuranceClaims: s.insuranceClaims.length,
     claimHistory: s.insuranceClaims.reduce((n, x) => n + x.history.length, 0),
+    clientDocuments: s.clients.reduce((n,c)=>n+(c.documents||[]).length,0),
+    clientEmails: s.clients.reduce((n,c)=>n+(c.emailArchive||[]).length,0),
     claimAttachments: s.insuranceClaims.reduce((n, x) => n + x.attachments.length, 0),
     notes: s.notes.length,
     investments: s.investmentRecords.length,
@@ -13359,12 +13367,13 @@ function saveGoogleBackup() {
     }
   });
 }
-function submitGoogleBackup(payload, s) {
+async function submitGoogleBackup(payload, s) {
   state = normalizeState(payload.state);
   localStorageWriteState();
   const info = stateCountsText(payload.state);
   setVal('gsyncLocalInfo', info);
-  setGoogleSyncStatus('Odesílám kompletní zálohu...');
+  setGoogleSyncStatus('Připravuji podklady a kompletní zálohu...');
+  try {payload={...payload,state:await CrmLibrary.portable(payload.state)};} catch(e){setGoogleSyncStatus(esc(e.message)+' Záloha nebyla odeslána.');return;}
   const form = document.createElement('form');
   form.method = 'POST';
   form.action = s.url;
@@ -16039,8 +16048,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.11.09-8';
-const VERSION_NOTE = 'Jednoduché pokyny klientům k výpovědi, volba podání poradcem nebo klientem a automatická PDF příloha v Apple Mailu na Macu.';
+const VERSION = '2026.11.10-1';
+const VERSION_NOTE = 'Podklady a nabídky u klientů a jednotlivých oblastí, ruční archiv e-mailů s historií a přenos podkladů v Google záloze.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
@@ -16136,6 +16145,7 @@ document.querySelectorAll('.modal').forEach(m => m.addEventListener('click', e =
   if (e.target === m) m.classList.remove('show');
 }));
 const BACKUP_COUNT_LABELS = {
+  clientDocuments:'podkladů klientů', clientEmails:'uložených e-mailů',
   familyPlans:'rodinných plánů', familyPlanHistory:'historických plánů',
   clients: 'klientů',
   contracts: 'smluv',
@@ -16170,7 +16180,7 @@ const BACKUP_COUNT_LABELS = {
   workflowTemplates: 'šablon postupů', workflowPlans: 'pracovních postupů', workflowSteps: 'kroků postupů', emailWaits: 'čekání na odpověď',
   wealthRecords: 'majetkových podkladů'
 };
-const BACKUP_PROTECTED_KEYS = ['familyPlans','familyPlanHistory','lifeCalculations','lifeHistory','workflowTemplates','workflowPlans','workflowSteps','emailWaits','clients', 'contracts', 'deals', 'opportunities', 'insuranceClaims', 'claimHistory', 'claimAttachments', 'notes', 'activities', 'workPilots', 'workOutputs', 'workActivities', 'workTimeEntries', 'analysisEntries', 'campaigns', 'investments', 'investmentSnapshots', 'providerImports', 'providerImportEntries', 'externalInvestments', 'investmentForecasts', 'commissionImports', 'referrerPayouts', 'referrals', 'weeklyGoals', 'weeklyReviews', 'dailyPriorities', 'focusSnapshots', 'delegationProcesses', 'wealthRecords'];
+const BACKUP_PROTECTED_KEYS = ['clientDocuments','clientEmails','familyPlans','familyPlanHistory','lifeCalculations','lifeHistory','workflowTemplates','workflowPlans','workflowSteps','emailWaits','clients', 'contracts', 'deals', 'opportunities', 'insuranceClaims', 'claimHistory', 'claimAttachments', 'notes', 'activities', 'workPilots', 'workOutputs', 'workActivities', 'workTimeEntries', 'analysisEntries', 'campaigns', 'investments', 'investmentSnapshots', 'providerImports', 'providerImportEntries', 'externalInvestments', 'investmentForecasts', 'commissionImports', 'referrerPayouts', 'referrals', 'weeklyGoals', 'weeklyReviews', 'dailyPriorities', 'focusSnapshots', 'delegationProcesses', 'wealthRecords'];
 let scenario_editableScope = '';
 let fkiEditor_editingFkRecordKey = '',
   fkiEditor_editingFkClientId = null;
