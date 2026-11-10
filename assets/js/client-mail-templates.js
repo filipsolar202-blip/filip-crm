@@ -17,6 +17,19 @@ window.ClientMailTemplates=(()=>{
   const greeting=informal?'Ahoj,':'Dobrý den,';
   let intro=(informal?(t[3]||t[2]):t[2]).replace(/^abych mohl/,informal?'abych Ti mohl':'abych Vám mohl'),subject=t[informal?1:0];
   if(anniversary){subject='Kontrola smlouvy'+(product?' – '+product:'');intro=informal?'rád bych s Tebou zkontroloval, zda smlouva stále odpovídá Tvé aktuální situaci.':'rád bych s Vámi zkontroloval, zda smlouva stále odpovídá Vaší aktuální situaci.';intro+='\n\n'+(informal?'Pošli mi prosím aktuální podklady':'Zašlete mi prosím aktuální podklady')+(insurance?' od pojišťovny, případně nové předpisy pojistného.':' ke smlouvě.')+' '+(informal?'Případné změny můžeš doplnit v krátkém dotazníku. Pokud kontrolu nyní řešit nechceš, dej mi prosím vědět.':'Případné změny můžete doplnit v krátkém dotazníku. Pokud kontrolu nyní řešit nechcete, dejte mi prosím vědět.');}
+  if(anniversary && ['car','property'].includes(formId)){
+   const topic=formId==='car'?'auta':'nemovitosti a domácnosti';
+   subject='Pojištění '+topic+' – podíváme se na cenu a krytí';
+   intro=informal
+    ? 'v nejbližší době Ti pojišťovna zašle podklady k pojištění '+topic+' na další období. Rád Ti pomohu ověřit, zda pojištění stále odpovídá tomu, co potřebuješ.'
+    : 'v nejbližší době Vám pojišťovna zašle podklady k pojištění '+topic+' na další období. Rád Vám pomohu ověřit, zda pojištění stále odpovídá tomu, co potřebujete.';
+   intro+='\n\n'+(informal
+    ? 'Pokud budeš mít zájem, porovnám cenu i rozsah krytí. Podívám se, zda by šlo ušetřit při zachování stejných podmínek, nebo za podobnou cenu získat lepší ochranu.'
+    : 'Pokud budete mít zájem, porovnám cenu i rozsah krytí. Podívám se, zda by šlo ušetřit při zachování stejných podmínek, nebo za podobnou cenu získat lepší ochranu.');
+   intro+='\n\n'+(informal
+    ? 'Až podklady od pojišťovny dorazí, stačí mi je přeposlat odpovědí na tento e-mail. Pokud se něco změnilo, můžeš změny doplnit v krátkém dotazníku níže. Jestli teď kontrolu řešit nechceš, dej mi prosím jen vědět.'
+    : 'Až podklady od pojišťovny dorazí, stačí mi je přeposlat odpovědí na tento e-mail. Pokud se něco změnilo, můžete změny doplnit v krátkém dotazníku níže. Jestli teď kontrolu řešit nechcete, dejte mi prosím jen vědět.');
+  }
   const instructions=informal?'Otevřeš ho na telefonu i počítači. Po vyplnění stáhni odpovědi a soubor mi přilož k odpovědi na tento e-mail.':'Otevřete ho na telefonu i počítači. Po vyplnění stáhněte odpovědi a soubor mi přiložte k odpovědi na tento e-mail.';
   const next=informal?'Pak podklady projdu a ozvu se Ti s dalším postupem. Pokud si s něčím nebudeš vědět rady, napiš nebo zavolej.':'Pak podklady projdu a ozvu se Vám s dalším postupem. Pokud si s něčím nebudete vědět rady, napište nebo zavolejte.';
   return {subject,body:[greeting,intro,'Vyplnit dotazník:\n'+url,instructions,next,informal?'Díky,\nFilip':'Děkuji a přeji hezký den.\nFilip Solár'].join('\n\n')};

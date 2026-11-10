@@ -1,0 +1,14 @@
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');const {chromium,launchOptions}=require('./runtime.cjs');const root=path.resolve(__dirname,'../..');
+(async()=>{const browser=await chromium.launch(launchOptions);try{const ctx=await browser.newContext();await ctx.route('**/*',r=>{const u=new URL(r.request().url()),p=path.join(root,decodeURIComponent(u.pathname));return u.hostname==='crm.test'&&fs.existsSync(p)&&fs.statSync(p).isFile()?r.fulfill({body:fs.readFileSync(p),contentType:p.endsWith('.js')?'text/javascript':p.endsWith('.css')?'text/css':'text/html'}):r.abort();});const data=structuredClone(require('./fixture.cjs'));await ctx.addInitScript(d=>{if(location.hostname==='crm.test'&&!localStorage.getItem('filip_crm_main_v1'))localStorage.setItem('filip_crm_main_v1',JSON.stringify(d));},data);const page=await ctx.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());await page.goto('https://crm.test/FILIP-CRM.html');await page.waitForFunction(()=>typeof state!=='undefined'&&window.CrmLibrary);
+await page.evaluate(()=>{state.contracts.push({id:901,clientId:1,type:'majetek',product:'Dům',anniv:'2026-12-01',log:[]});CrmForms.prepareContract(1,901);});
+assert.match(await page.locator('#formsBody').inputValue(),/porovnám cenu i rozsah krytí/);
+await page.locator('#formsTone').selectOption('informal');assert.match(await page.locator('#formsBody').inputValue(),/Rád Ti pomohu/);
+await page.locator('#formsDate').fill('2026-11-10');await page.locator('#formsDate').dispatchEvent('change');assert.equal(await page.locator('#formsReminder').inputValue(),'2026-11-15');
+await page.locator('#formsConfirm').click();
+assert.equal(await page.evaluate(()=>contractReviewDate(state.contracts.find(s=>s.id===901),'2026-11-10')),'2028-12-01');
+await page.reload();await page.waitForFunction(()=>typeof state!=='undefined'&&window.CrmForms);
+assert.equal(await page.evaluate(()=>state.contracts.find(s=>s.id===901).lastReviewAnniversary),'2026-12-01');
+assert.equal(await page.evaluate(()=>state.contracts.find(s=>s.id===901).anniv),'2026-12-01');
+assert(await page.evaluate(()=>state.activities.some(a=>a.date==='2026-11-15'&&!a.completed)));
+assert.deepEqual(errors,[]);console.log('PASS anniversary editor, tone switch, 5-day follow-up, confirmed-send cadence and reload persistence.');
+}finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});
