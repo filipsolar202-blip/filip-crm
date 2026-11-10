@@ -26,3 +26,7 @@ Každá ze tří nabídek podporuje `components` (nejvýše 4 smlouvy) s `produc
 Orientační kombinované hodnocení není oficiálním ratingem EUCS: v jednom řádku rizika váží rating podle přidělených částek, v kategorii průměruje aktivní řádky a celkem aktivní kategorie. Obecné podmínky jsou aritmetickým průměrem produktů. Chybějící rating kterékoliv relevantní části vede k neznámé kategorii/celku. Podmínky a verze zachované smlouvy musí odpovídat zvolenému produktu; jinak použít vlastní název bez ratingu.
 
 Kontroly: `tools/qa/life-combinations.cjs`, `life-crm.cjs`, `life-report.cjs`.
+
+## Automatické krytí (10. 11. 2026)
+
+Nově založené vypočtené řádky dospělých uchovávají `autoCoverage` pro každou nabídku. Synchronizace aktualizuje pouze hodnotu se známým automatickým původem, která nebyla ručně změněna; editace i kopírování nabídky automatiku daného pole vypne. Kombinace s rozdělenými částkami se nepřepisují automaticky. Starší řádky bez původu zůstávají zachované. Viditelné tlačítko převzetí po potvrzení obnoví základní doporučení, aniž by změnilo cenu, stávající krytí, děti nebo vlastní rizika. Kontrola: `tools/qa/life-autofill.cjs`.

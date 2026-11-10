@@ -19,7 +19,41 @@ const deficits={death:.8*expenseByRisk.death-partnerByRisk.death-continuingByRis
 const employment=riskEnabled(p.incomeUse,'employment','sick',p.incomeIncluded)?p.income.employment||0:0,business=riskEnabled(p.incomeUse,'business','sick',p.incomeIncluded)?p.income.business||0:0,loss=employment*.4+business,retainedEmployment=employment*.6,remaining=retainedEmployment+continuingByRisk.sick+partnerByRisk.sick;
 const sickGap=Math.max(0,Math.min(loss,expenseByRisk.sick-remaining));deficits.sick=sickGap;
 const values={funeral:50000,death:round(deficits.death*200,100000),invalid3:round(deficits.invalid3*200,100000),invalid2:round(deficits.invalid2*200,100000),invalid1:1000000,sick:round(sickGap/30,50),accident:0,illness:0,daily:0,hospital:0};const effective={...values,...p.overrides};return {values,effective,pension,deficits,loss,retainedEmployment,remaining,sickGap,expenseByRisk,partnerByRisk,continuingByRisk,expenses:expenseByRisk.death,partner:partnerByRisk.death,unverifiedBasis:p.incomeBasis!=='gross'};}
-function syncCoverage(d,force=false){const ids=new Set([...active(d),...d.children].map(p=>p.id));for(const id of Object.keys(d.coverage))if(!ids.has(id))delete d.coverage[id];for(const p of [...active(d),...d.children]){const child=d.children.includes(p),rec=child?{}:calculate(d,p).effective;d.coverage[p.id] ||= {};for(const [id,,type] of child?childRisks:risks){if(p.hiddenRisks?.includes(id))continue;const old=d.coverage[p.id][id];if(!old)d.coverage[p.id][id]={type,baseRisk:id,label:([...risks,...childRisks].find(r=>r[0]===id)||[])[1]||id,variant:'',unit:['sick','daily','hospital'].includes(id)?'day':'sum',terms:['','',''],current:null,offers:[rec[id]||0,rec[id]||0,rec[id]||0]};else if(force&&!child&&['funeral','death','invalid3','invalid2','invalid1','sick'].includes(id)){old.offers=[rec[id]||0,rec[id]||0,rec[id]||0];if(old.allocations)old.allocations=[null,null,null];}}}}
+const calculatedRisks=['funeral','death','invalid3','invalid2','invalid1','sick'];
+function syncCoverage(d,force=false){
+ const ids=new Set([...active(d),...d.children].map(p=>p.id));
+ for(const id of Object.keys(d.coverage))if(!ids.has(id))delete d.coverage[id];
+ for(const p of [...active(d),...d.children]){
+  const child=d.children.includes(p),rec=child?{}:calculate(d,p).effective;
+  d.coverage[p.id] ||= {};
+  for(const [id,,type] of child?childRisks:risks){
+   if(p.hiddenRisks?.includes(id))continue;
+   let row=d.coverage[p.id][id];
+   const computed=!child&&calculatedRisks.includes(id),value=rec[id]||0;
+   if(!row){
+    row=d.coverage[p.id][id]={type,baseRisk:id,label:([...risks,...childRisks].find(r=>r[0]===id)||[])[1]||id,variant:'',unit:['sick','daily','hospital'].includes(id)?'day':'sum',terms:['','',''],current:null,offers:[value,value,value]};
+    if(computed)row.autoCoverage=[value,value,value];
+   }else if(computed){
+    // Missing provenance in legacy calculations is never permission to overwrite.
+    for(let i=0;i<3;i++){
+     const previous=row.autoCoverage?.[i],combined=!!d.offers[i].components?.length;
+     if(force){
+      row.offers[i]=value;row.autoCoverage??=[null,null,null];row.autoCoverage[i]=value;
+      if(row.allocations)row.allocations[i]=null;
+     }else if(!combined&&typeof previous==='number'&&row.offers[i]===previous){
+      row.offers[i]=value;row.autoCoverage[i]=value;
+     }else if(row.autoCoverage)row.autoCoverage[i]=null;
+    }
+   }
+  }
+ }
+}
+function markCoverageManual(d,path){
+ const match=String(path).match(/^coverage\.([^.]+)\.([^.]+)\.(?:offers|allocations)\.([012])(?:\.|$)/);
+ if(!match)return;const row=d.coverage[match[1]]?.[match[2]];
+ if(row){row.autoCoverage??=[null,null,null];row.autoCoverage[Number(match[3])]=null;}
+}
+
 function validate(d){
 const fail=msg=>{throw Error(msg)},obj=x=>x!==null&&typeof x==='object'&&!Array.isArray(x),money=x=>x===null||(typeof x==='number'&&Number.isFinite(x)&&x>=0&&x<=1e12),text=x=>typeof x==='string'&&x.length<=30000;
 function safe(o,depth=0){if(depth>20)fail('Soubor má neplatnou strukturu.');if(o&&typeof o==='object')for(const [k,v] of Object.entries(o)){if(['__proto__','constructor','prototype'].includes(k))fail('Neplatný klíč.');safe(v,depth+1);}}safe(d);
@@ -36,6 +70,7 @@ if(!obj(p.income)||!obj(p.pensions)||!obj(p.overrides))fail('Chybí příjmové 
 if(!obj(d.expenses)||expenseKeys.some(k=>!money(d.expenses[k])))fail('Neplatné výdaje.');if(!Array.isArray(d.offers)||d.offers.length!==3||!obj(d.coverage)||!money(d.currentPremium)||!text(d.message)||!text(d.notes))fail('Neplatné nabídky.');
 for(const o of d.offers)if(!obj(o)||!text(o.productId)||!money(o.premium))fail('Neplatná nabídka.');
 for(const o of d.offers)if(o.components!==undefined&&(!Array.isArray(o.components)||o.components.length<1||o.components.length>4||o.components.some(c=>!obj(c)||!text(c.productId)||!money(c.premium)||!['new','retained'].includes(c.kind)||(c.label!==undefined&&!text(c.label)))))fail('Neplatné části nabídky.');
+for(const rows of Object.values(d.coverage))for(const r of Object.values(rows))if(r.autoCoverage!==undefined&&(!Array.isArray(r.autoCoverage)||r.autoCoverage.length!==3||r.autoCoverage.some(v=>!money(v))))fail('Neplatný původ částek krytí.');
 for(const rows of Object.values(d.coverage))for(const r of Object.values(rows))if(r.allocations!==undefined&&(!Array.isArray(r.allocations)||r.allocations.length!==3||r.allocations.some((a,i)=>a!==null&&(!Array.isArray(a)||a.length!==offerParts(d.offers[i]).length||a.some(v=>!money(v))))))fail('Neplatné rozdělení krytí.');
 for(const [id,rows] of Object.entries(d.coverage)){if(!ids.has(id)||!obj(rows))fail('Neplatné přiřazení krytí.');for(const [key,row] of Object.entries(rows)){if((![...risks,...childRisks].some(r=>r[0]===key)&&!/^custom_[-a-zA-Z0-9_]+$/.test(key))||!obj(row)||!['KON','KL'].includes(row.type)||!money(row.current)||!Array.isArray(row.offers)||row.offers.length!==3||row.offers.some(v=>!money(v)))fail('Neplatné částky krytí.');for(const k of ['label','variant','baseRisk','unit'])if(row[k]!==undefined&&!text(row[k]))fail('Neplatný popis rizika.');if(row.terms!==undefined&&(!Array.isArray(row.terms)||row.terms.length!==3||row.terms.some(v=>!text(v))))fail('Neplatné varianty rizika.');}}
 for(const p of [...d.adults,...d.children]){if(p.pensionModel!==undefined){const m=p.pensionModel;if(!obj(m)||!money(m.ovz)||(m.years!==null&&(!Number.isInteger(m.years)||m.years<0||m.years>70))||!text(m.source))fail('Neplatné předpoklady důchodu.');}if(p.hiddenRisks!==undefined&&(!Array.isArray(p.hiddenRisks)||p.hiddenRisks.some(v=>typeof v!=='string')))fail('Neplatná rizika.');}
@@ -58,7 +93,7 @@ function normalize(d){syncOffers(d);d.expenseUse??={};for(const k of expenseKeys
 function coverageRows(d,p){syncCoverage(d);normalize(d);return Object.entries(d.coverage[p.id]);}
 function addRisk(d,p,config){const id='custom_'+uid();d.coverage[p.id]??={};d.coverage[p.id][id]={baseRisk:config.baseRisk||'other',label:config.label.trim(),variant:config.variant?.trim()||'',type:config.type||'KON',unit:config.unit||'sum',terms:['','',''],current:null,offers:[0,0,0]};return id;}
 function removeRisk(d,p,id){p.hiddenRisks??=[];if(!id.startsWith('custom_')&&!p.hiddenRisks.includes(id))p.hiddenRisks.push(id);delete d.coverage[p.id][id];}
-function copyOffer(d,from,to){if(from===to)return;for(const rows of Object.values(d.coverage))for(const r of Object.values(rows)){r.offers[to]=r.offers[from];if(r.allocations)r.allocations[to]=null;r.terms??=['','',''];r.terms[to]=r.terms[from];}}
+function copyOffer(d,from,to){if(from===to)return;for(const rows of Object.values(d.coverage))for(const r of Object.values(rows)){r.offers[to]=r.offers[from];r.autoCoverage??=[null,null,null];r.autoCoverage[to]=null;if(r.allocations)r.allocations[to]=null;r.terms??=['','',''];r.terms[to]=r.terms[from];}}
 function copyChild(d,fromId,toId){if(fromId===toId)throw Error('Vyberte jiné dítě.');const from=d.children.find(p=>p.id===fromId),to=d.children.find(p=>p.id===toId);if(!from||!to)throw Error('Dítě nebylo nalezeno.');d.coverage[toId]=JSON.parse(JSON.stringify(d.coverage[fromId]||{}));to.hiddenRisks=[...(from.hiddenRisks||[])];}
 function parsePensionText(text){const result={};for(const [key,pattern] of [['three','(?:III|3\\.?)'],['two','(?:II|2\\.?)'],['one','(?:I|1\\.?)']]){const re=new RegExp('(?:invalidn[^\\n:]*?'+pattern+'(?:\\s*st[^\\n:]*)?|(?:^|\\n)\\s*'+pattern+'\\s*(?:stupe[nň]|st\\.)?)\\s*[:=–-]\\s*([0-9][0-9 \\u00a0\\u202f]*(?:[,.][0-9]{1,2})?)','im');const m=text.match(re);if(m)result[key]=Number(m[1].replace(/\s/g,'').replace(',','.'));}return result;}
 const advisorEmails={fairlife:'f.solar@fair-life.cz',mantra:'filip.solar@mantra-finance.cz'};
@@ -69,5 +104,5 @@ if(step===4){active(d).forEach((p,i)=>{if(!p.clientPension?.universal&&!p.client
 function completeClientDefaults(d){for(const p of [...active(d),...d.children]){if(p.nationalId){const rc=parseNationalId(p.nationalId);if(!rc.error){if(!p.birth)p.birth=rc.birth;if(!p.sex)p.sex=rc.sex;}}if(!p.health?.trim())p.health='Neuvedeno';if(!p.answers?.parental)p.parental=false;}return d;}
 function clientAnswers(d,brand){const result=completeClientDefaults(JSON.parse(JSON.stringify(d)));result.advisorBrand=brand==='mantra'?'mantra':'fairlife';result.reportBrand=result.advisorBrand;result.documentType='client-answers';result.step=0;result.coverage={};result.offers=[{productId:'',premium:null},{productId:'',premium:null},{productId:'',premium:null}];result.recommended=null;result.recommendationReason='';result.message='';return result;}
 function makeEmail(answers,brand){const recipient=advisorEmails[brand]||advisorEmails.fairlife,utf8=s=>{const bytes=new TextEncoder().encode(s);let binary='';for(const b of bytes)binary+=String.fromCharCode(b);return btoa(binary)},fold=s=>s.match(/.{1,76}/g)?.join('\r\n')||'',boundary='life_'+uid(),subject='Vyplněný dotazník k životnímu pojištění',body='Dobrý den,\r\n\r\nzasílám vyplněný dotazník k životnímu pojištění v příloze.\r\n\r\nS pozdravem\r\n'+active(answers).map(p=>p.name).join(' a ');return ['To: '+recipient,'Subject: =?UTF-8?B?'+utf8(subject)+'?=','X-Unsent: 1','MIME-Version: 1.0','Content-Type: multipart/mixed; boundary="'+boundary+'"','','--'+boundary,'Content-Type: text/plain; charset=UTF-8','Content-Transfer-Encoding: base64','',fold(utf8(body)),'--'+boundary,'Content-Type: application/json; name="zivot-odpovedi.json"','Content-Disposition: attachment; filename="zivot-odpovedi.json"','Content-Transfer-Encoding: base64','',fold(utf8(JSON.stringify(answers,null,2))),'--'+boundary+'--',''].join('\r\n');}
-const api={offerParts,syncOffers,offerProduct,completeClientDefaults,budgetRisks,riskEnabled,riskSum,included,advisorEmails,clientIssues,clientAnswers,makeEmail,validDate,parseBirth,birthLabel,parseNationalId,pensionValues,normalize,coverageRows,addRisk,removeRisk,copyOffer,copyChild,parsePensionText,incomeKeys,expenseKeys,risks,childRisks,person,fresh,sum,active,calculate,syncCoverage,validate,rating};if(typeof module!=='undefined')module.exports=api;root.Life=api;
+const api={markCoverageManual,offerParts,syncOffers,offerProduct,completeClientDefaults,budgetRisks,riskEnabled,riskSum,included,advisorEmails,clientIssues,clientAnswers,makeEmail,validDate,parseBirth,birthLabel,parseNationalId,pensionValues,normalize,coverageRows,addRisk,removeRisk,copyOffer,copyChild,parsePensionText,incomeKeys,expenseKeys,risks,childRisks,person,fresh,sum,active,calculate,syncCoverage,validate,rating};if(typeof module!=='undefined')module.exports=api;root.Life=api;
 })(typeof window!=='undefined'?window:globalThis);
