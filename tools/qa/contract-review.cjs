@@ -16,3 +16,8 @@ assert.equal(ctx.contractReviewDate({type:'majetek',anniv:''}),'');
 assert.equal(ctx.contractReviewDate({type:'majetek',anniv:'2026-02-31'}),'');
 const future={type:'majetek',anniv:'2027-10-01'};ctx.recordContractReviewSent(future,'2026-11-10');assert.equal(future.lastReviewAnniversary,undefined);
 console.log('PASS annual/biennial review, repeat sending, persistence, leap date, unknown date and policy anniversary preserved.');
+
+const boundary={type:'auto',anniv:'2027-01-29'};
+ctx.recordContractReviewSent(boundary,'2026-11-09');assert.equal(boundary.lastReviewAnniversary,undefined);
+ctx.recordContractReviewSent(boundary,'2026-11-10');assert.equal(boundary.lastReviewAnniversary,'2027-01-29');
+console.log('PASS 80-day boundary (81 days excluded).');

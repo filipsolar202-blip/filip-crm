@@ -458,7 +458,7 @@ async function copyClientMailRich(index) {
 }
 function showClientMailDrafts() {
   const mac=clientMailMacAvailable();
-  crmExtraModal('clientMailDraft','Připravený e-mail',clientMailDrafts.map((d,i)=>`<div class="mini-card"><p><b>Od: ${esc(d.from)}</b><br>Komu: ${esc(d.to||'doplníte v poště')}${d.bcc.length?` · skrytá kopie: ${num(d.bcc.length)} příjemců`:''}</p><p>${esc(d.subject)}</p>${d.pdfDocument?`<p><b>Příloha: ${esc(d.pdfDocument.name)}</b><br>Aktualizovaný pomocník na Macu vytvoří PDF a přiloží jej. U běžné pošty a na telefonu přiložte PDF ručně.</p>`:''}<div class="actions">${mac?`<a class="btn primary" href="${esc(clientMailNativeUrl(d))}">${d.pdfDocument?'Otevřít Apple Mail včetně PDF':'Otevřít Apple Mail na Macu'}</a>`:''}<a class="btn ${mac?'':'primary'}" href="${esc(clientMailFallbackUrl(d))}">Běžná pošta – účet vyberte ručně</a>${d.body?`<button class="btn" onclick="copyClientMailRich(${i})">Kopírovat formátovaný text</button>`:''}<button class="btn" onclick="copyText(clientMailDrafts[${i}].from,'Adresa odesílatele')">Kopírovat odesílatele</button></div></div>`).join('')+`${clientMailDrafts.length===1&&clientMailDrafts[0].clientId&&!clientMailDrafts[0].externalTracking?`<div class="form-grid"><label class="field">Datum skutečného odeslání<input id="mailPreparedDate" type="date" value="${today()}" onchange="updateEmailReminder('mailPrepared')"></label><label class="field">Připomenout<input id="mailPreparedReminder" type="date" value="${emailReminderDate(today())}" oninput="this.dataset.manual='1'"></label></div><button class="btn primary" onclick="confirmPreparedClientMail()">Potvrdit skutečné odeslání</button>`:''}<p class="note">${mac?'Pomocník na Macu vybere uvedený účet. Při prvním použití povolte ovládání Mailu.':'Na iPhonu v rozepsané zprávě rozbalte pole Kopie/skrytá, Od a v poli Od vyberte uvedenou adresu.'} Běžné otevření pošty neumí vynutit odesílatele; před odesláním jej zkontrolujte. Nic se neodesílá automaticky.</p>${mac?'<details><summary>Pomocník není na tomto Macu nainstalovaný?</summary><p>Stáhněte ZIP, rozbalte jej, přesuňte FILIP CRM Mail do Aplikací a jednou otevřete. Při otevření e-mailu pak prohlížeči povolte spuštění pomocníka.</p><a class="btn" href="assets/downloads/FILIP-CRM-Mail.zip?v=2026.11.10-2" download>Stáhnout pomocníka pro Mac</a></details>':''}`);
+  crmExtraModal('clientMailDraft','Připravený e-mail',clientMailDrafts.map((d,i)=>`<div class="mini-card"><p><b>Od: ${esc(d.from)}</b><br>Komu: ${esc(d.to||'doplníte v poště')}${d.bcc.length?` · skrytá kopie: ${num(d.bcc.length)} příjemců`:''}</p><p>${esc(d.subject)}</p>${d.pdfDocument?`<p><b>Příloha: ${esc(d.pdfDocument.name)}</b><br>Aktualizovaný pomocník na Macu vytvoří PDF a přiloží jej. U běžné pošty a na telefonu přiložte PDF ručně.</p>`:''}<div class="actions">${mac?`<a class="btn primary" href="${esc(clientMailNativeUrl(d))}">${d.pdfDocument?'Otevřít Apple Mail včetně PDF':'Otevřít Apple Mail na Macu'}</a>`:''}<a class="btn ${mac?'':'primary'}" href="${esc(clientMailFallbackUrl(d))}">Běžná pošta – účet vyberte ručně</a>${d.body?`<button class="btn" onclick="copyClientMailRich(${i})">Kopírovat formátovaný text</button>`:''}<button class="btn" onclick="copyText(clientMailDrafts[${i}].from,'Adresa odesílatele')">Kopírovat odesílatele</button></div></div>`).join('')+`${clientMailDrafts.length===1&&clientMailDrafts[0].clientId&&!clientMailDrafts[0].externalTracking?`<div class="form-grid"><label class="field">Datum skutečného odeslání<input id="mailPreparedDate" type="date" value="${today()}" onchange="updateEmailReminder('mailPrepared')"></label><label class="field">Připomenout<input id="mailPreparedReminder" type="date" value="${emailReminderDate(today())}" oninput="this.dataset.manual='1'"></label></div><button class="btn primary" onclick="confirmPreparedClientMail()">Potvrdit skutečné odeslání</button>`:''}<p class="note">${mac?'Pomocník na Macu vybere uvedený účet. Při prvním použití povolte ovládání Mailu.':'Na iPhonu v rozepsané zprávě rozbalte pole Kopie/skrytá, Od a v poli Od vyberte uvedenou adresu.'} Běžné otevření pošty neumí vynutit odesílatele; před odesláním jej zkontrolujte. Nic se neodesílá automaticky.</p>${mac?'<details><summary>Pomocník není na tomto Macu nainstalovaný?</summary><p>Stáhněte ZIP, rozbalte jej, přesuňte FILIP CRM Mail do Aplikací a jednou otevřete. Při otevření e-mailu pak prohlížeči povolte spuštění pomocníka.</p><a class="btn" href="assets/downloads/FILIP-CRM-Mail.zip?v=2026.11.10-3" download>Stáhnout pomocníka pro Mac</a></details>':''}`);
 }
 
 function clientSenderEmail(clientOrId) {
@@ -1095,7 +1095,7 @@ function recordContractReviewSent(s, sentDate) {
   if (!['auto','majetek'].includes(s?.type)) return;
   const due=contractReviewDate(s,sentDate);
   // Re-sending the same reminder must not consume a second annual/biennial cycle.
-  if (due && Math.round((new Date(due+'T12:00:00')-new Date(sentDate+'T12:00:00'))/86400000)<=100) s.lastReviewAnniversary=due;
+  if (due && Math.round((new Date(due+'T12:00:00')-new Date(sentDate+'T12:00:00'))/86400000)<=80) s.lastReviewAnniversary=due;
 }
 function contractDays(s) {
   const type = s?.type || '',
@@ -15145,7 +15145,7 @@ function dashboardWorkRows() {
       type:'Smlouva', title:[s.type,s.product].filter(Boolean).join(' · ') || 'Smlouva',
       date:term.date, dateLabel:term.label, days:d,
       status:getStatuses(s).map(statusBadge).join(' '), text:s.company || ''};
-  }).filter(x => (!source || leadSourceType(x.c) === source) && (x.days <= 100 || isActiveContract(x.s))).sort(compareContractRows);
+  }).filter(x => (!source || leadSourceType(x.c) === source) && (x.days <= (['auto','majetek'].includes(x.s.type) ? 80 : 100) || isActiveContract(x.s))).sort(compareContractRows);
   return [...acts,...contracts];
 }
 function dashboardWorkRowHtml(x) {
@@ -15179,7 +15179,7 @@ function renderDashboardWorkQueue() {
   const cleanupCount = (state.activities || []).filter(a=>a.historyCleanup).length;
   if (cleanupCount) container.insertAdjacentHTML('beforeend',`<p class="note">${cleanupCount} starších informačních zápisů bylo označeno jako dokončené. Zůstávají v historii klientů; nejde o nové uskutečněné hovory ani schůzky.</p>`);
   const contractContainer = byId('dashContractTasks'), wasOpen = contractContainer.open;
-  contractContainer.innerHTML = `<summary>Smlouvy k řešení <span class="badge blue">${contracts.length}</span></summary><p class="note">Samostatné připomínky výročí, fixací a revizí do 100 dní a rozpracované smlouvy. Filtry úkolů výše se na smlouvy nevztahují.</p><div class="dash-work-list">${contracts.length ? header + contracts.slice(0,dashboardContractLimit).map(dashboardWorkRowHtml).join('') : '<div class="dash-work-empty note">Žádné smlouvy k řešení.</div>'}${contracts.length > dashboardContractLimit ? '<button class="btn" onclick="dashboardContractLimit+=60;renderDashboardWorkQueue()">Zobrazit další smlouvy</button>' : ''}</div>`;
+  contractContainer.innerHTML = `<summary>Smlouvy k řešení <span class="badge blue">${contracts.length}</span></summary><p class="note">Kontroly aut a majetku 80 dní před výročím (auta každý rok, majetek každé 2 roky), ostatní termíny do 100 dní a rozpracované smlouvy. Filtry úkolů výše se na smlouvy nevztahují.</p><div class="dash-work-list">${contracts.length ? header + contracts.slice(0,dashboardContractLimit).map(dashboardWorkRowHtml).join('') : '<div class="dash-work-empty note">Žádné smlouvy k řešení.</div>'}${contracts.length > dashboardContractLimit ? '<button class="btn" onclick="dashboardContractLimit+=60;renderDashboardWorkQueue()">Zobrazit další smlouvy</button>' : ''}</div>`;
   contractContainer.open = wasOpen;
 }
 let weeklyGoalEditingSlot = 1;
@@ -16075,8 +16075,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.11.10-2';
-const VERSION_NOTE = 'Vstřícnější e-maily k výročí smluv ve vykání i tykání. Kontroly aut každý rok, majetku každé dva roky; pětidenní připomenutí odpovědi zůstává.';
+const VERSION = '2026.11.10-3';
+const VERSION_NOTE = 'Kontroly aut každý rok a majetku každé dva roky, vždy 80 dní před výročím. Pětidenní připomenutí odpovědi zůstává.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
