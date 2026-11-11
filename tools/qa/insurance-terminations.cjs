@@ -42,5 +42,16 @@ await page.locator('#terminationModal details').nth(1).evaluate(e=>e.open=true);
 await page.evaluate(()=>{window.qaPersist=persist;persist=()=>false;});await f('place').fill('Brně');assert.equal(await page.evaluate(()=>CrmTerminations.save()),false);assert.match(dialogs.pop(),/Uložení nebylo potvrzeno/);assert.equal(await page.evaluate(()=>state.contracts.find(s=>s.id===13).terminations.at(-1).place),'Praze');await page.evaluate(()=>{persist=window.qaPersist;delete window.qaPersist;});
 await page.setViewportSize({width:390,height:844});await page.screenshot({path:'/private/tmp/crm-termination-mobile.png',fullPage:true});assert(await page.locator('#terminationModal .modal-box').evaluate(e=>e.scrollWidth<=e.clientWidth+2));
 if(process.env.PDF_QA){const printPage=await context.newPage();await printPage.setContent(doc);await printPage.pdf({path:'/private/tmp/crm-termination-test.pdf',format:'A4',preferCSSPageSize:true,printBackground:true});await printPage.screenshot({path:'/private/tmp/crm-termination-test.png',fullPage:true});const guide=await page.evaluate(()=>CrmTerminations.documentHtml(state.contracts.find(s=>s.id===13).terminations[0],true));await printPage.setContent(guide);await printPage.pdf({path:'/private/tmp/crm-termination-guide.pdf',format:'A4',preferCSSPageSize:true,printBackground:true});}
+// Nearest date is a complete option: no duplicate reason input or stale detail in output.
+await page.evaluate(()=>CrmTerminations.open(13));
+await f('reason').selectOption('nearest');await f('reason').dispatchEvent('input');
+assert.equal(await f('details').count(),0);await f('reviewed').check();
+assert.equal(await page.evaluate(()=>CrmTerminations.save()),true);
+const nearestDoc=await page.evaluate(()=>CrmTerminations.documentHtml(state.contracts.find(s=>s.id===13).terminations.at(-1)));
+assert.match(nearestDoc,/k nejbližšímu možnému datu/);assert.doesNotMatch(nearestDoc,/Důvod žádosti:|Doplňující informace k žádosti:/);
+await f('reason').selectOption('other');await f('reason').dispatchEvent('input');assert.equal(await f('details').count(),1);
+await page.evaluate(()=>{const s=state.contracts.find(s=>s.id===14);s.company='Komerční pojišťovna';s.terminations=[{id:'kb-old-draft',provider:'kb',contractId:14,clientId:2,area:'property',insurer:'Komerční pojišťovna, a.s.',insurerAddress:'náměstí Junkových 2772/1\n155 00 Praha 5',holder:'Test klient',address:'Testovací, Praha',number:'KB-TEST',object:'byt',status:'draft',reason:'other',details:'k nejbližšímu',history:[],attachments:[],signDate:'2026-11-11',place:'Praze'}];CrmTerminations.open(14);});
+assert.match(await f('insurerAddress').inputValue(),/Palackého 53/);assert.equal(await f('reason').inputValue(),'nearest');assert.equal(await f('details').count(),0);
+const visual=await context.newPage();await visual.setContent(nearestDoc);await visual.screenshot({path:'/private/tmp/termination-nearest-preview.png',fullPage:true});await visual.close();
 assert.deepEqual(errors,[]);assert.deepEqual(dialogs,[]);console.log('PASS policy entry, data persistence, client isolation, rules, email sender, one follow-up/case, lifecycle and escaped PDF.');
 }finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});
