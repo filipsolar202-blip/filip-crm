@@ -1,3 +1,12 @@
+## 2026.11.13-1 — Google Kalendář: připravené propojení
+
+- Nový panel v Záloze: samostatné přihlášení pouze ke kalendáři, výběr cíle a náhled před prvním propojením.
+- Obousměrné změny propojených aktivit; volitelné přidávání nových kroků od zapnutí. Stabilní identity, párování existujících událostí, kontrola obsazenosti vybraného kalendáře a konfliktních změn.
+- Pozvánky a opakované události jsou vyřazeny z automatických změn. Smazané události se neobnovují. Prefix ✓ označuje dokončení, uplynutí termínu nikoli.
+- Přihlášení je dočasné a pouze v paměti stránky. Žádný přístup k e-mailu, žádné odesílání zpráv. Synchronizace zatím vyžaduje otevřené CRM.
+- Ověřeno na syntetických datech. Živé propojení ještě není aktivní: vyžaduje vlastní OAuth Client ID, autorizaci CRM a výběr kalendáře. Není zatím publikováno na GitHub Pages.
+- Podrobnosti a provozní hranice: `google-calendar/README.md`.
+
 ## 2026.11.06-9 – Výpovědi pojištění aut a majetku
 
 - U smluv je průvodce Výpověď s předvyplněním, kontrolou údajů, podklady a historií.

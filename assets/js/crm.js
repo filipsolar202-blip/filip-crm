@@ -495,6 +495,7 @@ function persist() {
     localStorage.setItem(STORE, JSON.stringify(state));
     window.__lastPersistOk = true;
     queueDiskSave();
+    if (typeof CrmCalendar !== 'undefined') CrmCalendar.changed();
     return true;
   } catch (e) {
     window.__lastPersistOk = false;
@@ -8455,6 +8456,7 @@ function googleCalendarUrl(a) {
   return 'https://calendar.google.com/calendar/render?' + q.toString();
 }
 function renderSettings() {
+  if (typeof CrmCalendar !== 'undefined') CrmCalendar.mount();
   setVal('settingsCoef', state.settings.bjCoef || 150);
   setVal('gsyncUrl', localStorage.getItem(GOOGLE_SYNC_URL_KEY) || '');
   setVal('gsyncKey', localStorage.getItem(GOOGLE_SYNC_KEY_KEY) || '');
@@ -15046,7 +15048,7 @@ function saveActivity(markDone = false) {
   if (typeof closeModal === 'function') closeModal('activityModal');
   if (typeof renderAll === 'function') renderAll();
   if (typeof saveToast === 'function') saveToast(completed ? 'Aktivita vyhodnocena' : 'Aktivita uložena');
-  if (isNew && a.type === 'Schůzka' && a.time && !completed && typeof googleCalendarUrl === 'function') window.open(googleCalendarUrl(a), '_blank');
+  if (!(typeof CrmCalendar !== 'undefined' && CrmCalendar.active()) && isNew && a.type === 'Schůzka' && a.time && !completed && typeof googleCalendarUrl === 'function') window.open(googleCalendarUrl(a), '_blank');
 }
 function addActivity(clientId, type, text, silent = false) {
   if (!clientId) return;
@@ -16075,8 +16077,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.11.11-1';
-const VERSION_NOTE = 'Výpovědi: nejbližší možné datum bez dalšího důvodu a oprava adresy KB u rozpracovaných výpovědí.';
+const VERSION = '2026.11.13-1';
+const VERSION_NOTE = 'Google Kalendář: náhled párování, obousměrná synchronizace propojených úkolů a kontrola konfliktů.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';

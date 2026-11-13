@@ -113,3 +113,9 @@ Dotazník nese neprůhledné `crmLifeRef`; rodič kontroluje vazbu a identitu p�
 `opportunities[].lifeProposal` zachovává stabilní klíč kalkulace + index varianty a snímek výpočtu. Případ vznikne až původním uložením formuláře; automatizace obchodů fungují beze změny. Při podpisu se metadata přenesou do `deals[].lifeProposal`. Produkce a AUM se nepočítají z kalkulačních údajů. Ochranné zálohové počty obsahují `lifeCalculations` a `lifeHistory`.
 
 Report Život od 2026.11.04-1 filtruje nabídky podle vyplněného produktu/ceny se zachováním původních indexů. Reportová transformace ani stránkování nemění model kalkulace. Vzhled FairLife je oddělen v `life-report.css` a omezen na `.theme-fairlife`; Mantra používá původní styl. Tiskové scénáře pokrývá `tools/qa/life-report.cjs`.
+
+## Google Calendar — 2026.11.13-1
+
+`calendar-sync-core.js` mapuje aktivity na události a provádí třícestné porovnání se základním snímkem. `calendar-sync.js` řídí OAuth token v paměti, stránkované čtení, náhled a synchronizaci. `activities[].calendarLink` uchovává calendarId, eventId, základní snímek a čas synchronizace. Identita nových událostí je SHA-256 syncId aktivity; private extended properties dovolují obnovit vazbu i k ručně párovaným událostem. PATCH používá etag/If-Match. Vazby patří do stávajícího zálohovaného stavu, nastavení připojení zůstává na zařízení. Přihlášení ani token se nezálohují.
+
+Hook persist plánuje porovnání propojených aktivit; renderSettings připojí panel. Automatické zakládání nových úkolů je samostatná volba s výchozím seznamem starších aktivit. Při vybraném cíli se u nové schůzky neotevírá původní ruční TEMPLATE odkaz. Google Tasks a nepropojené události nejsou zdrojem automatického importu. Běh bez otevřeného CRM není implementován. Podrobnosti, zprovoznění a omezení jsou v google-calendar/README.md.
