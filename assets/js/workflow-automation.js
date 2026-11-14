@@ -61,7 +61,7 @@
     if(row.automation)return row.automation;
     normalize(s);
     const t=template(s,row.category), p={id:uuid(),templateId:t.id,version:t.version,enabled:true,paused:false,startedAt:date,lastStage:signed?'Podepsáno':row.status||'Opportunity',lastContact:'',events:[],history:[],steps:t.steps.map(x=>newStep(x)),updatedAt:stamp(),knownContacts:s.activities.filter(a=>same(a.sourceOpportunityId,row.id)).map(a=>a.syncId||String(a.id))};
-    row.automation=p;
+    row.automation=p;CrmDocuments.init(s,row);
     // A signed standalone trade starts with post-signature work, not invented historic activity.
     if(signed)p.steps.filter(x=>x.spec.trigger!=='signed').forEach(x=>{x.status='cancelled';x.reason='Před podpisem – nezpětně evidováno';});
     if(signed||!phaseOnly||p.lastStage==='Opportunity')emit(s,row,signed?'signed':'created',date,signed?{key:'signed'}:{});
@@ -115,6 +115,7 @@
   }
   function activate(s,row,step,date,eventId) {
     const p=row.automation;
+    if(row.documentChecklist&&step.key==='documents')return;
     if(!step.enabled||!p.enabled||p.paused||!allowed(s,row,step.spec))return;
     const matches=matchingManual(s,row,step.spec);
     if(matches.length>1){step.needsReview=true;step.reason='Více podobných otevřených úkolů – zkontrolujte vazby, další kopie nebyla vytvořena';return;}
@@ -146,7 +147,7 @@
       if(step.spec.replaceOn===type)cancelStep(s,p,step,'Nahrazeno událostí '+(EVENTS[type]||type));
     });
     const specs=[...new Map(p.steps.map(x=>[x.key,x.spec])).values()];
-    specs.filter(spec=>spec.trigger===type).forEach(spec=>{
+    specs.filter(spec=>spec.trigger===type&&!(row.documentChecklist&&spec.key==='documents')).forEach(spec=>{
       if([...p.steps].reverse().find(x=>x.key===spec.key)?.enabled===false)return;
       let step=[...p.steps].reverse().find(x=>x.key===spec.key&&['planned','open','paused'].includes(x.status));
       if(!step){step=newStep(spec,p.steps.filter(x=>x.key===spec.key).length);p.steps.push(step);}
@@ -155,9 +156,11 @@
         const a=task(s,step);if(a&&!a.automation.manualDate){a.date=date;a.automation.baseDate=date;a.updatedAt=stamp();}
       }
     });
+    if(type==='documents'&&row.documentChecklist)row.documentChecklist.items.filter(i=>i.status==='missing').forEach(i=>CrmDocuments.change(s,row,i.id,'requested',date));
     log(p,(EVENTS[type]||type)+' · '+date);
   }
   function transfer(s,source,target,date=day()) {
+    if(source?.documentChecklist)target.documentChecklist=clone(source.documentChecklist);
     if(source?.automation){target.automation=clone(source.automation);target.automation.lastStage='Podepsáno';}
     else attach(s,target,true,date);
     const p=target.automation;
@@ -315,12 +318,12 @@
   }
   function caseHtml(row) {
     const p=row.automation, key=sourceKey(row), waits=state.activities.filter(a=>a.emailWait&&(p?a.emailWait.flowId===p.id:a.emailWait.sourceId===key));
-    return `<div class="toolbar"><h3>Pracovní postup</h3><div class="actions">${button('E-mail odeslán – čekám na odpověď','email',{client:row.clientId,source:key})}${button('Šablony','templates')}</div></div>${!p?`<p class="note">Při příští změně fáze se zapne příslušný postup. Pro zapnutí už v aktuální fázi nejprve zkontroluj návrh kroků.</p>${button('Náhled a zapnutí postupu','preview',{source:key})}`:`<div class="actions">${button('Podklady vyžádány','event',{flow:p.id,event:'documents'})}${button('Nabídka odeslána','event',{flow:p.id,event:'offer'})}${button('Další kontakt','contact',{flow:p.id})}${button(p.paused?'Pokračovat':'Pozastavit','pause',{flow:p.id})}${button(p.enabled?'Vypnout automatizaci':'Zapnout automatizaci','toggle',{flow:p.id})}${button('Nová verze šablony – náhled','preview',{source:key})}</div><p class="note">Šablona v${p.version} · ${!p.enabled?'Vypnuto':p.paused?'Pozastaveno':'Zapnuto'}</p>${p.steps.filter(x=>['open','paused'].includes(x.status)||x.needsReview).sort((a,b)=>(task(state,a)?.date||'9999').localeCompare(task(state,b)?.date||'9999')).map(x=>stepHtml(row,x)).join('')||'<p class="note">Není naplánovaný další krok. Vyber odpovídající událost nebo další kontakt.</p>'}<details><summary>Kroky podle fáze · celý postup</summary>${[...new Set(p.steps.map(x=>x.spec.trigger))].map(trigger=>{const list=p.steps.filter(x=>x.spec.trigger===trigger);return `<details class="wf-editor"><summary>${h(EVENTS[trigger]||trigger)} · ${list.filter(x=>x.status==='done').length}/${list.filter(x=>x.enabled&&x.status!=='cancelled').length} hotovo</summary><p class="note">Náhled nemění fázi případu. Budoucí kroky získají termín až při aktivaci.</p>${list.map(x=>stepHtml(row,x)).join('')}</details>`;}).join('')}</details><details><summary>Odhad času a delegování</summary>${metricHtml(p.id)}</details><details><summary>Historie automatizace</summary>${p.history.slice().reverse().map(x=>`<p class="note">${h(x.date)} · ${h(x.text)}</p>`).join('')}</details>`}${waits.length?`<details open><summary>Čekání na klienta</summary>${waits.map(waitHtml).join('')}</details>`:''}`;
+    return `<div class="toolbar"><h3>Pracovní postup</h3><div class="actions">${row.documentChecklist?`<button class="btn slim" data-doc-open="${h(row.documentChecklist.id)}">Podklady případu</button>`:''}${button('E-mail odeslán – čekám na odpověď','email',{client:row.clientId,source:key})}${button('Šablony','templates')}</div></div>${!p?`<p class="note">Při příští změně fáze se zapne příslušný postup. Pro zapnutí už v aktuální fázi nejprve zkontroluj návrh kroků.</p>${button('Náhled a zapnutí postupu','preview',{source:key})}`:`<div class="actions">${button('Podklady vyžádány','event',{flow:p.id,event:'documents'})}${button('Nabídka odeslána','event',{flow:p.id,event:'offer'})}${button('Další kontakt','contact',{flow:p.id})}${button(p.paused?'Pokračovat':'Pozastavit','pause',{flow:p.id})}${button(p.enabled?'Vypnout automatizaci':'Zapnout automatizaci','toggle',{flow:p.id})}${button('Nová verze šablony – náhled','preview',{source:key})}</div><p class="note">Šablona v${p.version} · ${!p.enabled?'Vypnuto':p.paused?'Pozastaveno':'Zapnuto'}</p>${p.steps.filter(x=>['open','paused'].includes(x.status)||x.needsReview).sort((a,b)=>(task(state,a)?.date||'9999').localeCompare(task(state,b)?.date||'9999')).map(x=>stepHtml(row,x)).join('')||'<p class="note">Není naplánovaný další krok. Vyber odpovídající událost nebo další kontakt.</p>'}<details><summary>Kroky podle fáze · celý postup</summary>${[...new Set(p.steps.map(x=>x.spec.trigger))].map(trigger=>{const list=p.steps.filter(x=>x.spec.trigger===trigger);return `<details class="wf-editor"><summary>${h(EVENTS[trigger]||trigger)} · ${list.filter(x=>x.status==='done').length}/${list.filter(x=>x.enabled&&x.status!=='cancelled').length} hotovo</summary><p class="note">Náhled nemění fázi případu. Budoucí kroky získají termín až při aktivaci.</p>${list.map(x=>stepHtml(row,x)).join('')}</details>`;}).join('')}</details><details><summary>Odhad času a delegování</summary>${metricHtml(p.id)}</details><details><summary>Historie automatizace</summary>${p.history.slice().reverse().map(x=>`<p class="note">${h(x.date)} · ${h(x.text)}</p>`).join('')}</details>`}${waits.length?`<details open><summary>Čekání na klienta</summary>${waits.map(waitHtml).join('')}</details>`:''}`;
   }
   function mountCase(row) {const root=$('caseDetailContent');if(!root)return;
     const legacy=root.querySelector('.case-detail-grid > .case-detail-shell > .case-detail-panel');if(legacy&&row.automation)legacy.style.display='none';
     const next=root.querySelector('.case-next-action');if(next&&row.automation){const p=row.automation,a=p.steps.filter(x=>x.status==='open').map(x=>task(state,x)).filter(Boolean).sort((a,b)=>(a.date||'9999').localeCompare(b.date||'9999'))[0];next.innerHTML=`<b>${h(!p.enabled?'Automatizace vypnutá':p.paused?'Postup pozastavený':a?.date||'Další termín není zadaný')}</b><p class="note">${h(a?.text||'Další krok najdeš v pracovním postupu.')}</p>`;}
-    let box=$('workflowCase');if(!box){box=document.createElement('section');box.id='workflowCase';box.className='case-detail-panel';root.querySelector('.case-detail-top')?.after(box);}box.innerHTML=caseHtml(row);}
+    let box=$('workflowCase');if(!box){box=document.createElement('section');box.id='workflowCase';box.className='case-detail-panel';root.querySelector('.case-detail-top')?.after(box);}box.innerHTML=caseHtml(row);CrmDocuments.mount(row);}
   function mount() {
     const section=document.querySelector('.view.active')?.id;
     if(section==='caseDetail'){const o=state.opportunities.find(o=>same(o.id,selectedCaseId));if(o)mountCase(o);}

@@ -493,6 +493,7 @@ function managementBadge(clientOrId) {
 }
 function persist() {
   CrmWorkflow.reconcile(state);
+  CrmDocuments.reconcile(state);
   invalidatePortfolioReadContext();
   state = normalizeState(state);
   clientDirectoryStatsCache = null;
@@ -9077,6 +9078,8 @@ function backupCountValue(s, key) {
   if (key === 'familyPlanHistory') return (s.clients||[]).reduce((n,c)=>n+(c.familyPlan?.history?.length||0),0);
   if (key === 'lifeCalculations') return (s.clients||[]).filter(c=>c.lifeInsurance?.data).length;
   if (key === 'lifeHistory') return (s.clients||[]).reduce((n,c)=>n+(c.lifeInsurance?.history?.length||0),0);
+  if (key === 'documentChecklists') return [...(s.opportunities||[]),...(s.deals||[])].filter(x=>x.documentChecklist).length;
+  if (key === 'documentChecklistItems') return [...(s.opportunities||[]),...(s.deals||[])].reduce((n,x)=>n+(x.documentChecklist?.items?.length||0),0);
   if (key === 'workflowPlans') return [...(s.opportunities||[]),...(s.deals||[])].filter(x=>x.automation).length;
   if (key === 'emailWaits') return (s.activities||[]).filter(x=>x.emailWait).length;
   if (key === 'workflowSteps') return [...(s.opportunities||[]),...(s.deals||[])].reduce((n,x)=>n+(x.automation?.steps?.length||0),0);
@@ -13300,6 +13303,7 @@ function mergeIncomingState(incoming) {
   Object.assign(count,mergeProviderImportStorage(incomingState,count._mergeIds));
   CrmWorkflow.merge(state,incomingState,count._mergeIds);
   CrmTasks.merge(state,incomingState);
+  CrmDocuments.merge(state,incomingState,count._mergeIds);
   count.referrerPayouts = added;
   count.skipped = (count.skipped || 0) + skipped;
   return count;
@@ -13336,6 +13340,8 @@ function criticalBackupCounts(s = state) {
     workflowPlans: backupCountValue(s,'workflowPlans'),
     workflowSteps: backupCountValue(s,'workflowSteps'),
     emailWaits: backupCountValue(s,'emailWaits'),
+    documentChecklists: backupCountValue(s,'documentChecklists'),
+    documentChecklistItems: backupCountValue(s,'documentChecklistItems'),
     workPilots: s.workPilots.length,
     workOutputs: s.workOutputs.length,
     workActivities: backupCountValue(s, 'workActivities'),
@@ -16085,8 +16091,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.11.14-7';
-const VERSION_NOTE = 'Čekání na odpověď: kontrola za 3 dny pro asistentku, okamžité naplánování v kalendáři a návrh SMS bez automatického odesílání.';
+const VERSION = '2026.11.14-8';
+const VERSION_NOTE = 'Podklady podle typu obchodu: administrativní kontrola pro asistentku, odborné posouzení pro Filipa a navazující termíny bez duplicit.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
@@ -16214,10 +16220,11 @@ const BACKUP_COUNT_LABELS = {
   focusSnapshots: 'stavů AUM',
   delegationProcesses: 'činností k delegování',
   lifeCalculations:'životních kalkulací',lifeHistory:'snímků životních kalkulací',
+  documentChecklists:'checklistů podkladů',documentChecklistItems:'položek podkladů',
   workflowTemplates: 'šablon postupů', workflowPlans: 'pracovních postupů', workflowSteps: 'kroků postupů', emailWaits: 'čekání na odpověď',
   wealthRecords: 'majetkových podkladů'
 };
-const BACKUP_PROTECTED_KEYS = ['clientDocuments','clientEmails','familyPlans','familyPlanHistory','lifeCalculations','lifeHistory','workflowTemplates','workflowPlans','workflowSteps','emailWaits','clients', 'contracts', 'deals', 'opportunities', 'insuranceClaims', 'claimHistory', 'claimAttachments', 'notes', 'activities', 'workPilots', 'workOutputs', 'workActivities', 'workTimeEntries', 'analysisEntries', 'campaigns', 'investments', 'investmentSnapshots', 'providerImports', 'providerImportEntries', 'externalInvestments', 'investmentForecasts', 'commissionImports', 'referrerPayouts', 'referrals', 'weeklyGoals', 'weeklyReviews', 'dailyPriorities', 'focusSnapshots', 'delegationProcesses', 'wealthRecords'];
+const BACKUP_PROTECTED_KEYS = ['documentChecklists','documentChecklistItems','clientDocuments','clientEmails','familyPlans','familyPlanHistory','lifeCalculations','lifeHistory','workflowTemplates','workflowPlans','workflowSteps','emailWaits','clients', 'contracts', 'deals', 'opportunities', 'insuranceClaims', 'claimHistory', 'claimAttachments', 'notes', 'activities', 'workPilots', 'workOutputs', 'workActivities', 'workTimeEntries', 'analysisEntries', 'campaigns', 'investments', 'investmentSnapshots', 'providerImports', 'providerImportEntries', 'externalInvestments', 'investmentForecasts', 'commissionImports', 'referrerPayouts', 'referrals', 'weeklyGoals', 'weeklyReviews', 'dailyPriorities', 'focusSnapshots', 'delegationProcesses', 'wealthRecords'];
 let scenario_editableScope = '';
 let fkiEditor_editingFkRecordKey = '',
   fkiEditor_editingFkClientId = null;
