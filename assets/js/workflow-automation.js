@@ -212,23 +212,31 @@
       if(a.automation?.flowId&&!indexed.has(a.automation.flowId)&&!['done','cancelled','missed'].includes(stateOf(a)))setTaskState(a,'cancelled',now);
     }
     for(const mail of s.activities.filter(a=>a.emailWait)){
-      const w=mail.emailWait, source=indexed.get(w.flowId)||findSource(s,w.sourceId), reminder=bySync(s,'email-reminder:'+w.id);
+      const w=mail.emailWait, source=indexed.get(w.flowId)||findSource(s,w.sourceId);let reminder=bySync(s,'email-reminder:'+w.id);
+      w.history=w.history||[];
       if((w.flowId||w.sourceId)&&!source&&w.status==='waiting'){w.status='stopped';w.updatedAt=stamp();w.history.push({date:now,text:'Vázaný případ byl odstraněn'});}
       if(source?.row.automation&&!w.flowId){w.flowId=source.row.automation.id;if(reminder)reminder.automation.flowId=w.flowId;}
       if(source&&CLOSED.includes(source.row.status)&&w.status==='waiting'){w.status='stopped';w.updatedAt=stamp();w.history.push({date:now,text:'Ukončeno s případem'});}
       if(w.status!=='waiting'){
-        if(reminder&&!reminder.emailSms?.sentAt){setTaskState(reminder,'cancelled',now);if(reminder.emailSms)reminder.emailSms.cancelled=true;}
+        if(reminder&&!reminder.emailSms?.sentAt&&reminder.automation.status!=='cancelled'){setTaskState(reminder,'cancelled',now);if(reminder.emailSms)reminder.emailSms.cancelled=true;}
         continue;
       }
       const paused=source?.row.automation&&(!source.row.automation.enabled||source.row.automation.paused);
       w.key=String(mail.clientId)+'|'+(w.flowId||w.sourceId)+'|'+(w.thread?'thread:'+w.thread:'mail:'+w.sentDate+':'+w.topic.toLocaleLowerCase('cs'));
-      if(reminder&&!reminder.completed)reminder.automation.status=paused||w.due>now?'paused':'open';
-      if(paused||!validDate(w.due)||w.due>now||reminder||w.reminderSuppressed)continue;
-      const syncId='email-reminder:'+w.id;
-      s.activities.push({id:s.nextId++,syncId,clientId:mail.clientId,sourceOpportunityId:mail.sourceOpportunityId||null,type:'Úkol',text:'Připomenout e-mail: '+w.topic,date:w.due,time:'',duration:null,recordKind:'activity',completed:false,outcome:'agreed',createdAt:stamp(),updatedAt:stamp(),automation:{origin:'email',waitId:w.id,flowId:w.flowId||null,status:'open',assignee:'me'},
-        emailSms:{text:`Dobrý den, jen se připomínám s e-mailem, který jsem Vám posílal ${w.sentDate.split('-').reverse().join('.')}. Dorazil Vám v pořádku? Děkuji, Filip Solár.`,sentAt:'',cancelled:false}});
-      activityIndex.records.set(syncId,s.activities[s.activities.length-1]);
-      w.reminderCreated=true;w.updatedAt=stamp();
+      // A moved calendar event changes the one existing check, including SMS readiness.
+      if(reminder&&!reminder.completed&&validDate(reminder.date)&&reminder.date!==w.due){w.due=reminder.date;w.updatedAt=stamp();}
+      if(w.reminderCreated&&!reminder)w.reminderSuppressed=true;
+      if(!validDate(w.due)||w.reminderSuppressed)continue;
+      if(!reminder){
+        const syncId='email-reminder:'+w.id;
+        reminder={id:s.nextId++,syncId,clientId:mail.clientId,sourceOpportunityId:mail.sourceOpportunityId||null,type:'Úkol',text:'Zkontrolovat odpověď na e-mail: '+w.topic,date:w.due,time:'',duration:null,recordKind:'activity',completed:false,outcome:'agreed',createdAt:stamp(),updatedAt:stamp(),automation:{origin:'email',waitId:w.id,flowId:w.flowId||null,status:paused?'paused':'open',assignee:'assistant'}};
+        s.activities.push(reminder);activityIndex.records.set(syncId,reminder);w.reminderCreated=true;w.updatedAt=stamp();
+      }
+      // One-time default migration; subsequent manual assignments always win.
+      if(!reminder.emailCheckVersion){if(!reminder.taskAssignment)reminder.automation.assignee='assistant';reminder.emailCheckVersion=2;reminder.updatedAt=stamp();}
+      if(!reminder.completed){reminder.automation.status=paused?'paused':'open';
+        if(!paused&&w.due<=now&&!reminder.emailSms){reminder.emailSms={text:`Dobrý den, jen se připomínám s e-mailem, který jsem Vám posílal ${w.sentDate.split('-').reverse().join('.')}. Dorazil Vám v pořádku? Děkuji, Filip Solár.`,sentAt:'',cancelled:false};reminder.updatedAt=stamp();}
+      }
     }
     // Deleting a reminder is an explicit stop, not an invitation to regenerate it.
     for(const mail of s.activities.filter(a=>a.emailWait?.reminderCreated))if(!bySync(s,'email-reminder:'+mail.emailWait.id))mail.emailWait.reminderSuppressed=true;
@@ -241,7 +249,8 @@
     }));
   }
   function totals(list) {return list.reduce((r,x)=>{['solo','done','remaining','delegable','assistant','residual','saving','chosenMe','chosenAssistant'].forEach(k=>r[k]=(r[k]||0)+x[k]);return r;},{solo:0,done:0,remaining:0,delegable:0,assistant:0,residual:0,saving:0,chosenMe:0,chosenAssistant:0});}
-  function email(s,{clientId,sourceId='',sentDate,topic,due,working=false,thread=''}) {
+  function email(s,{clientId,sourceId='',sentDate,topic,due,working=false,thread='',body='',submissionId=''}) {
+    if(submissionId){const submitted=s.activities.find(a=>a.emailWait?.submissionId===submissionId);if(submitted)return submitted;}
     if(!s.clients.some(c=>same(c.id,clientId)))throw Error('Vyber klienta.');
     if(!validDate(sentDate)||!validDate(due)||due<sentDate||sentDate>day())throw Error('Doplň skutečné datum odeslání a kontrolu po odeslání.');
     if(!topic.trim())throw Error('Doplň stručný účel e-mailu.');
@@ -250,8 +259,8 @@
     const threadKey=thread.trim()?'thread:'+thread.trim():'mail:'+sentDate+':'+topic.trim().toLocaleLowerCase('cs');
     const key=String(clientId)+'|'+(source?.row.automation?.id||sourceId)+'|'+threadKey;
     const prior=s.activities.find(a=>a.emailWait?.key===key&&a.emailWait.status==='waiting');
-    if(prior){prior.emailWait.due=due;prior.emailWait.updatedAt=stamp();const reminder=s.activities.find(a=>a.syncId==='email-reminder:'+prior.emailWait.id);if(reminder){reminder.date=due;reminder.updatedAt=stamp();}return prior;}
-    const a={id:s.nextId++,syncId:uuid(),clientId,sourceOpportunityId:source&&!source.signed?source.row.id:null,type:'Email',text:'E-mail odeslán: '+topic.trim(),date:sentDate,time:'',duration:null,completed:true,completedAt:sentDate,outcome:'realized',recordKind:'activity',createdAt:stamp(),updatedAt:stamp(),emailWait:{id:uuid(),key,flowId:source?.row.automation?.id||'',sourceId,topic:topic.trim(),thread:thread.trim(),sentDate,due,working,status:'waiting',history:[],updatedAt:stamp()}};
+    if(prior){prior.emailWait.due=due;prior.emailWait.body=String(body||prior.emailWait.body||'').trim();prior.emailWait.updatedAt=stamp();prior.updatedAt=stamp();const reminder=s.activities.find(a=>a.syncId==='email-reminder:'+prior.emailWait.id);if(reminder){reminder.date=due;reminder.updatedAt=stamp();}return prior;}
+    const a={id:s.nextId++,syncId:uuid(),clientId,sourceOpportunityId:source&&!source.signed?source.row.id:null,type:'Email',text:'E-mail odeslán: '+topic.trim(),date:sentDate,time:'',duration:null,completed:true,completedAt:sentDate,outcome:'realized',recordKind:'activity',createdAt:stamp(),updatedAt:stamp(),emailWait:{id:uuid(),key,flowId:source?.row.automation?.id||'',sourceId,topic:topic.trim(),thread:thread.trim(),body:String(body).trim(),submissionId,sentDate,due,working,status:'waiting',history:[],updatedAt:stamp()}};
     s.activities.push(a);return a;
   }
   function findSource(s,key) {const [kind,id]=String(key).split(':');return sources(s).find(x=>(x.signed?'deal':'case')===kind&&same(x.row.id,id));}
@@ -302,7 +311,7 @@
   }
   function waitHtml(mail) {
     const w=mail.emailWait, r=state.activities.find(a=>a.syncId==='email-reminder:'+w.id), source=w.flowId?find(state,w.flowId):findSource(state,w.sourceId), c=state.clients.find(x=>same(x.id,mail.clientId));
-    return `<article class="wf-step"><div><b>${h(w.topic)}</b><div class="note">${h(c?clientName(c):'Klient chybí')} · ${h(source?.row.product||source?.row.category||'Bez vazby na případ – doplnit')} · kontrola ${h(w.due)}</div><small>${w.status==='waiting'?'Odpověď není zaznamenaná':({answered:'Klient odpověděl',resolved:'Vyřešeno jinak',stopped:'Ukončeno'})[w.status]||h(w.status)}</small></div><div class="actions">${w.status==='waiting'?button('Klient odpověděl','wait',{id:mail.syncId,result:'answered'})+button('Vyřešeno jinak','wait',{id:mail.syncId,result:'resolved'})+button('Odložit','defer',{id:mail.syncId})+button('Už nepřipomínat','wait',{id:mail.syncId,result:'stopped'}):''}${r?.emailSms&&!r.emailSms.cancelled?button(r.emailSms.sentAt?'Odeslaná SMS':'Návrh SMS','sms',{id:r.syncId}):''}</div></article>`;
+    return `<article class="wf-step"><div><b>${h(w.topic)}</b><div class="note">${h(c?clientName(c):'Klient chybí')} · ${h(source?.row.product||source?.row.category||'Bez vazby na případ – doplnit')} · odesláno ${h(w.sentDate)} · kontrola ${h(w.due)}</div><small>${w.status==='waiting'?'Odpověď není zaznamenaná':({answered:'Klient odpověděl',resolved:'Vyřešeno jinak',stopped:'Ukončeno'})[w.status]||h(w.status)}</small>${w.body?`<details><summary>Uložený obsah e-mailu</summary><p class="wf-mail-body">${h(w.body)}</p></details>`:''}${r?.completed&&w.status==='waiting'?'<small>Kontrola uzavřena, odpověď zatím nezaznamenána.</small>':''}</div><div class="actions">${r&&!r.completed?CrmTasks.ownerControl(r):''}${w.status==='waiting'?button('Klient odpověděl','wait',{id:mail.syncId,result:'answered'})+button('Vyřešeno jinak','wait',{id:mail.syncId,result:'resolved'})+button('Odložit','defer',{id:mail.syncId})+button('Už nepřipomínat','wait',{id:mail.syncId,result:'stopped'}):''}${r&&smsReady(state,r)?button(r.emailSms.sentAt?'Odeslaná SMS':'Návrh SMS','sms',{id:r.syncId}):''}</div></article>`;
   }
   function caseHtml(row) {
     const p=row.automation, key=sourceKey(row), waits=state.activities.filter(a=>a.emailWait&&(p?a.emailWait.flowId===p.id:a.emailWait.sourceId===key));
@@ -317,7 +326,7 @@
     if(section==='caseDetail'){const o=state.opportunities.find(o=>same(o.id,selectedCaseId));if(o)mountCase(o);}
     if(section==='dashboard'){
       let box=$('workflowDashboard');const parent=document.querySelector('#dashboardTasks>.dashboard-tasks');if(parent&&!box){box=document.createElement('details');box.className='wf-dashboard';box.id='workflowDashboard';parent.querySelector(':scope>.toolbar').after(box);}
-      if(box){const old=box.open, tasks=state.activities.filter(a=>a.automation&&!a.completed&&a.automation.status==='open'), waits=state.activities.filter(a=>a.emailWait?.status==='waiting'), sms=state.activities.filter(a=>a.emailSms&&!a.emailSms.cancelled&&!a.emailSms.sentAt&&a.automation.status==='open');
+      if(box){const old=box.open, tasks=state.activities.filter(a=>a.automation&&!a.completed&&a.automation.status==='open'), waits=state.activities.filter(a=>a.emailWait?.status==='waiting'), sms=state.activities.filter(a=>smsReady(state,a)&&!a.emailSms.sentAt);
         box.innerHTML=`<summary>Návaznosti obchodů · dnes ${tasks.filter(a=>a.date===day()).length} · čekám ${waits.length} · SMS ${sms.length} · po termínu ${tasks.filter(a=>a.date&&a.date<day()).length}</summary><div class="actions">${button('Dnes vyřešit','queue',{kind:'today'})}${button('Čekám na klienta','queue',{kind:'waiting'})}${button('Připravené SMS','queue',{kind:'sms'})}${button('Po termínu','queue',{kind:'overdue'})}${button('Šablony postupů','templates')}${button('Analýza pracnosti','analysis')}</div><p class="note">Kontroly se dopočítají při otevření CRM. Zavřená aplikace neposílá upozornění na pozadí.</p>`;box.open=old;}
     }
     if(section==='clients'&&typeof selectedClientId!=='undefined'&&selectedClientId){
@@ -367,13 +376,14 @@
     p.steps.filter(x=>x.status==='planned'&&(x.spec.trigger==='stage:'+p.lastStage||x.spec.trigger===(p.lastStage==='Podepsáno'?'signed':'created'))).forEach(x=>activate(s,row,x,day(),'template-update:'+t.version));
   }
   function openEmail(clientId,key='') {
+    if(!clientId){modal('Vybrat klienta',`<label>Klient${select('wfChooseClient',{'':'Vyber klienta',...Object.fromEntries(state.clients.map(c=>[c.id,clientName(c)]))},'')}</label>${button('Pokračovat','choose-mail-client')}`);return;}
     const list=sources(state).filter(x=>same(x.row.clientId,clientId));
-    modal('E-mail odeslán – čekám na odpověď',`<input type="hidden" id="wfMailClient" value="${h(clientId)}"><div class="wf-form"><label>Konkrétní případ${select('wfMailSource',{'':'Bez případu – doplnit vazbu',...Object.fromEntries(list.map(x=>[sourceKey(x.row),(x.signed?'Podepsáno: ':'')+(x.row.product||x.row.category)]))},key)}</label>${input('wfMailSent','Skutečné datum odeslání',day(),'date')}${input('wfMailTopic','Předmět / účel')}${input('wfMailThread','Odkaz / ID vlákna (volitelné)')}<label>Pravidlo kontroly${select('wfMailWorking',{'false':'3 kalendářní dny','true':'3 pracovní dny'},'false')}</label>${input('wfMailDue','Termín kontroly',plus(day(),3),'date')}</div><p class="note">Tímto potvrzuješ skutečně odeslaný e-mail. CRM e-mail neposílá ani nečte schránku. Bez vazby na případ bude čekání vedeno pouze u klienta.</p>${button('Zaznamenat odeslání a hlídat odpověď','save-email')}`);
+    modal('E-mail odeslán – čekám na odpověď',`<input type="hidden" id="wfMailSubmission" value="${uuid()}"><input type="hidden" id="wfMailClient" value="${h(clientId)}"><div class="wf-form"><label>Konkrétní případ${select('wfMailSource',{'':'Bez případu – doplnit vazbu',...Object.fromEntries(list.map(x=>[sourceKey(x.row),(x.signed?'Podepsáno: ':'')+(x.row.product||x.row.category)]))},key)}</label>${input('wfMailSent','Skutečné datum odeslání',day(),'date')}${input('wfMailTopic','Předmět / účel')}${input('wfMailThread','Odkaz / ID vlákna (volitelné)')}<label>Pravidlo kontroly${select('wfMailWorking',{'false':'3 kalendářní dny','true':'3 pracovní dny'},'false')}</label>${input('wfMailDue','Termín kontroly',plus(day(),3),'date')}</div><label>Podstatný obsah e-mailu (volitelné)<textarea id="wfMailBody" rows="5" placeholder="Sem vlož jen obsah, který chceš uchovat u klienta."></textarea></label><p class="note">Kontrola vznikne ihned, standardně za 3 kalendářní dny, a automaticky se přiřadí asistentce. Obsah e-mailu zůstává v CRM, nepřenáší se do kalendáře.</p><p class="note">Tímto potvrzuješ skutečně odeslaný e-mail. CRM e-mail neposílá ani nečte schránku. Bez vazby na případ bude čekání vedeno pouze u klienta.</p>${button('Zaznamenat odeslání a hlídat odpověď','save-email')}`);
   }
   function queue(kind) {
     let list=state.activities.filter(a=>a.automation&&!a.completed&&a.automation.status==='open');
     if(kind==='waiting'){modal('Čekám na klienta',state.activities.filter(a=>a.emailWait?.status==='waiting').map(waitHtml).join('')||'<p>Žádné čekání.</p>');return;}
-    list=list.filter(a=>kind==='sms'?a.emailSms&&!a.emailSms.cancelled&&!a.emailSms.sentAt:kind==='overdue'?a.date&&a.date<day():a.date===day());
+    list=list.filter(a=>kind==='sms'?smsReady(state,a)&&!a.emailSms.sentAt:kind==='overdue'?a.date&&a.date<day():a.date===day());
     modal({today:'Dnes vyřešit',sms:'Připravené SMS',overdue:'Po termínu'}[kind],list.map(a=>{
       const src=find(state,a.automation.flowId),c=state.clients.find(c=>same(c.id,a.clientId));
       return `<article class="wf-step"><div><b>${h(a.text)}</b><p class="note">${h(c?clientName(c):'Klient chybí')} · ${h(a.date)} ${h(a.time)} · ${a.automation.assignee==='assistant'?'Asistentka':'Já'}</p><p class="note">${h(c?.phone||'Telefon chybí')} · ${h(c?.email||'E-mail chybí')}</p>${src?`<small>${h(src.row.product||src.row.category)}</small>`:'<small>Vazba na případ chybí</small>'}</div><div class="actions">${button('Klient','client',{id:a.clientId})}${src?button('Případ','source',{source:sourceKey(src.row)}):''}${button('Upravit v diáři','activity',{id:a.id})}${a.emailSms?button('SMS','sms',{id:a.syncId}):''}</div></article>`;
@@ -384,8 +394,9 @@
     const groups=[...new Set(list.map(x=>x.row.category))].map(category=>{const t=totals(list.filter(x=>x.row.category===category));return `<tr><td>${h(category)}</td>${['solo','done','remaining','saving','assistant','chosenAssistant'].map(metric=>`<td>${button(t[metric]+' min','drill',{flow,metric,category})}</td>`).join('')}</tr>`;}).join('');
     modal('Odhady pracnosti a delegování',`${metricHtml(flow,category)}<div class="table-wrap"><table><thead><tr><th>Typ</th><th>Celkem</th><th>Dokončené</th><th>Zbývá</th><th>Možná úspora</th><th>Možný čas asistentky</th><th>Zvolený čas asistentky</th></tr></thead><tbody>${groups}</tbody></table></div><p class="note">Souhrn všech případů se zapnutou šablonou včetně dokončených. Zrušené a neuskutečněné kroky nejsou vykázané jako odvedená práce. Kliknutím na součet zobrazíš zdrojové kroky.</p><div class="table-wrap"><table><thead><tr><th>Typ / případ</th><th>Krok / stav</th><th>Příspěvek k vybranému součtu</th><th>Vykonává</th></tr></thead><tbody>${filtered.map(x=>`<tr><td>${h(x.row.category)}<br>${button(label(x.row),'source',{source:sourceKey(x.row)})}</td><td>${h(x.a?.text||x.step.spec.title)}<br>${h(STATUS[x.step.status])}</td><td>${x[metric]} min</td><td>${x.step.spec.assignee==='assistant'?'Asistentka':'Já'}</td></tr>`).join('')}</tbody></table></div>`);
   }
+  function smsReady(s,a){const w=s.activities.find(m=>m.emailWait?.id===a.automation?.waitId)?.emailWait;return !!(a.emailSms&&!a.emailSms.cancelled&&(a.emailSms.sentAt||w?.status==='waiting'&&a.date<=day()&&!a.completed&&a.automation.status==='open'));}
   function showSms(id) {
-    const a=state.activities.find(a=>a.syncId===id);if(!a?.emailSms||a.emailSms.cancelled)return;
+    const a=state.activities.find(a=>a.syncId===id);if(!a||!smsReady(state,a))return;
     const c=state.clients.find(c=>same(c.id,a.clientId));
     modal('Návrh SMS – ruční odeslání',`<p>${h(c?clientName(c):'Klient chybí')} · ${h(c?.phone||'Doplň telefon na kartě klienta')}</p><label>Text SMS<textarea id="wfSmsText" rows="5" ${a.emailSms.sentAt?'readonly':''}>${h(a.emailSms.text)}</textarea></label><p class="note">Kopírování neznamená odeslání. Citlivé podrobnosti se do návrhu automaticky nedoplňují.</p><div class="actions">${button('Kopírovat','copy-sms',{id})}${!a.emailSms.sentAt?button('Uložit návrh','save-sms',{id})+button('Označit jako skutečně odeslané','sent-sms',{id}):`<span>Odesláno ${h(a.emailSms.sentAt)}</span>`}</div>`);
   }
@@ -414,14 +425,15 @@
         case 'save-contact':if(!validDate(value('wfContactDate')))throw Error('Doplň datum.');if(transaction(()=>{row.nextContactDate=value('wfContactDate');row.updatedAt=stamp();}))close();break;
         case 'step':modal('Upravit pracovní krok',`${['done','cancelled','missed'].includes(step.status)?'<p>Historický krok – jeho odhad je uzamčený.</p>':fieldSpec(step.spec,'wfs')+(task(state,step)?input('wfsDate','Termín',task(state,step).date,'date')+input('wfsTime','Čas (volitelný)',task(state,step).time,'time'):'')+button('Uložit pouze pro tento případ','save-step',{flow:d.flow,step:d.step})}`);break;
         case 'save-step':{const spec=readSpec('wfs',step.spec);if(transaction(()=>{const a=task(state,step);if(a&&step.spec.assignee!==spec.assignee)CrmTasks.assign(state,a,spec.assignee);step.spec=spec;step.manualEstimate=true;if(a){a.text=spec.title;a.date=value('wfsDate');a.time=value('wfsTime');a.automation.manualText=true;a.automation.manualDate=true;a.automation.assignee=spec.assignee;a.updatedAt=stamp();}log(p,'Ruční úprava kroku '+spec.title);}))close();break;}
+        case 'choose-mail-client':if(!value('wfChooseClient'))throw Error('Vyber klienta.');openEmail(Number(value('wfChooseClient')));break;
         case 'email':openEmail(Number(d.client),d.source);break;
-        case 'save-email':if(transaction(()=>email(state,{clientId:Number(value('wfMailClient')),sourceId:value('wfMailSource'),sentDate:value('wfMailSent'),topic:value('wfMailTopic'),due:value('wfMailDue'),thread:value('wfMailThread'),working:value('wfMailWorking')==='true'})))close();break;
+        case 'save-email':if(transaction(()=>email(state,{clientId:Number(value('wfMailClient')),sourceId:value('wfMailSource'),sentDate:value('wfMailSent'),topic:value('wfMailTopic'),due:value('wfMailDue'),thread:value('wfMailThread'),body:value('wfMailBody'),submissionId:value('wfMailSubmission'),working:value('wfMailWorking')==='true'})))close();break;
         case 'wait':transaction(()=>{const a=state.activities.find(a=>a.syncId===d.id);a.emailWait.status=d.result;a.emailWait.updatedAt=stamp();a.updatedAt=stamp();a.emailWait.history.push({date:day(),text:d.result==='answered'?'Klient odpověděl':d.result==='resolved'?'Vyřešeno jinak':'Ukončeno připomínání'});});queue('waiting');break;
         case 'defer':modal('Odložit kontrolu',`${input('wfDefer','Nový termín',plus(day(),3),'date')}${button('Uložit termín','save-defer',{id:d.id})}`);break;
         case 'save-defer':if(!validDate(value('wfDefer')))throw Error('Doplň termín.');if(transaction(()=>{const a=state.activities.find(a=>a.syncId===d.id),r=state.activities.find(x=>x.syncId==='email-reminder:'+a.emailWait.id);a.emailWait.due=value('wfDefer');a.emailWait.updatedAt=stamp();a.updatedAt=stamp();a.emailWait.history.push({date:day(),text:'Kontrola odložena na '+value('wfDefer')});if(r?.emailSms?.sentAt){a.emailWait.history.push({date:day(),text:'Předchozí SMS odeslána '+r.emailSms.sentAt,previousWaitId:a.emailWait.id,reminderSyncId:r.syncId});a.emailWait.id=uuid();a.emailWait.reminderCreated=false;a.emailWait.reminderSuppressed=false;}else if(r){r.date=value('wfDefer');r.updatedAt=stamp();}}))close();break;
         case 'sms':showSms(d.id);break;
-        case 'copy-sms':{await navigator.clipboard.writeText(value('wfSmsText'));b.textContent='Zkopírováno – neodesláno';break;}
-        case 'save-sms':case 'sent-sms':{if(!value('wfSmsText').trim())throw Error('Text SMS je prázdný.');if(transaction(()=>{const a=state.activities.find(a=>a.syncId===d.id);if(a.emailSms.sentAt)return;a.emailSms.text=value('wfSmsText');a.updatedAt=stamp();if(d.wfAction==='sent-sms'){a.emailSms.sentAt=day();setTaskState(a,'done');const id='sms-sent:'+a.syncId;if(!state.activities.some(x=>x.syncId===id))state.activities.push({id:state.nextId++,syncId:id,clientId:a.clientId,sourceOpportunityId:a.sourceOpportunityId||null,workflowContact:{flowId:a.automation.flowId||'',waitId:a.automation.waitId},type:'SMS',text:a.emailSms.text,date:day(),time:'',duration:null,completed:true,completedAt:day(),recordKind:'activity',outcome:'realized',createdAt:stamp(),updatedAt:stamp()});}})){if(d.wfAction==='sent-sms'){const a=state.activities.find(a=>a.syncId===d.id),mail=state.activities.find(x=>x.emailWait?.id===a.automation.waitId);modal('SMS zaznamenána',`<p>Odeslání je uložené v historii. Další kontrolu zvol sám.</p>${mail?button('Naplánovat další kontrolu','defer',{id:mail.syncId}):''}`);}else close();}break;}
+        case 'copy-sms':{const a=state.activities.find(a=>a.syncId===d.id);if(!a||!smsReady(state,a))throw Error('Návrh už není aktuální.');await navigator.clipboard.writeText(value('wfSmsText'));b.textContent='Zkopírováno – neodesláno';break;}
+        case 'save-sms':case 'sent-sms':{if(!value('wfSmsText').trim())throw Error('Text SMS je prázdný.');if(transaction(()=>{const a=state.activities.find(a=>a.syncId===d.id);if(!smsReady(state,a))throw Error('Čekání už není aktivní nebo ještě nenastal termín kontroly.');if(a.emailSms.sentAt)return;a.emailSms.text=value('wfSmsText');a.updatedAt=stamp();if(d.wfAction==='sent-sms'){a.emailSms.sentAt=day();setTaskState(a,'done');const id='sms-sent:'+a.syncId;if(!state.activities.some(x=>x.syncId===id))state.activities.push({id:state.nextId++,syncId:id,clientId:a.clientId,sourceOpportunityId:a.sourceOpportunityId||null,workflowContact:{flowId:a.automation.flowId||'',waitId:a.automation.waitId},type:'SMS',text:a.emailSms.text,date:day(),time:'',duration:null,completed:true,completedAt:day(),recordKind:'activity',outcome:'realized',createdAt:stamp(),updatedAt:stamp()});}})){if(d.wfAction==='sent-sms'){const a=state.activities.find(a=>a.syncId===d.id),mail=state.activities.find(x=>x.emailWait?.id===a.automation.waitId);modal('SMS zaznamenána',`<p>Odeslání je uložené v historii. Další kontrolu zvol sám.</p>${mail?button('Naplánovat další kontrolu','defer',{id:mail.syncId}):''}`);}else close();}break;}
         case 'queue':queue(d.kind);break;
         case 'drill':analysis(d.flow,d.metric,d.category);break;
         case 'analysis':analysis();break;
@@ -431,5 +443,5 @@
   let checkedDay=day();
   function checkDay(){if(typeof state==='undefined'||checkedDay===day())return;checkedDay=day();if(persist())renderActiveView();}
   window.addEventListener('focus',checkDay);setInterval(checkDay,60000);
-  window.CrmWorkflow={normalize,day,plus,validDate,attach,stageChanged,emit,transfer,reconcile,rows,totals,email,merge,mount,mountCase,applyVersion,defaultTemplate,active:a=>!a.automation||a.automation.status==='open'};
+  window.CrmWorkflow={normalize,day,plus,validDate,attach,stageChanged,emit,transfer,reconcile,rows,totals,email,merge,mount,mountCase,applyVersion,defaultTemplate,waitHtml,smsReady,refreshWaiting:()=>{if($('workflowModal')?.style.display==='flex'&&$('workflowBody')?.querySelector('[data-wf-action="wait"]'))queue('waiting');},active:a=>!a.automation||a.automation.status==='open'};
 })();

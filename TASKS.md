@@ -9,3 +9,11 @@ Učení je místní pravidlové: poslední ruční volba na každém jedinečné
 Volby jsou v activity.taskAssignment, pravidla v settings.taskDelegationRules. Žádné placené API, cloudový model, nový server ani přístup do e-mailu. Nejde o vyhodnocení kvality či způsobilosti asistentky. Ruční úkoly bez šablony lze přidělit, ale nevytvářejí obecná pravidla podle podobnosti textu.
 
 Ověření: tools/qa/task-center.cjs, workflow-automation.cjs, calendar-sync.cjs a static.cjs. Testy používají syntetická data a zablokovanou síť, nikoli klientská data nebo živé Google API. Chrome na macOS spouštět mimo Seatbelt, viz tools/qa/runtime.cjs.
+
+## Čekání na odpověď (2026.11.14-7)
+
+Z Úkolů lze přes „E-mail odeslán“ vybrat klienta a případ, uložit předmět a volitelně podstatný obsah. Tím se pouze eviduje uživatelem skutečně odeslaný e-mail, nepřistupuje se do schránky. Výchozí kontrola je za 3 kalendářní dny (datum, nikoli přesných 72 hodin); lze zvolit Po–Pá nebo vlastní datum. Kontrolní aktivita vzniká ihned se stabilním ID email-reminder:<waitId> a asistentkou jako výchozí odpovědnou osobou. Již existující ruční přiřazení má přednost. Vložený obsah je v emailWait.body, neposílá se do kalendáře.
+
+„Čekám na klienta“ nabízí odpověď, vyřešení, odklad a ukončení. Kalendářní posun mění tentýž termín čekání. Odpověď zruší otevřenou kontrolu (neoznačuje neprovedenou práci jako realizovanou); existující událost se označí ×. Návrh SMS se zpřístupní při dosažení data kontroly pouze u aktivního nevyřízeného čekání. Odklad do budoucna jej opět skryje. Ruční kopírování není odeslání; „Označit jako skutečně odeslané“ pouze zaznamená již provedené odeslání. Žádný kód neposílá SMS/e-mail ani pozvánku. Opakované uložení stejného formuláře, opakovaná synchronizace ani smazání kontroly nevytvoří další kopii.
+
+Běh a aktualizace návrhů vyžadují otevřené CRM; synchronizace navíc platné Google přihlášení a již zapnuté automatické přidávání nových kroků do Filip pracovní. Existující událost může upozornit i při zavřeném CRM podle nastavení Google Kalendáře.
