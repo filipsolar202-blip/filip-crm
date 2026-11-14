@@ -29,6 +29,7 @@ const {chromium,launchOptions}=require('./runtime.cjs'),root=path.resolve(__dirn
  await page.locator('[data-task-filter="assistant"]').click();assert.ok(await page.locator('#taskCenter article').count()>0);
  await page.locator('[data-task-filter="all"]').click();const dropdown=page.locator('#taskCenter [data-task-owner]').first();await dropdown.selectOption('me');
  await page.reload();await page.locator('[data-view="tasks"]').click();assert.equal(await page.locator('#taskCenter [data-task-owner]').first().inputValue(),'me');
+ await page.locator('#taskQuery').fill('nenalezeno');assert.equal(await page.locator('#taskCenter [data-task-owner]').count(),0);await page.locator('#taskQuery').fill('');assert.ok(await page.locator('#taskCenter [data-task-owner]').count()>0);
  await page.screenshot({path:'/tmp/crm-tasks-desktop.png',fullPage:true});
  await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),true,'mobile no overflow');await page.screenshot({path:'/tmp/crm-tasks-mobile.png',fullPage:true});
  assert.deepEqual(errors,[]);console.log('PASS task center: one ledger, assignment, preference evidence, opt-in rules, exceptions, restore, merge, UI and mobile');
