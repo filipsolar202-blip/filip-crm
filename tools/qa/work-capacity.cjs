@@ -31,6 +31,7 @@ const {chromium,launchOptions}=require('./runtime.cjs'),root=path.resolve(__dirn
   const linkedBefore=C.entries(s).filter(x=>x.src?.row===row).length;const deal={...structuredClone(row),id:50};s.deals.push(deal);r.transferDedup=C.entries(s).filter(x=>x.src?.row===deal).length===linkedBefore&&C.entries(s).filter(x=>x.a===a).length===1;s.deals=[];
   const transferCopy=normalizeState(JSON.parse(JSON.stringify(s))),source=transferCopy.opportunities[0],dest={id:55,clientId:1,category:'Hypotéka'};transferCopy.deals.push(dest);W.transfer(transferCopy,source,dest);transferCopy.opportunities=[];r.manualTransfer=C.entries(transferCopy).find(x=>x.a?.syncId==='mail-follow').src?.row===dest;
   const restored=normalizeState(JSON.parse(JSON.stringify(s)));r.restore=restored.activities[0].workEstimate.solo===40&&C.total(C.entries(restored)).saving===35;
+  const history={id:333,syncId:'measured-history',type:'Telefon',recordKind:'history',completed:true,outcome:'no_show',duration:6,work:{timeKind:'actual'}};restored.activities.push(history);r.explicitHistoricalTime=C.total(C.entries(restored)).actual===6;
   const counts=criticalBackupCounts(restored);r.backupProtection=counts.workEstimates===1&&counts.capacitySnapshots===1;
   state=s;persist();showView('tasks');return r;
  });

@@ -45,3 +45,5 @@ Dokončený odhad je uložen v capacitySnapshot; znovu otevřený úkol přesune
 Odhady lze upravit po úkolech nebo v existujícím editoru šablon pro budoucí případy. Skutečné minuty se zadávají přes stávající detail aktivity → měření práce. Přehled skutečnosti je celkový, protože stávající měření neukládá spolehlivě skutečného vykonavatele. Bez nové služby, API nebo poplatku.
 
 Ověřeno: work-capacity.cjs, work-measurement.cjs, work-measurement-storage.cjs, workflow-automation.cjs, task-center.cjs, document-checklist.cjs, calendar-sync.cjs a static.cjs; pouze izolovaná testovací data.
+
+2026.11.14-10: Přehled skutečnosti zahrnuje také explicitně změřené historické záznamy včetně práce na neúspěšném hovoru. Prostý historický záznam bez měření zůstává vyloučený.

@@ -43,7 +43,7 @@
    out.push({id,src,a,step,status:st,estimate:e,owner,measured,can,title:a?.text||step?.spec.title||a?.type||'Úkol'});
   }
   for(const src of list)for(const step of src.row.automation?.steps||[])add(src,bySync.get(step.activitySyncId),step);
-  for(const a of s.activities||[]){if(a.emailWait||activityIsInformational(a)||a.recordKind==='history'&&a.work?.timeKind!=='actual')continue;add(sourceFor(s,a,list),a,null);}
+  for(const a of s.activities||[]){const measured=a.work?.timeKind==='actual'&&minutes(a.duration)!==null;if(!measured&&(a.emailWait||activityIsInformational(a)||a.recordKind==='history'))continue;add(sourceFor(s,a,list),a,null);}
   return out;
  }
  function total(rows){
