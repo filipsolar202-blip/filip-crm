@@ -101,5 +101,6 @@ async function auto(){if(!config().auto||!token||Date.now()>expires||document.hi
 function changed(){clearTimeout(timer);timer=setTimeout(auto,1500);}
 window.addEventListener('storage',e=>{if(e.key==='filip_crm_main_v1'){stale=true;message('Data změnila jiná karta. Synchronizace pozastavena; načtěte aktuální CRM.');}});
 window.addEventListener('focus',auto);setInterval(auto,60000);
-return {mount,connect,disconnect,selectCalendar,toggleAuto,toggleNew,review,apply,pair,changed,active};
+async function availability(from,to){valid();if(config().calendarId!==WORK_CALENDAR)throw Error("Připoj kalendář Filip pracovní.");return list(path(WORK_CALENDAR),{timeMin:from+"T00:00:00+02:00",timeMax:C.nextDay(to)+"T01:00:00+01:00",singleEvents:"true",showDeleted:"false"});}
+return {availability,mount,connect,disconnect,selectCalendar,toggleAuto,toggleNew,review,apply,pair,changed,active};
 })();

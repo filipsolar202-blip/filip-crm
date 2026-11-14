@@ -3,6 +3,8 @@ const C=require('../../assets/js/calendar-sync-core.js');
 const {chromium,launchOptions}=require('./runtime.cjs');
 const a={syncId:'test-calendar-a',type:'Telefon',date:'2026-11-16',time:'10:00',duration:30,text:'Podklady',completed:false};
 const body=C.payload(a,'Test Alfa'),base=C.shape(body);
+const planned={...a,duration:7,work:{timeKind:'actual'},calendarDuration:45};const mapped=C.pull(planned,C.payload(planned,'Test'));assert.equal(mapped.duration,7);assert.equal(mapped.calendarDuration,45);
+
 assert.equal(C.decide(base,body,{...body,summary:'Změna Google'}),'pull');
 assert.equal(C.decide(base,{...body,summary:'Změna CRM'},body),'push');
 assert.equal(C.decide(base,{...body,summary:'Změna CRM'},{...body,summary:'Změna Google'}),'conflict');

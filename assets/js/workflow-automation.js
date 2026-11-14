@@ -113,9 +113,13 @@
     const c=s.clients.find(x=>same(x.id,row.clientId));
     return spec.condition==='phone'?!!c?.phone:spec.condition==='email'?!!c?.email:spec.condition==='nextContact'?validDate(row.nextContactDate):true;
   }
+  function dependencies(p,step) {return (step.spec.dependsOn||[]).map(key=>[...p.steps].reverse().find(x=>x.key===key));}
+  function ready(p,step) {return dependencies(p,step).every(x=>x&&x.status==='done');}
   function activate(s,row,step,date,eventId) {
     const p=row.automation;
     if(row.documentChecklist&&step.key==='documents')return;
+    if(!ready(p,step))return;
+    date=dependencies(p,step).reduce((d,x)=>x.completedAt>d?x.completedAt:d,date);
     if(!step.enabled||!p.enabled||p.paused||!allowed(s,row,step.spec))return;
     const matches=matchingManual(s,row,step.spec);
     if(matches.length>1){step.needsReview=true;step.reason='Více podobných otevřených úkolů – zkontrolujte vazby, další kopie nebyla vytvořena';return;}
@@ -206,9 +210,9 @@
         const contact=row.nextContactDate||'';
         if(contact!==p.lastContact){p.lastContact=contact;if(validDate(contact))emit(s,row,'contact',contact);else p.steps.filter(x=>x.spec.trigger==='contact').forEach(x=>cancelStep(s,p,x,'Další kontakt zrušen'));}
       }
-      if(p.enabled&&!p.paused&&!CLOSED.includes(stage))for(const step of p.steps.filter(x=>x.status==='planned'&&!x.futureOnly)){const event=[...p.events].reverse().find(e=>e.type===step.spec.trigger);if(event)activate(s,row,step,event.date,event.id);}
+      if(p.enabled&&!p.paused&&!CLOSED.includes(stage))for(const step of p.steps.filter(x=>x.status==='planned'&&!x.futureOnly)){const event=[...p.events].reverse().find(e=>e.type===step.spec.trigger);if(event&&(!step.spec.dependsOn?.length||!step.spec.trigger.startsWith('stage:')||step.spec.trigger==='stage:'+stage))activate(s,row,step,event.date,event.id);}
       for(const step of p.steps){const a=task(s,step);if(a&&['open','paused'].includes(step.status)){
-        const paused=!p.enabled||p.paused||!step.enabled;
+        const paused=!p.enabled||p.paused||!step.enabled||!ready(p,step);
         step.status=paused?'paused':'open';a.automation.status=step.status;
       }}
     }
@@ -310,7 +314,7 @@
   const STATUS={planned:'Čeká na spouštěcí událost',open:'Naplánováno',paused:'Pozastaveno',done:'Hotovo',cancelled:'Zrušeno',missed:'Neuskutečněno',moved:'Přesunuto'};
   function stepHtml(row,step) {
     const a=task(state,step), estimate=CrmCapacity.estimate(a,step), c=state.clients.find(c=>same(c.id,row.clientId)), p=row.automation;
-    return `<article class="wf-step ${a?.date&&a.date<day()&&step.status==='open'?'wf-overdue':''}"><div><b>${h(a?.text||step.spec.title)}</b><div class="note">${h(STATUS[step.status])} · ${h(a?(a.date||'Termín chybí – doplnit'):(EVENTS[step.spec.trigger]||'Termín neurčen'))} ${h(a?.time||'')} · ${step.spec.assignee==='assistant'?'Asistentka':'Já'} · ${h(estimate?.solo??step.spec.solo)} min (odhad)</div>${step.reason?`<small>${h(step.reason)}</small>`:''}${!c?.phone&&['contact','offer'].includes(step.spec.trigger)?'<small class="wf-warning">Doplnit telefon</small>':''}</div><div class="actions">${['open','paused'].includes(step.status)?button('Hotovo','done',{flow:p.id,step:step.id})+button('Neuskutečněno','missed',{flow:p.id,step:step.id})+button('Zrušit','cancel',{flow:p.id,step:step.id}):''}${a&&!a.completed?CrmTasks.ownerControl(a):''}${button('Upravit','step',{flow:p.id,step:step.id})}${a?.calendarLink?.htmlLink?.startsWith('https://www.google.com/calendar/')?`<a class="btn slim" href="${h(a.calendarLink.htmlLink)}" target="_blank" rel="noopener">Kalendář</a>`:''}${!['done','cancelled','missed'].includes(step.status)?button(step.enabled?'Vypnout krok':'Zapnout krok','toggle-step',{flow:p.id,step:step.id}):''}</div></article>`;
+    return `<article class="wf-step ${a?.date&&a.date<day()&&step.status==='open'?'wf-overdue':''}"><div><b>${h(a?.text||step.spec.title)}</b><div class="note">${h(STATUS[step.status])} · ${h(a?(a.date||'Termín chybí – doplnit'):(EVENTS[step.spec.trigger]||'Termín neurčen'))} ${h(a?.time||'')} · ${step.spec.assignee==='assistant'?'Asistentka':'Já'} · ${h(estimate?.solo??step.spec.solo)} min (odhad)</div>${step.spec.dependsOn?.length?`<small>Navazuje na: ${h(step.spec.dependsOn.map(k=>p.steps.find(x=>x.key===k)?.spec.title||k).join(', '))}</small>`:''}${step.reason?`<small>${h(step.reason)}</small>`:''}${!c?.phone&&['contact','offer'].includes(step.spec.trigger)?'<small class="wf-warning">Doplnit telefon</small>':''}</div><div class="actions">${['open','paused'].includes(step.status)?button('Hotovo','done',{flow:p.id,step:step.id})+button('Neuskutečněno','missed',{flow:p.id,step:step.id})+button('Zrušit','cancel',{flow:p.id,step:step.id}):''}${a&&!a.completed?CrmTasks.ownerControl(a):''}${button('Upravit','step',{flow:p.id,step:step.id})}${a?.calendarLink?.htmlLink?.startsWith('https://www.google.com/calendar/')?`<a class="btn slim" href="${h(a.calendarLink.htmlLink)}" target="_blank" rel="noopener">Kalendář</a>`:''}${!['done','cancelled','missed'].includes(step.status)?button(step.enabled?'Vypnout krok':'Zapnout krok','toggle-step',{flow:p.id,step:step.id}):''}</div></article>`;
   }
   function waitHtml(mail) {
     const w=mail.emailWait, r=state.activities.find(a=>a.syncId==='email-reminder:'+w.id), source=w.flowId?find(state,w.flowId):findSource(state,w.sourceId), c=state.clients.find(x=>same(x.id,mail.clientId));
@@ -318,13 +322,14 @@
   }
   function caseHtml(row) {
     const p=row.automation, key=sourceKey(row), waits=state.activities.filter(a=>a.emailWait&&(p?a.emailWait.flowId===p.id:a.emailWait.sourceId===key));
-    return `<div class="toolbar"><h3>Pracovní postup</h3><div class="actions"><button class="btn slim" data-capacity-case="${h(key)}">Čas obchodu</button>${row.documentChecklist?`<button class="btn slim" data-doc-open="${h(row.documentChecklist.id)}">Podklady případu</button>`:''}${button('E-mail odeslán – čekám na odpověď','email',{client:row.clientId,source:key})}${button('Šablony','templates')}</div></div>${!p?`<p class="note">Při příští změně fáze se zapne příslušný postup. Pro zapnutí už v aktuální fázi nejprve zkontroluj návrh kroků.</p>${button('Náhled a zapnutí postupu','preview',{source:key})}`:`<div class="actions">${button('Podklady vyžádány','event',{flow:p.id,event:'documents'})}${button('Nabídka odeslána','event',{flow:p.id,event:'offer'})}${button('Další kontakt','contact',{flow:p.id})}${button(p.paused?'Pokračovat':'Pozastavit','pause',{flow:p.id})}${button(p.enabled?'Vypnout automatizaci':'Zapnout automatizaci','toggle',{flow:p.id})}${button('Nová verze šablony – náhled','preview',{source:key})}</div><p class="note">Šablona v${p.version} · ${!p.enabled?'Vypnuto':p.paused?'Pozastaveno':'Zapnuto'}</p>${p.steps.filter(x=>['open','paused'].includes(x.status)||x.needsReview).sort((a,b)=>(task(state,a)?.date||'9999').localeCompare(task(state,b)?.date||'9999')).map(x=>stepHtml(row,x)).join('')||'<p class="note">Není naplánovaný další krok. Vyber odpovídající událost nebo další kontakt.</p>'}<details><summary>Kroky podle fáze · celý postup</summary>${[...new Set(p.steps.map(x=>x.spec.trigger))].map(trigger=>{const list=p.steps.filter(x=>x.spec.trigger===trigger);return `<details class="wf-editor"><summary>${h(EVENTS[trigger]||trigger)} · ${list.filter(x=>x.status==='done').length}/${list.filter(x=>x.enabled&&x.status!=='cancelled').length} hotovo</summary><p class="note">Náhled nemění fázi případu. Budoucí kroky získají termín až při aktivaci.</p>${list.map(x=>stepHtml(row,x)).join('')}</details>`;}).join('')}</details><details><summary>Odhad času a delegování</summary>${metricHtml(p.id)}</details><details><summary>Historie automatizace</summary>${p.history.slice().reverse().map(x=>`<p class="note">${h(x.date)} · ${h(x.text)}</p>`).join('')}</details>`}${waits.length?`<details open><summary>Čekání na klienta</summary>${waits.map(waitHtml).join('')}</details>`:''}`;
+    return `<div class="toolbar"><h3>Pracovní postup</h3><div class="actions"><button class="btn slim" data-practice-process="${h(key)}">Podrobný produktový postup</button><button class="btn slim" data-capacity-case="${h(key)}">Čas obchodu</button>${row.documentChecklist?`<button class="btn slim" data-doc-open="${h(row.documentChecklist.id)}">Podklady případu</button>`:''}${button('E-mail odeslán – čekám na odpověď','email',{client:row.clientId,source:key})}${button('Šablony','templates')}</div></div>${!p?`<p class="note">Při příští změně fáze se zapne příslušný postup. Pro zapnutí už v aktuální fázi nejprve zkontroluj návrh kroků.</p>${button('Náhled a zapnutí postupu','preview',{source:key})}`:`<div class="actions">${button('Podklady vyžádány','event',{flow:p.id,event:'documents'})}${button('Nabídka odeslána','event',{flow:p.id,event:'offer'})}${button('Další kontakt','contact',{flow:p.id})}${button(p.paused?'Pokračovat':'Pozastavit','pause',{flow:p.id})}${button(p.enabled?'Vypnout automatizaci':'Zapnout automatizaci','toggle',{flow:p.id})}${button('Nová verze šablony – náhled','preview',{source:key})}</div><p class="note">Šablona v${p.version} · ${!p.enabled?'Vypnuto':p.paused?'Pozastaveno':'Zapnuto'}</p>${p.steps.filter(x=>['open','paused'].includes(x.status)||x.needsReview).sort((a,b)=>(task(state,a)?.date||'9999').localeCompare(task(state,b)?.date||'9999')).map(x=>stepHtml(row,x)).join('')||'<p class="note">Není naplánovaný další krok. Vyber odpovídající událost nebo další kontakt.</p>'}<details><summary>Kroky podle fáze · celý postup</summary>${[...new Set(p.steps.map(x=>x.spec.trigger))].map(trigger=>{const list=p.steps.filter(x=>x.spec.trigger===trigger);return `<details class="wf-editor"><summary>${h(EVENTS[trigger]||trigger)} · ${list.filter(x=>x.status==='done').length}/${list.filter(x=>x.enabled&&x.status!=='cancelled').length} hotovo</summary><p class="note">Náhled nemění fázi případu. Budoucí kroky získají termín až při aktivaci.</p>${list.map(x=>stepHtml(row,x)).join('')}</details>`;}).join('')}</details><details><summary>Odhad času a delegování</summary>${metricHtml(p.id)}</details><details><summary>Historie automatizace</summary>${p.history.slice().reverse().map(x=>`<p class="note">${h(x.date)} · ${h(x.text)}</p>`).join('')}</details>`}${waits.length?`<details open><summary>Čekání na klienta</summary>${waits.map(waitHtml).join('')}</details>`:''}`;
   }
   function mountCase(row) {const root=$('caseDetailContent');if(!root)return;
     const legacy=root.querySelector('.case-detail-grid > .case-detail-shell > .case-detail-panel');if(legacy&&row.automation)legacy.style.display='none';
     const next=root.querySelector('.case-next-action');if(next&&row.automation){const p=row.automation,a=p.steps.filter(x=>x.status==='open').map(x=>task(state,x)).filter(Boolean).sort((a,b)=>(a.date||'9999').localeCompare(b.date||'9999'))[0];next.innerHTML=`<b>${h(!p.enabled?'Automatizace vypnutá':p.paused?'Postup pozastavený':a?.date||'Další termín není zadaný')}</b><p class="note">${h(a?.text||'Další krok najdeš v pracovním postupu.')}</p>`;}
     let box=$('workflowCase');if(!box){box=document.createElement('section');box.id='workflowCase';box.className='case-detail-panel';root.querySelector('.case-detail-top')?.after(box);}box.innerHTML=caseHtml(row);CrmDocuments.mount(row);}
   function mount() {
+    window.CrmPractice?.mount();
     const section=document.querySelector('.view.active')?.id;
     if(section==='caseDetail'){const o=state.opportunities.find(o=>same(o.id,selectedCaseId));if(o)mountCase(o);}
     if(section==='dashboard'){
@@ -367,13 +372,20 @@
     reconcile(copy);previewDraft={key,templateId:t.id,version:t.version};
     modal('Náhled postupu: '+label(src.row),`<p><b>${h(t.name)} · verze ${t.version}</b></p><p class="note">Nové kroky začínají dnes. Minulé kontakty, odeslané nabídky ani vykonanou práci neodhadujeme zpětně. Budoucí kroky čekají na svou událost. Ruční úpravy a dokončené odhady zůstanou zachované.</p>${trial.automation.steps.map(x=>`<p><b>${h(x.spec.title)}</b> · ${h(STATUS[x.status])} · ${h(task(copy,x)?.date||EVENTS[x.spec.trigger])}</p>`).join('')}${button('Použít pouze pro tento případ','apply-preview')}`);
   }
+  function validateDependencies(specs) {
+    const map=new Map(specs.map(x=>[x.key,x])),done=new Set(),visiting=new Set();
+    if(map.size!==specs.length)throw Error('Duplicitní klíč kroku.');
+    function visit(k){if(done.has(k))return;if(visiting.has(k))throw Error('Cyklická návaznost kroků.');if(!map.has(k))throw Error('Chybí předchozí krok '+k);visiting.add(k);for(const d of map.get(k).dependsOn||[])visit(d);visiting.delete(k);done.add(k);}
+    specs.forEach(x=>visit(x.key));
+  }
   function applyVersion(s,row,t) {
     const p=row.automation;
+    validateDependencies(t.steps);
     for(const step of p.steps){if(['done','missed','cancelled'].includes(step.status))continue;const spec=t.steps.find(x=>x.key===step.key);if(!spec){cancelStep(s,p,step,'Odebráno novou verzí šablony');continue;}
       if(!step.manualEstimate){const owner=step.spec.assignee;step.spec=clone(spec);if(step.manualAssignment)step.spec.assignee=owner;}
       const a=task(s,step);if(a){if(!a.automation.manualText){a.text=spec.title;a.automation.baseText=spec.title;}if(!a.automation.manualDate){a.date=plus(step.triggeredAt,+spec.offset||0,spec.working);a.automation.baseDate=a.date;}a.updatedAt=stamp();}
     }
-    t.steps.filter(spec=>!p.steps.some(x=>x.key===spec.key)).forEach(spec=>p.steps.push(newStep(spec)));
+    t.steps.filter(spec=>!p.steps.some(x=>x.key===spec.key)).forEach(spec=>p.steps.push({...newStep(spec),futureOnly:spec.trigger!=='stage:'+p.lastStage&&spec.trigger!==(p.lastStage==='Podepsáno'?'signed':'created')}));
     p.version=t.version;p.templateId=t.id;log(p,'Řízeně použita šablona v'+t.version+' na zbývající práci');
     // Only newly added steps matching the current phase are activated, never past events.
     p.steps.filter(x=>x.status==='planned'&&(x.spec.trigger==='stage:'+p.lastStage||x.spec.trigger===(p.lastStage==='Podepsáno'?'signed':'created'))).forEach(x=>activate(s,row,x,day(),'template-update:'+t.version));
@@ -443,5 +455,5 @@
   let checkedDay=day();
   function checkDay(){if(typeof state==='undefined'||checkedDay===day())return;checkedDay=day();if(persist())renderActiveView();}
   window.addEventListener('focus',checkDay);setInterval(checkDay,60000);
-  window.CrmWorkflow={normalize,day,plus,validDate,attach,stageChanged,emit,transfer,reconcile,rows,totals,email,merge,mount,mountCase,applyVersion,defaultTemplate,waitHtml,smsReady,refreshWaiting:()=>{if($('workflowModal')?.style.display==='flex'&&$('workflowBody')?.querySelector('[data-wf-action="wait"]'))queue('waiting');},active:a=>!a.automation||a.automation.status==='open'};
+  window.CrmWorkflow={validateDependencies,normalize,day,plus,validDate,attach,stageChanged,emit,transfer,reconcile,rows,totals,email,merge,mount,mountCase,applyVersion,defaultTemplate,waitHtml,smsReady,refreshWaiting:()=>{if($('workflowModal')?.style.display==='flex'&&$('workflowBody')?.querySelector('[data-wf-action="wait"]'))queue('waiting');},active:a=>!a.automation||a.automation.status==='open'};
 })();
