@@ -1,4 +1,4 @@
-# Úkoly a postupné delegování (2026.11.14-3)
+# Úkoly a postupné delegování (2026.11.14-4)
 
 Navigace Úkoly zobrazuje existující aktivity, nevytváří kopie. Výchozí pohled Moje; dále Asistentka a Vše, otevřené/dnes/po termínu/dokončené a hledání klienta či textu. Odpovědnost lze zvolit v tomto přehledu i u otevřeného pracovního kroku. Detaily a dokončení používají původní formulář aktivity. Případy mají rozbalovací skupiny kroků podle spouštěcí události/fáze s počty dokončení. Prohlížení budoucích kroků nemění stav ani termíny.
 
