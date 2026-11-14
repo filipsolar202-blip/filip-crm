@@ -30,3 +30,18 @@ Až jsou všechny položky administrativně zkontrolované nebo nepotřebné, ko
 Žádná klientská komunikace se neodesílá. Soubor zůstává v knihovně klienta; do kalendáře jde jen běžná úkolová událost. Synchronizace využívá stávající Filip pracovní a vyžaduje otevřené CRM, platné přihlášení Google a zapnuté přidávání nových kroků. Nevzniká nová placená služba. Časy jsou pracovní předpoklady a termíny lze upravit.
 
 Ověření: document-checklist.cjs (návaznosti, obnova/sloučení, převod do obchodu, UI), calendar-sync.cjs (napodobené Google API: oba směry, posun termínu, dokončení/pozastavení a deduplikace), workflow-automation.cjs, task-center.cjs a static.cjs. Testy nepoužívají skutečné klienty ani skutečné Google požadavky.
+
+
+## Čas a delegování (2026.11.14-9)
+
+Úkoly → Čas a delegování a detail případu → Čas obchodu nabízejí souhrn podle obchodu a konkrétní otevřené úkoly k předání. Nové obchody využívají současný automatický postup; otevřené, budoucí podmíněné, pozastavené a dokončené kroky se zobrazují odděleně. Souhrn všech typů zahrnuje i nepřiřazené úkoly, v samostatné skupině bez domýšlení vazby podle klienta. Staré obchody bez postupu nemají zpětně vymyšlené vykonané kroky.
+
+Zbývá tobě = samostatný odhad tvých otevřených úkolů + tvá kontrola otevřených úkolů přidělených asistentce. Naplánováno asistentce = její vlastní odhady těchto úkolů. Ještě můžeš uvolnit = součet kladných rozdílů samostatného času a kontroly u otevřených, zatím nepředaných delegovatelných úkolů. Dokončené, pozastavené, budoucí, zrušené či neuskutečněné kroky nejsou aktuálním potenciálem k předání. Skutečný čas vyžaduje explicitní work.timeKind=actual a dokončený záznam; potvrzená nula je platná. Běžná délka události ani přidělení asistentce nejsou dokladem skutečně odpracovaného času nebo realizované úspory.
+
+Odhady vycházejí z verzovaných šablon. Kontrola podkladů a odpovědi má výchozí 10 min samostatně / 10 min asistentka / 2 min kontrola, odborné posouzení podkladů 30 min a nedelegovatelné. Ruční Telefon 10, Schůzka 60, Email 10, SMS 5 a Úkol 15 min jsou pouze výchozí odhady s neposouzeným delegováním. Explicitní odhad v evidenci práce má přednost před výchozím časem; úprava v novém přehledu se ukládá jako workEstimate a synchronizuje s vlastním krokem šablony. U neznámých dat se zobrazuje chybějící odhad, ne falešná naměřená nula.
+
+Dokončený odhad je uložen v capacitySnapshot; znovu otevřený úkol přesune snímek do capacityEstimateHistory. Úprava budoucích šablon nepřepíše historický odhad. Při převodu do podepsaného obchodu udržuje workFlowId vazbu i u ručních aktivit. Jedno ID aktivity se počítá jednou. Náhled nemění kalendář; předání mění vlastníka téhož úkolu a zachovává jeho ID a termín. Odborné posouzení nelze přidělit asistentce.
+
+Odhady lze upravit po úkolech nebo v existujícím editoru šablon pro budoucí případy. Skutečné minuty se zadávají přes stávající detail aktivity → měření práce. Přehled skutečnosti je celkový, protože stávající měření neukládá spolehlivě skutečného vykonavatele. Bez nové služby, API nebo poplatku.
+
+Ověřeno: work-capacity.cjs, work-measurement.cjs, work-measurement-storage.cjs, workflow-automation.cjs, task-center.cjs, document-checklist.cjs, calendar-sync.cjs a static.cjs; pouze izolovaná testovací data.
