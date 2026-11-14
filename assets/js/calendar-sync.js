@@ -78,7 +78,7 @@ async function perform(row,choice){
  assertCurrent(row);
  if(mode==='pull')C.pull(a,remote); // Validate before any mutation.
  // Durable pre-operation snapshot; no remote write when local storage is full.
- localStorage.setItem('filip_crm_calendar_before_sync',JSON.stringify({at:new Date().toISOString(),state}));
+ localStorage.setItem('filip_crm_calendar_before_sync',JSON.stringify({version:2,at:new Date().toISOString(),calendarId:row.calendarId,activity:structuredClone(a)}));
  if(mode==='push'||mode==='create'){
   const checks=await list(path(row.calendarId),{timeMin:a.date+'T00:00:00+02:00',timeMax:C.nextDay(a.date)+'T01:00:00+01:00',singleEvents:'true'});
   if(checks.some(e=>e.id!==remote?.id&&(C.overlap(row.body,e)||mode==='create'&&C.candidate(a,row.name,e))))throw Error('Termín je obsazený nebo existuje podobná událost. Načtěte nový náhled.');

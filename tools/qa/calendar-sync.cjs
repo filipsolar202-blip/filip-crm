@@ -45,7 +45,10 @@ fixture.activities=[{...a,id:40,clientId:1,recordKind:'activity'}];
  const review=()=>page.evaluate(()=>CrmCalendar.review());
  const status=()=>page.locator('#calendarSyncStatus').innerText();
  await review();assert.match(await page.locator('#calendarSyncPreview').innerText(),/Vytvořit/);assert.equal(writes,0);
+ // A nearly full browser store must not require another copy of the whole CRM.
+ await page.evaluate(()=>{const original=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){if(k==='filip_crm_calendar_before_sync'&&v.length>50000)throw new DOMException('Quota exceeded','QuotaExceededError');return original.call(this,k,v);};state.calendarQuotaTestPadding='x'.repeat(60000);});
  await page.evaluate(()=>CrmCalendar.apply(0));assert.equal(events.size,1);assert.equal(writes,1);
+ assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('filip_crm_calendar_before_sync')).activity.syncId),'test-calendar-a');
  const id=[...events.keys()][0];assert.ok(/^fc[0-9a-f]{64}$/.test(id));
  await review();await page.evaluate(()=>CrmCalendar.apply(0));assert.equal(writes,1,'idempotent repeated sync');
  // Calendar moves are reflected in CRM, with persistent stable link.
