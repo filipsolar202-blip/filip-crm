@@ -16,6 +16,7 @@ function renderActiveViewContent() {
   const active = document.querySelector('.view.active')?.id || 'dashboard',
     renders = {
       dashboard: [['Dashboard', renderDashboard]],
+      tasks: [['Úkoly', CrmTasks.render]],
       clients: [['Klienti', renderClients]],
       notes: [['Poznámky', renderNotes]],
       campaigns: [['Kampaně', renderCampaigns]],
@@ -13298,6 +13299,7 @@ function mergeIncomingState(incoming) {
   });
   Object.assign(count,mergeProviderImportStorage(incomingState,count._mergeIds));
   CrmWorkflow.merge(state,incomingState,count._mergeIds);
+  CrmTasks.merge(state,incomingState);
   count.referrerPayouts = added;
   count.skipped = (count.skipped || 0) + skipped;
   return count;
@@ -16083,8 +16085,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.11.14-2';
-const VERSION_NOTE = 'Automatické kroky podle fáze případu, ochrana ručních termínů a synchronizace návazností s pracovním kalendářem.';
+const VERSION = '2026.11.14-3';
+const VERSION_NOTE = 'Úkoly: Moje, Asistentka a Vše; odpovědnost u kroků, přehled fází a potvrzovaná pravidla delegování bez placeného API.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';
