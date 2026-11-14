@@ -141,6 +141,10 @@ function activityIsInformational(a) {
 }
 function normalizeActivityHistory(activities) {
   activities.forEach(a => {
+    if (a.automation?.status === 'cancelled') {
+      a.recordKind = 'history'; a.completed = true; a.outcome = 'agreed';
+      return; // A retired reminder is history, not work that was performed.
+    }
     if (!activityIsInformational(a)) return;
     if (!a.completed && !a.historyCleanup) {
       a.historyCleanup = {version:1, completed:a.completed ?? null, outcome:a.outcome || '', completedAt:a.completedAt || ''};
@@ -3524,6 +3528,7 @@ function updateOpportunityStatus(id, status) {
     if (o) {
       const old = o.status;
       o.status = status;
+      CrmWorkflow.stageChanged(state,o,old);
       o.statusDate = today();
       o.updatedAt = today();
       o.history = o.history || [];
@@ -8313,6 +8318,7 @@ function saveOpportunity() {
   });
   CrmLife.decorate(o);
   if (workflowNewCase) CrmWorkflow.attach(state,o);
+  else CrmWorkflow.stageChanged(state,o,oldStatus);
   if (oldStatus !== o.status) {
     o.history = o.history || [];
     o.history.push({
@@ -16077,8 +16083,8 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.11.13-1';
-const VERSION_NOTE = 'Google Kalendář: náhled párování, obousměrná synchronizace propojených úkolů a kontrola konfliktů.';
+const VERSION = '2026.11.14-2';
+const VERSION_NOTE = 'Automatické kroky podle fáze případu, ochrana ručních termínů a synchronizace návazností s pracovním kalendářem.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
 const GOOGLE_SYNC_APP = 'filip_crm';

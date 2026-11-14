@@ -17,10 +17,10 @@
     for(let n=Math.abs(offset);n>0;){date.setUTCDate(date.getUTCDate()+direction);if(!working||![0,6].includes(date.getUTCDay()))n--;}
     return date.toISOString().slice(0,10);
   }
-  function defaultTemplate(category) {
+  function defaultTemplate(category,version=2) {
     const mortgage=['Hypotéka','Úvěry'].includes(category), investment=['FKI','Investice','Penze'].includes(category);
     const spec=(key,title,trigger,offset,solo,delegate='partial',assistant=solo,residual=5,extra={})=>({key,title,trigger,offset,working:false,assignee:'me',solo,delegate,assistant:delegate==='no'?0:assistant,residual:delegate==='no'?solo:residual,condition:'always',completeOn:'',cancelOn:'closed',replaceOn:'',...extra});
-    return {id:'workflow:'+category,category,name:category+' – pracovní postup',version:1,updatedAt:'2026-10-31T00:00:00Z',steps:[
+    const t={id:'workflow:'+category,category,name:category+' – pracovní postup',version:1,updatedAt:'2026-10-31T00:00:00Z',steps:[
       spec('prepare','Zkontrolovat zadání a domluvit další postup','created',0,15,'partial',15,5),
       spec('proposal',mortgage?'Připravit úvěrovou nabídku':'Připravit nabídku a doporučení','stage:Nabídka',0,mortgage?45:30,'partial',35,10,{completeOn:'offer'}),
       spec('documents','Zkontrolovat doručení podkladů','documents',3,10,'yes',10,2),
@@ -31,10 +31,23 @@
       spec('admin',investment?'Zkontrolovat připsání investice a dokumenty':'Zkontrolovat účinnost smlouvy a dokumenty','signed',3,20,'yes',20,5),
       spec('commission','Zkontrolovat očekávanou provizi','signed',14,10,'yes',10,2)
     ]};
+    if(version===1)return t;
+    t.version=2;t.updatedAt='2026-11-14T00:00:00Z';
+    t.steps.push(
+      spec('scoring','Ověřit vstupní údaje a stav scoringu','stage:Scoring',1,15,'partial',15,5,{working:true}),
+      spec('completion','Zkontrolovat úplnost podkladů a připravit žádost','stage:Kompletace',1,20,'partial',20,5,{working:true}),
+      spec('sign-call',mortgage?'Volat kvůli podpisu hypotéky / úvěru':'Domluvit s klientem podpis','stage:Podpis',1,10,'no',0,10,{working:true,activityType:'Telefon',purpose:'signature-call'}),
+      spec('registration','Zkontrolovat zadání obchodu do BeTy','stage:K zadání (BeTy)',1,15,'yes',15,3,{working:true})
+    );
+    return t;
   }
   function normalize(s) {
     s.workflowTemplates=Array.isArray(s.workflowTemplates)?s.workflowTemplates:[];
-    CATEGORIES.forEach(c=>{if(!s.workflowTemplates.some(t=>t.category===c))s.workflowTemplates.push(defaultTemplate(c));});
+    CATEGORIES.forEach(c=>{
+      const t=s.workflowTemplates.find(t=>t.category===c);
+      if(!t)s.workflowTemplates.push(defaultTemplate(c));
+      else if(t.version===1&&JSON.stringify(t.steps)===JSON.stringify(defaultTemplate(c,1).steps))Object.assign(t,defaultTemplate(c));
+    });
   }
   function sources(s) {return [...s.opportunities.map(row=>({row,signed:false})),...s.deals.map(row=>({row,signed:true}))];}
   function find(s,id) {return sources(s).find(x=>x.row.automation?.id===id);}
@@ -44,17 +57,38 @@
   function task(s,step) {return bySync(s,step.activitySyncId);}
   function log(plan,text) {plan.history.push({id:uuid(),date:stamp(),text});plan.updatedAt=stamp();}
   function newStep(spec,cycle=0) {return {id:uuid(),key:spec.key,cycle,spec:clone(spec),enabled:true,status:'planned',activitySyncId:null};}
-  function attach(s,row,signed=false,date=day()) {
+  function attach(s,row,signed=false,date=day(),phaseOnly=false) {
     if(row.automation)return row.automation;
     normalize(s);
     const t=template(s,row.category), p={id:uuid(),templateId:t.id,version:t.version,enabled:true,paused:false,startedAt:date,lastStage:signed?'Podepsáno':row.status||'Opportunity',lastContact:'',events:[],history:[],steps:t.steps.map(x=>newStep(x)),updatedAt:stamp(),knownContacts:s.activities.filter(a=>same(a.sourceOpportunityId,row.id)).map(a=>a.syncId||String(a.id))};
     row.automation=p;
     // A signed standalone trade starts with post-signature work, not invented historic activity.
     if(signed)p.steps.filter(x=>x.spec.trigger!=='signed').forEach(x=>{x.status='cancelled';x.reason='Před podpisem – nezpětně evidováno';});
-    emit(s,row,signed?'signed':'created',date,signed?{key:'signed'}:{});
+    if(signed||!phaseOnly||p.lastStage==='Opportunity')emit(s,row,signed?'signed':'created',date,signed?{key:'signed'}:{});
     if(!signed)emit(s,row,'stage:'+p.lastStage,date);
     log(p,'Použita šablona '+t.name+' v'+t.version+(signed?' od podpisu':''));
     return p;
+  }
+  // Existing cases join on their next explicit phase change, never by bulk replay on load.
+  function stageChanged(s,row,previous,date=day()) {
+    if(previous===row.status||CLOSED.includes(row.status)||row.status==='Podepsáno')return;
+    if(!row.automation)attach(s,row,false,date,true);
+  }
+  function upgradeFutureSteps(s,row) {
+    const p=row.automation,t=template(s,row.category);
+    if(p.version!==1||t.version!==2||p.templateId!==t.id)return;
+    const old=defaultTemplate(t.category,1);
+    // Custom plans retain their own rules. Completed and already open work stays intact.
+    if(p.steps.some(x=>x.manualEstimate||!old.steps.some(o=>o.key===x.key&&JSON.stringify(o)===JSON.stringify(x.spec))))return;
+    t.steps.filter(spec=>!p.steps.some(x=>x.key===spec.key)).forEach(spec=>p.steps.push({...newStep(spec),futureOnly:true}));
+    p.version=2;log(p,'Doplněny kroky pro budoucí změny fází; existující termíny zachovány');
+  }
+  function matchingManual(s,row,spec) {
+    const normalized=x=>String(x||'').toLocaleLowerCase('cs').replace(/\s+/g,' ').trim();
+    const matches=s.activities.filter(a=>!a.automation&&!a.completed&&!a.completedAt&&!a.deletedAt&&a.recordKind!=='history'&&same(a.clientId,row.clientId)&&same(a.sourceOpportunityId,row.id)&&(
+      normalized(a.text)===normalized(spec.title)||spec.purpose==='signature-call'&&a.type==='Telefon'&&/podpis/i.test(a.text||'')
+    ));
+    return matches;
   }
   function setTaskState(a,status,date=day()) {
     a.automation.status=status;a.updatedAt=stamp();
@@ -82,10 +116,21 @@
   function activate(s,row,step,date,eventId) {
     const p=row.automation;
     if(!step.enabled||!p.enabled||p.paused||!allowed(s,row,step.spec))return;
+    const matches=matchingManual(s,row,step.spec);
+    if(matches.length>1){step.needsReview=true;step.reason='Více podobných otevřených úkolů – zkontrolujte vazby, další kopie nebyla vytvořena';return;}
+    delete step.needsReview;
+    const existing=matches[0];
+    if(existing){
+      existing.syncId=existing.syncId||uuid();
+      existing.automation={flowId:p.id,stepId:step.id,eventId,status:'open',assignee:step.spec.assignee,origin:'adopted',calendarRequestedAt:stamp(),baseText:existing.text,baseDate:existing.date,manualText:true,manualDate:true};
+      step.activitySyncId=existing.syncId;step.status='open';step.triggeredAt=date;
+      if(activityIndex?.state===s)activityIndex.records.set(existing.syncId,existing);
+      log(p,'Propojen existující úkol: '+existing.text);return;
+    }
     const syncId='workflow:'+p.id+':'+step.id;
     if(bySync(s,syncId)){step.activitySyncId=syncId;return;}
     const due=step.spec.trigger==='contact'?date:plus(date,+step.spec.offset||0,step.spec.working);
-    const a={id:s.nextId++,syncId,clientId:row.clientId,sourceOpportunityId:s.opportunities.includes(row)?row.id:null,type:step.spec.trigger==='contact'?'Telefon':'Úkol',text:step.spec.title,date:due,time:'',duration:null,recordKind:'activity',completed:false,outcome:'agreed',createdAt:stamp(),updatedAt:stamp(),
+    const a={id:s.nextId++,syncId,clientId:row.clientId,sourceOpportunityId:s.opportunities.includes(row)?row.id:null,type:step.spec.activityType||(step.spec.trigger==='contact'?'Telefon':'Úkol'),text:step.spec.title,date:due,time:'',duration:null,recordKind:'activity',completed:false,outcome:'agreed',createdAt:stamp(),updatedAt:stamp(),
       automation:{flowId:p.id,stepId:step.id,eventId,status:'open',assignee:step.spec.assignee,origin:'template',baseText:step.spec.title,baseDate:due,manualText:false,manualDate:false}};
     s.activities.push(a);if(activityIndex?.state===s)activityIndex.records.set(syncId,a);step.status='open';step.activitySyncId=syncId;step.triggeredAt=date;
   }
@@ -103,7 +148,7 @@
       if([...p.steps].reverse().find(x=>x.key===spec.key)?.enabled===false)return;
       let step=[...p.steps].reverse().find(x=>x.key===spec.key&&['planned','open','paused'].includes(x.status));
       if(!step){step=newStep(spec,p.steps.filter(x=>x.key===spec.key).length);p.steps.push(step);}
-      if(step.status==='planned')activate(s,row,step,date,event.id);
+      if(step.status==='planned'){delete step.futureOnly;activate(s,row,step,date,event.id);}
       else if(type==='contact'){
         const a=task(s,step);if(a&&!a.automation.manualDate){a.date=date;a.automation.baseDate=date;a.updatedAt=stamp();}
       }
@@ -127,13 +172,14 @@
     const all=sources(s), indexed=new Map(all.filter(x=>x.row.automation).map(x=>[x.row.automation.id,x]));
     for(const {row,signed} of all){
       const p=row.automation;if(!p)continue;
+      upgradeFutureSteps(s,row);
       for(const step of p.steps){
         const a=task(s,step);if(!a){if(step.activitySyncId&&step.status!=='cancelled'){step.status='cancelled';step.reason='Aktivita byla ručně odstraněna';}continue;}
         const status=stateOf(a);
         if(status==='done'&&step.status!=='done'){step.completedEstimate=clone(step.spec);step.completedAt=a.completedAt||now;log(p,'Hotovo: '+step.spec.title);}
         step.status=status;
         if(a.text!==a.automation.baseText)a.automation.manualText=true;
-        if(a.date!==a.automation.baseDate)a.automation.manualDate=true;
+        if(a.date!==a.automation.baseDate||(a.time||'')!==(a.automation.baseTime||''))a.automation.manualDate=true;
       }
       p.knownContacts=p.knownContacts||[];
       for(const a of s.activities.filter(a=>!a.automation&&same(a.sourceOpportunityId,row.id)&&a.completed&&a.outcome==='realized'&&['Telefon','Email','Schůzka'].includes(a.type))){const key=a.syncId||String(a.id);if(!p.knownContacts.includes(key)){p.knownContacts.push(key);emit(s,row,'activity:'+a.type,a.date||now,{key:'activity:'+key});}}
@@ -141,7 +187,12 @@
       if(CLOSED.includes(stage)){
         p.steps.filter(x=>x.spec.cancelOn!=='never').forEach(x=>cancelStep(s,p,x,'Případ '+stage));p.lastStage=stage;
       }else if(p.lastStage!==stage&&!p.paused&&p.enabled){
-        const reopened=CLOSED.includes(p.lastStage);p.lastStage=stage;
+        const reopened=CLOSED.includes(p.lastStage);
+        // Leaving a phase retires its unmodified reminders, never records work as performed.
+        p.steps.filter(x=>(x.spec.trigger==='stage:'+p.lastStage||p.lastStage==='Opportunity'&&x.spec.trigger==='created')&&['open','paused'].includes(x.status)).forEach(x=>{
+          const a=task(s,x);if(a&&!a.automation.manualText&&!a.automation.manualDate)cancelStep(s,p,x,'Nahrazeno přechodem do fáze '+stage);
+        });
+        p.lastStage=stage;
         if(reopened)emit(s,row,'created',now);
         emit(s,row,stage==='Podepsáno'?'signed':'stage:'+stage,now);
       }
@@ -149,7 +200,7 @@
         const contact=row.nextContactDate||'';
         if(contact!==p.lastContact){p.lastContact=contact;if(validDate(contact))emit(s,row,'contact',contact);else p.steps.filter(x=>x.spec.trigger==='contact').forEach(x=>cancelStep(s,p,x,'Další kontakt zrušen'));}
       }
-      if(p.enabled&&!p.paused&&!CLOSED.includes(stage))for(const step of p.steps.filter(x=>x.status==='planned')){const event=[...p.events].reverse().find(e=>e.type===step.spec.trigger);if(event)activate(s,row,step,event.date,event.id);}
+      if(p.enabled&&!p.paused&&!CLOSED.includes(stage))for(const step of p.steps.filter(x=>x.status==='planned'&&!x.futureOnly)){const event=[...p.events].reverse().find(e=>e.type===step.spec.trigger);if(event)activate(s,row,step,event.date,event.id);}
       for(const step of p.steps){const a=task(s,step);if(a&&['open','paused'].includes(step.status)){
         const paused=!p.enabled||p.paused||!step.enabled;
         step.status=paused?'paused':'open';a.automation.status=step.status;
@@ -245,7 +296,7 @@
   const STATUS={planned:'Čeká na spouštěcí událost',open:'Naplánováno',paused:'Pozastaveno',done:'Hotovo',cancelled:'Zrušeno',missed:'Neuskutečněno',moved:'Přesunuto'};
   function stepHtml(row,step) {
     const a=task(state,step), c=state.clients.find(c=>same(c.id,row.clientId)), p=row.automation;
-    return `<article class="wf-step ${a?.date&&a.date<day()&&step.status==='open'?'wf-overdue':''}"><div><b>${h(a?.text||step.spec.title)}</b><div class="note">${h(STATUS[step.status])} · ${h(a?(a.date||'Termín chybí – doplnit'):(EVENTS[step.spec.trigger]||'Termín neurčen'))} ${h(a?.time||'')} · ${step.spec.assignee==='assistant'?'Asistentka':'Já'} · ${step.spec.solo} min</div>${step.reason?`<small>${h(step.reason)}</small>`:''}${!c?.phone&&['contact','offer'].includes(step.spec.trigger)?'<small class="wf-warning">Doplnit telefon</small>':''}</div><div class="actions">${['open','paused'].includes(step.status)?button('Hotovo','done',{flow:p.id,step:step.id})+button('Neuskutečněno','missed',{flow:p.id,step:step.id})+button('Zrušit','cancel',{flow:p.id,step:step.id}):''}${button('Upravit','step',{flow:p.id,step:step.id})}${!['done','cancelled','missed'].includes(step.status)?button(step.enabled?'Vypnout krok':'Zapnout krok','toggle-step',{flow:p.id,step:step.id}):''}</div></article>`;
+    return `<article class="wf-step ${a?.date&&a.date<day()&&step.status==='open'?'wf-overdue':''}"><div><b>${h(a?.text||step.spec.title)}</b><div class="note">${h(STATUS[step.status])} · ${h(a?(a.date||'Termín chybí – doplnit'):(EVENTS[step.spec.trigger]||'Termín neurčen'))} ${h(a?.time||'')} · ${step.spec.assignee==='assistant'?'Asistentka':'Já'} · ${step.spec.solo} min</div>${step.reason?`<small>${h(step.reason)}</small>`:''}${!c?.phone&&['contact','offer'].includes(step.spec.trigger)?'<small class="wf-warning">Doplnit telefon</small>':''}</div><div class="actions">${['open','paused'].includes(step.status)?button('Hotovo','done',{flow:p.id,step:step.id})+button('Neuskutečněno','missed',{flow:p.id,step:step.id})+button('Zrušit','cancel',{flow:p.id,step:step.id}):''}${button('Upravit','step',{flow:p.id,step:step.id})}${a?.calendarLink?.htmlLink?.startsWith('https://www.google.com/calendar/')?`<a class="btn slim" href="${h(a.calendarLink.htmlLink)}" target="_blank" rel="noopener">Kalendář</a>`:''}${!['done','cancelled','missed'].includes(step.status)?button(step.enabled?'Vypnout krok':'Zapnout krok','toggle-step',{flow:p.id,step:step.id}):''}</div></article>`;
   }
   function waitHtml(mail) {
     const w=mail.emailWait, r=state.activities.find(a=>a.syncId==='email-reminder:'+w.id), source=w.flowId?find(state,w.flowId):findSource(state,w.sourceId), c=state.clients.find(x=>same(x.id,mail.clientId));
@@ -253,7 +304,7 @@
   }
   function caseHtml(row) {
     const p=row.automation, key=sourceKey(row), waits=state.activities.filter(a=>a.emailWait&&(p?a.emailWait.flowId===p.id:a.emailWait.sourceId===key));
-    return `<div class="toolbar"><h3>Pracovní postup</h3><div class="actions">${button('E-mail odeslán – čekám na odpověď','email',{client:row.clientId,source:key})}${button('Šablony','templates')}</div></div>${!p?`<p class="note">U tohoto stávajícího případu nebyla automatizace zapnuta. Nejprve zkontroluj návrh kroků.</p>${button('Náhled a zapnutí postupu','preview',{source:key})}`:`<div class="actions">${button('Podklady vyžádány','event',{flow:p.id,event:'documents'})}${button('Nabídka odeslána','event',{flow:p.id,event:'offer'})}${button('Další kontakt','contact',{flow:p.id})}${button(p.paused?'Pokračovat':'Pozastavit','pause',{flow:p.id})}${button(p.enabled?'Vypnout automatizaci':'Zapnout automatizaci','toggle',{flow:p.id})}${button('Nová verze šablony – náhled','preview',{source:key})}</div><p class="note">Šablona v${p.version} · ${!p.enabled?'Vypnuto':p.paused?'Pozastaveno':'Zapnuto'}</p>${p.steps.filter(x=>['open','paused'].includes(x.status)).sort((a,b)=>(task(state,a)?.date||'9999').localeCompare(task(state,b)?.date||'9999')).map(x=>stepHtml(row,x)).join('')||'<p class="note">Není naplánovaný další krok. Vyber odpovídající událost nebo další kontakt.</p>'}<details><summary>Celý postup a dokončené kroky · ${p.steps.length}</summary>${p.steps.filter(x=>!['open','paused'].includes(x.status)).map(x=>stepHtml(row,x)).join('')}</details><details><summary>Odhad času a delegování</summary>${metricHtml(p.id)}</details><details><summary>Historie automatizace</summary>${p.history.slice().reverse().map(x=>`<p class="note">${h(x.date)} · ${h(x.text)}</p>`).join('')}</details>`}${waits.length?`<details open><summary>Čekání na klienta</summary>${waits.map(waitHtml).join('')}</details>`:''}`;
+    return `<div class="toolbar"><h3>Pracovní postup</h3><div class="actions">${button('E-mail odeslán – čekám na odpověď','email',{client:row.clientId,source:key})}${button('Šablony','templates')}</div></div>${!p?`<p class="note">Při příští změně fáze se zapne příslušný postup. Pro zapnutí už v aktuální fázi nejprve zkontroluj návrh kroků.</p>${button('Náhled a zapnutí postupu','preview',{source:key})}`:`<div class="actions">${button('Podklady vyžádány','event',{flow:p.id,event:'documents'})}${button('Nabídka odeslána','event',{flow:p.id,event:'offer'})}${button('Další kontakt','contact',{flow:p.id})}${button(p.paused?'Pokračovat':'Pozastavit','pause',{flow:p.id})}${button(p.enabled?'Vypnout automatizaci':'Zapnout automatizaci','toggle',{flow:p.id})}${button('Nová verze šablony – náhled','preview',{source:key})}</div><p class="note">Šablona v${p.version} · ${!p.enabled?'Vypnuto':p.paused?'Pozastaveno':'Zapnuto'}</p>${p.steps.filter(x=>['open','paused'].includes(x.status)||x.needsReview).sort((a,b)=>(task(state,a)?.date||'9999').localeCompare(task(state,b)?.date||'9999')).map(x=>stepHtml(row,x)).join('')||'<p class="note">Není naplánovaný další krok. Vyber odpovídající událost nebo další kontakt.</p>'}<details><summary>Celý postup a dokončené kroky · ${p.steps.length}</summary>${p.steps.filter(x=>!['open','paused'].includes(x.status)).map(x=>stepHtml(row,x)).join('')}</details><details><summary>Odhad času a delegování</summary>${metricHtml(p.id)}</details><details><summary>Historie automatizace</summary>${p.history.slice().reverse().map(x=>`<p class="note">${h(x.date)} · ${h(x.text)}</p>`).join('')}</details>`}${waits.length?`<details open><summary>Čekání na klienta</summary>${waits.map(waitHtml).join('')}</details>`:''}`;
   }
   function mountCase(row) {const root=$('caseDetailContent');if(!root)return;
     const legacy=root.querySelector('.case-detail-grid > .case-detail-shell > .case-detail-panel');if(legacy&&row.automation)legacy.style.display='none';
@@ -298,7 +349,7 @@
   function captureTemplate() {templateDraft.steps=templateDraft.steps.map((s,i)=>readSpec('wft'+i,s));}
   function preview(key) {
     const src=findSource(state,key);if(!src)return;const t=template(state,src.row.category), copy=clone(state), trial=findSource(copy,key).row;
-    if(!trial.automation)attach(copy,trial,src.signed);else applyVersion(copy,trial,t);
+    if(!trial.automation)attach(copy,trial,src.signed,day(),!src.signed);else applyVersion(copy,trial,t);
     reconcile(copy);previewDraft={key,templateId:t.id,version:t.version};
     modal('Náhled postupu: '+label(src.row),`<p><b>${h(t.name)} · verze ${t.version}</b></p><p class="note">Nové kroky začínají dnes. Minulé kontakty, odeslané nabídky ani vykonanou práci neodhadujeme zpětně. Budoucí kroky čekají na svou událost. Ruční úpravy a dokončené odhady zůstanou zachované.</p>${trial.automation.steps.map(x=>`<p><b>${h(x.spec.title)}</b> · ${h(STATUS[x.status])} · ${h(task(copy,x)?.date||EVENTS[x.spec.trigger])}</p>`).join('')}${button('Použít pouze pro tento případ','apply-preview')}`);
   }
@@ -348,7 +399,7 @@
         case 'remove-template-step':captureTemplate();templateDraft.steps.splice(+d.index,1);renderTemplate();break;
         case 'save-template':captureTemplate();if(transaction(()=>{const t=state.workflowTemplates.find(t=>t.id===templateDraft.id);Object.assign(t,clone(templateDraft),{version:t.version+1,updatedAt:stamp()});}))close();break;
         case 'preview':preview(d.source);break;
-        case 'apply-preview':if(transaction(()=>{const x=findSource(state,previewDraft.key),t=state.workflowTemplates.find(t=>t.id===previewDraft.templateId);if(t.version!==previewDraft.version)throw Error('Šablona se změnila. Otevři nový náhled.');if(x.row.automation)applyVersion(state,x.row,t);else attach(state,x.row,x.signed);}))close();break;
+        case 'apply-preview':if(transaction(()=>{const x=findSource(state,previewDraft.key),t=state.workflowTemplates.find(t=>t.id===previewDraft.templateId);if(t.version!==previewDraft.version)throw Error('Šablona se změnila. Otevři nový náhled.');if(x.row.automation)applyVersion(state,x.row,t);else attach(state,x.row,x.signed,day(),!x.signed);}))close();break;
         case 'source':{const x=findSource(state,d.source);if(x){modal(label(x.row),caseHtml(x.row));}break;}
         case 'client':close();openClientWorkspace(Number(d.id),'overview');mount();break;
         case 'activity':close();openActivityModal(null,Number(d.id));break;
@@ -378,5 +429,5 @@
   let checkedDay=day();
   function checkDay(){if(typeof state==='undefined'||checkedDay===day())return;checkedDay=day();if(persist())renderActiveView();}
   window.addEventListener('focus',checkDay);setInterval(checkDay,60000);
-  window.CrmWorkflow={normalize,day,plus,validDate,attach,emit,transfer,reconcile,rows,totals,email,merge,mount,mountCase,applyVersion,defaultTemplate,active:a=>!a.automation||a.automation.status==='open'};
+  window.CrmWorkflow={normalize,day,plus,validDate,attach,stageChanged,emit,transfer,reconcile,rows,totals,email,merge,mount,mountCase,applyVersion,defaultTemplate,active:a=>!a.automation||a.automation.status==='open'};
 })();

@@ -25,7 +25,7 @@ async function eventId(syncId){const bytes=await crypto.subtle.digest('SHA-256',
 function save(){if(!persist())throw Error('CRM nelze uložit. Synchronizace byla zastavena.');}
 function mount(){
  const host=document.getElementById('calendarSyncPanel');if(!host)return;const cfg=config();
- host.innerHTML=`<div class="eyebrow">Propojení</div><h2>Google Kalendář</h2><p class="note">Úkoly s časem jako události; bez času jako celodenní připomínky. Změny propojených položek se přenášejí oběma směry. E-mail ani pozvánky se neodesílají.</p><details><summary>Jednorázové nastavení připojení</summary><label class="field">Google OAuth Client ID<input id="calendarClientId" value="${escHtml(cfg.clientId||'')}" placeholder="…apps.googleusercontent.com"></label></details><div class="actions"><button class="btn" onclick="CrmCalendar.connect()">Přihlásit Google</button><button class="btn" onclick="CrmCalendar.disconnect()">Odpojit</button></div><label class="field">Pracovní kalendář<select id="calendarSelection" onchange="CrmCalendar.selectCalendar()"><option value="">Vyberte kalendář…</option>${calendars.length?calendars.map(c=>`<option value="${escHtml(c.id)}" ${c.id===cfg.calendarId?'selected':''}>${escHtml(c.summary)}</option>`).join(''):cfg.calendarId?`<option selected value="${escHtml(cfg.calendarId)}">${escHtml(cfg.calendarName||cfg.calendarId)}</option>`:''}</select></label><div class="actions"><button class="btn primary" onclick="CrmCalendar.review()">Porovnat s kalendářem</button><button class="btn" onclick="CrmCalendar.toggleAuto()">${cfg.auto?'Pozastavit':'Zapnout'} průběžnou synchronizaci propojených</button></div><label class="check-row"><input type="checkbox" ${cfg.autoNew?'checked':''} onchange="CrmCalendar.toggleNew(this.checked)"> Nové kroky od zapnutí automaticky přidávat do kalendáře</label><p id="calendarSyncStatus" role="status">${escHtml(lastMessage)}</p><p class="note">Starší úkoly nejprve propojte v náhledu. Nové lze přidávat automaticky po zapnutí této volby. Průběžná synchronizace běží pouze při otevřeném CRM a platném přihlášení. V kalendáři označte hotovou položku prefixem ✓ v názvu. Smazaná událost se automaticky neobnoví.</p><div id="calendarSyncPreview"></div>`;
+ host.innerHTML=`<div class="eyebrow">Propojení</div><h2>Google Kalendář</h2><p class="note">Úkoly s časem jako události; bez času jako celodenní připomínky. Změny propojených položek se přenášejí oběma směry. E-mail ani pozvánky se neodesílají.</p><details><summary>Jednorázové nastavení připojení</summary><label class="field">Google OAuth Client ID<input id="calendarClientId" value="${escHtml(cfg.clientId||'')}" placeholder="…apps.googleusercontent.com"></label></details><div class="actions"><button class="btn" onclick="CrmCalendar.connect()">Přihlásit Google</button><button class="btn" onclick="CrmCalendar.disconnect()">Odpojit</button></div><label class="field">Pracovní kalendář<select id="calendarSelection" onchange="CrmCalendar.selectCalendar()"><option value="">Vyberte kalendář…</option>${calendars.length?calendars.map(c=>`<option value="${escHtml(c.id)}" ${c.id===cfg.calendarId?'selected':''}>${escHtml(c.summary)}</option>`).join(''):cfg.calendarId?`<option selected value="${escHtml(cfg.calendarId)}">${escHtml(cfg.calendarName||cfg.calendarId)}</option>`:''}</select></label><div class="actions"><button class="btn primary" onclick="CrmCalendar.review()">Porovnat s kalendářem</button><button class="btn" onclick="CrmCalendar.toggleAuto()">${cfg.auto?'Pozastavit':'Zapnout'} průběžnou synchronizaci propojených</button></div><label class="check-row"><input type="checkbox" ${cfg.autoNew?'checked':''} onchange="CrmCalendar.toggleNew(this.checked)"> Nové kroky od zapnutí automaticky přidávat do kalendáře</label><p id="calendarSyncStatus" role="status">${escHtml(lastMessage)}</p><p class="note">Starší úkoly nejprve propojte v náhledu. Nové lze přidávat automaticky po zapnutí této volby. Průběžná synchronizace běží pouze při otevřeném CRM a platném přihlášení. V kalendáři označte hotovou položku prefixem ✓ v názvu. Pozastavené kroky mají ⏸, zrušené × a neblokují čas. Smazaná událost se automaticky neobnoví.</p><div id="calendarSyncPreview"></div>`;
 }
 async function connect(){try{
  const clientId=document.getElementById('calendarClientId').value.trim();if(!clientId.endsWith('.apps.googleusercontent.com'))throw Error('Doplňte OAuth Client ID z Google Cloud. Návod je v google-calendar/README.md.');
@@ -36,13 +36,13 @@ async function connect(){try{
  }catch(e){message(e.message);}}
 function disconnect(){token='';expires=0;const c=config();c.auto=false;localStorage.setItem(CONFIG,JSON.stringify(c));preview=[];message('Odpojeno v tomto CRM. Existující události a vazby zůstávají zachované.');mount();}
 function selectCalendar(){const id=document.getElementById('calendarSelection').value,c=calendars.find(x=>x.id===id);if(!c||id!==WORK_CALENDAR)return;localStorage.setItem(CONFIG,JSON.stringify({...config(),calendarId:id,calendarName:c.summary,auto:false,autoNew:false}));preview=[];message('Kalendář vybrán. Nejdříve porovnejte úkoly; zatím nic nebylo zapsáno.');mount();}
-function toggleNew(enabled){const c=config();if(!c.calendarId){mount();return message('Nejdříve vyberte kalendář.');}c.autoNew=enabled;if(enabled){c.knownActivities=state.activities.map(a=>a.syncId).filter(Boolean);c.auto=true;}localStorage.setItem(CONFIG,JSON.stringify(c));mount();}
+function toggleNew(enabled){const c=config();if(!c.calendarId){mount();return message('Nejdříve vyberte kalendář.');}c.autoNew=enabled;if(enabled){c.autoNewSince=new Date().toISOString();c.knownActivities=state.activities.map(a=>a.syncId).filter(Boolean);c.auto=true;}localStorage.setItem(CONFIG,JSON.stringify(c));mount();}
 function toggleAuto(){const c=config();if(!c.calendarId)return message('Nejdříve vyberte kalendář.');c.auto=!c.auto;localStorage.setItem(CONFIG,JSON.stringify(c));mount();}
-function eligible(a){return a.recordKind!=='history'&&!a.deletedAt&&C.day(a.date)&&a.syncId;}
+function eligible(a){return (a.recordKind!=='history'||!!a.calendarLink)&&!a.deletedAt&&C.day(a.date)&&a.syncId;}
 function assertCurrent(row){const a=activity(row.syncId);if(!a||JSON.stringify(a)!==row.before)throw Error('Úkol se mezitím změnil. Načtěte nový náhled.');valid();return a;}
 async function build(managedOnly=false){
  valid();const cfg=config();if(cfg.calendarId!==WORK_CALENDAR)throw Error('Připojte kalendář Filip pracovní.');
- const rows=state.activities.filter(a=>eligible(a)&&(a.calendarLink?.calendarId===cfg.calendarId||!a.calendarLink&&!a.completed&&(!managedOnly||cfg.autoNew&&!(cfg.knownActivities||[]).includes(a.syncId))));
+ const rows=state.activities.filter(a=>eligible(a)&&(a.calendarLink?.calendarId===cfg.calendarId||!a.calendarLink&&!a.completed&&(!a.automation||a.automation.status==='open')&&(!managedOnly||cfg.autoNew&&(!(cfg.knownActivities||[]).includes(a.syncId)||cfg.autoNewSince&&a.automation?.calendarRequestedAt>=cfg.autoNewSince))));
  if(rows.length>300)throw Error('Náhled obsahuje přes 300 úkolů. Nejdříve uzavřete nebo upravte staré neaktuální aktivity.');
  const result=[],cache=new Map();
  const owned=await list(path(cfg.calendarId),{privateExtendedProperty:'filipCrmApp=filip-crm-v1',showDeleted:'true'});
@@ -55,11 +55,12 @@ async function build(managedOnly=false){
   if(recovered.length>1){row.kind='restricted';result.push(row);continue;}
   row.remote=await request(path(cfg.calendarId,link?.eventId||recovered[0]?.id||await eventId(a.syncId)));
   if(recovered.some(e=>e.status==='cancelled')&&!row.remote){row.kind='removed';}
-  else if(link){row.kind=C.decide(link.base,body,row.remote);}
+  else if(link){row.kind=C.decide(link.base,body,row.remote);if(['paused','cancelled'].includes(a.automation?.status)&&row.kind==='pull'&&C.shape(row.remote).summary!==C.shape(body).summary)row.kind='conflict';}
   else if(row.remote){row.kind=row.remote.extendedProperties?.private?.filipCrmActivity===a.syncId?C.decide(null,body,row.remote):'conflict';}
   else{row.candidates=daily.filter(e=>C.candidate(a,name,e));if(row.candidates.length)row.kind='candidate';}
   row.overlaps=daily.filter(e=>e.id!==row.remote?.id&&C.overlap(body,e));
   if(row.kind==='create'&&row.overlaps.length)row.kind='busy';
+  if(row.remote?.extendedProperties?.private?.filipCrmActivity&&row.remote.extendedProperties.private.filipCrmActivity!==a.syncId)row.kind='restricted';
   if(row.remote?.recurrence||row.remote?.recurringEventId||row.remote?.attendees?.length||row.remote?.eventType&&row.remote.eventType!=='default')row.kind='restricted';
   result.push(row);
  }
@@ -76,6 +77,7 @@ async function perform(row,choice){
  let remote=row.remote;
  if(remote){const fresh=await request(path(row.calendarId,remote.id));if(!fresh||fresh.etag!==remote.etag)throw Error('Událost se mezitím změnila. Načtěte nový náhled.');remote=fresh;}
  assertCurrent(row);
+ if(remote?.extendedProperties?.private?.filipCrmActivity&&remote.extendedProperties.private.filipCrmActivity!==a.syncId)throw Error('Událost patří jinému CRM úkolu. Obnovte náhled.');
  if(mode==='pull')C.pull(a,remote); // Validate before any mutation.
  // Durable pre-operation snapshot; no remote write when local storage is full.
  localStorage.setItem('filip_crm_calendar_before_sync',JSON.stringify({version:2,at:new Date().toISOString(),calendarId:row.calendarId,activity:structuredClone(a)}));

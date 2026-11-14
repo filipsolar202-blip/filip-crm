@@ -13,8 +13,9 @@ function localTime(value){
 function shape(e){return {summary:e.summary||'',description:e.description||'',location:e.location||'',start:e.start?.date||localTime(e.start?.dateTime),end:e.end?.date||localTime(e.end?.dateTime),allDay:!!e.start?.date};}
 function payload(a,client){
  if(!day(a.date))throw Error('Chybí platné datum.');
- const summary=(a.completed?'✓ ':'')+(a.calendarTitle||[a.type||'Úkol',client].filter(Boolean).join(' · '));
- const body={summary,description:a.text||'',location:a.location||'',transparency:a.completed||!a.time?'transparent':'opaque',extendedProperties:{private:{filipCrmActivity:a.syncId,filipCrmApp:'filip-crm-v1'}}};
+ const status=a.automation?.status, prefix=status==='cancelled'?'× ':status==='paused'?'⏸ ':a.completed?'✓ ':'';
+ const summary=prefix+(a.calendarTitle||[a.automation?.origin==='template'?a.text:a.type||'Úkol',client].filter(Boolean).join(' · '));
+ const body={summary,description:a.text||'',location:a.location||'',transparency:a.completed||['paused','cancelled'].includes(status)||!a.time?'transparent':'opaque',extendedProperties:{private:{filipCrmActivity:a.syncId,filipCrmApp:'filip-crm-v1'}}};
  if(a.time){
   if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(a.time))throw Error('Neplatný čas.');
   const duration=Number(a.duration)||30;
@@ -38,10 +39,11 @@ function pull(a,event){
  if(s.allDay&&s.end!==nextDay(s.start))throw Error('Vícedenní úkol vyžaduje ruční kontrolu.');
  const duration=s.allDay?a.duration:(Date.parse(s.end+'Z')-Date.parse(s.start+'Z'))/60000;
  if(!s.allDay&&(!Number.isFinite(duration)||duration<1||duration>1440))throw Error('Délka události vyžaduje ruční kontrolu.');
- return {...a,date:s.start.slice(0,10),time:s.allDay?'':s.start.slice(11,16),duration,calendarTitle:s.summary.replace(/^✓\s*/,''),text:s.description,location:s.location,completed:s.summary.startsWith('✓ '),completedAt:s.summary.startsWith('✓ ')?a.completedAt||new Date().toISOString().slice(0,10):'',updatedAt:new Date().toISOString()};
+ const cancelled=a.automation?.status==='cancelled',completed=cancelled||s.summary.startsWith('✓ ');
+ return {...a,date:s.start.slice(0,10),time:s.allDay?'':s.start.slice(11,16),duration,calendarTitle:s.summary.replace(/^(?:✓|×|⏸)\s*/,''),text:s.description,location:s.location,outcome:cancelled?'agreed':completed?'realized':'agreed',completed,completedAt:completed?a.completedAt||new Date().toISOString().slice(0,10):'',updatedAt:new Date().toISOString()};
 }
 function candidate(a,client,e){
- if(e.status==='cancelled')return false;
+ if(e.status==='cancelled'||e.extendedProperties?.private?.filipCrmActivity&&e.extendedProperties.private.filipCrmActivity!==a.syncId)return false;
  const s=shape(e),name=String(client||'').toLocaleLowerCase('cs');
  return s.start?.slice(0,10)===a.date&&(s.summary===payload(a,client).summary||(name.length>3&&(s.summary+' '+s.description).toLocaleLowerCase('cs').includes(name)));
 }

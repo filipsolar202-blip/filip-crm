@@ -35,7 +35,7 @@ Kontrola obsazenosti se týká vybraného kalendáře. Nečte Google Tasks ani d
 
 ## Ověření
 
-`tools/qa/calendar-sync.cjs` používá pouze syntetické klienty a napodobené Google API. Testuje oba směry, opakovaný zápis, uchování vazby po reloadu, konflikty, změnu etag během zápisu, smazání v Google, párování ruční události, změnu CRM během náhledu, celodenní termíny a pražskou zónu. Živý test je blokován chybějícím OAuth Client ID/autorizací CRM ; cílový kalendář Filip pracovní je již potvrzen.
+`tools/qa/calendar-sync.cjs` používá pouze syntetické klienty a napodobené Google API. Testuje oba směry, opakovaný zápis, uchování vazby po reloadu, konflikty, změnu etag během zápisu, smazání v Google, párování ruční události, změnu CRM během náhledu, celodenní termíny a pražskou zónu. Živý test 14. 11. 2026 ověřil založení jednoho telefonátu z CRM, převzetí změny z Google a následnou automatickou aktualizaci téže události bez duplicit. Přístup je autorizován pro Filip pracovní.
 
 Oficiální dokumentace:
 - https://developers.google.com/identity/oauth2/web/guides/use-token-model
@@ -44,3 +44,45 @@ Oficiální dokumentace:
 ## Google Cloud konfigurace
 
 Projekt `skilled-drake-514614-a3` (FILIP CRM Calendar). Webový OAuth klient vytvořen 13. 11. 2026 pro origin `https://filipsolar202-blip.github.io`. Veřejné Client ID je předvyplněné v modulu. Klientské tajemství se nepoužívá ani neukládá do CRM. Testovací uživatel je vlastní účet filip.solar202@gmail.com. Živý souhlas s přístupem ke kalendáři se uděluje zvlášť v CRM.
+
+## Automatické fáze – verze 2026.11.14-2
+
+Nové případy dostávají pracovní postup automaticky. Starší případy bez postupu
+se zapojí při další skutečné změně fáze (osa, pipeline nebo formulář); samotné
+načtení stránky ani opakované uložení stejné fáze nevytváří historické úkoly.
+Nezměněné standardní šablony se rozšíří na v2. Vlastní šablony se nepřepisují.
+Existující v1 postupy dostanou pouze budoucí pravidla, nikoli zpětné připomínky.
+
+| Fáze / událost | Další krok | Výchozí odstup |
+| --- | --- | --- |
+| Založení / Opportunity | Zkontrolovat zadání a další postup | dnes |
+| Nabídka | Připravit nabídku | dnes |
+| Scoring | Ověřit údaje a stav scoringu | 1 pracovní den |
+| Kompletace | Zkontrolovat podklady a žádost | 1 pracovní den |
+| Schvalování | Prověřit stav schvalování | 3 kalendářní dny |
+| Podpis | Příprava dokumentů + telefonát k podpisu | dnes + 1 pracovní den |
+| K zadání (BeTy) | Zkontrolovat zadání obchodu | 1 pracovní den |
+| Skutečný podpis / převod na obchod | Kontrola účinnosti či připsání, provize | 3 a 14 kalendářních dnů |
+
+Pracovní dny zde znamenají Po–Pá, ne kalendář státních svátků. Jde o upravitelné
+pracovní připomínky, nikoli o závazné smluvní lhůty. Bez hodiny vzniká celodenní
+průhledná připomínka; CRM samo neodhaduje čas schůzky.
+
+Zapnutí volby **Nové kroky od zapnutí automaticky přidávat do kalendáře**
+zachytí dosavadní úkoly jako výchozí stav, takže neexportuje starý backlog.
+Nové úkoly a nově převzaté manuální kroky jdou do Filip pracovní. Stejný
+identifikátor úkolu vždy odpovídá stejnému ID události. Událost už spojená
+s jiným CRM úkolem se nenabízí jako kopie druhého kroku stejného klienta.
+
+Při jednoznačné shodě se převezme existující otevřený úkol stejného klienta
+a případu, včetně času a vazby na kalendář. U podpisového hovoru se rozpozná
+typ Telefon a účel podpisu. Více odpovídajících úkolů vyžaduje kontrolu,
+další kopie se nevytvoří. Při odchodu z fáze se původní neupravená připomínka
+zruší, nikoli označí jako vykonaná. Ručně přesunuté či pojmenované úkoly se
+zachovají. Uzavření případu ruší kroky podle jejich pravidla uzavření.
+
+Propojený pozastavený krok dostane ⏸, zrušený ×; oba neblokují čas.
+Události se automaticky nemažou. Dokončení a opětovné otevření přes ✓
+se přenáší zpět do stejné aktivity. Konfliktní změny vyžadují výběr zdroje.
+Běh vyžaduje otevřené CRM a platný Google token; žádný nový server, placené
+API, billing, zprávy ani pozvánky nejsou přidány.

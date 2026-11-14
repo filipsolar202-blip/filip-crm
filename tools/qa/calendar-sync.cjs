@@ -82,6 +82,31 @@ fixture.activities=[{...a,id:40,clientId:1,recordKind:'activity'}];
  assert.equal([...events.values()].filter(e=>e.extendedProperties?.private?.filipCrmActivity==='auto-new').length,1);
  assert.equal([...events.values()].some(e=>e.attendees?.length),false,'never sends invitations');
  await page.evaluate(()=>CrmCalendar.toggleAuto());
+ // End-to-end: phase transition -> native tasks -> automatic calendar export.
+ events.clear();
+ await page.evaluate(()=>{state.activities=[];state.opportunities=[];state.deals=[];CrmCalendar.toggleNew(true);state.opportunities.push({id:500,clientId:1,category:'Hypotéka',status:'Opportunity',product:'QA workflow'});updateOpportunityStatus(500,'Podpis');});
+ await page.waitForFunction(()=>state.activities.filter(a=>a.automation).length===2&&state.activities.filter(a=>a.automation).every(a=>a.calendarLink),{timeout:15000});
+ assert.equal(events.size,2,'two distinct phase steps for same client are not mistaken for duplicate events');
+ const phaseIds=await page.evaluate(()=>state.activities.filter(a=>a.automation).map(a=>a.calendarLink.eventId));
+ const callId=await page.evaluate(()=>state.activities.find(a=>a.type==='Telefon').calendarLink.eventId);
+ // Remote rescheduling updates the same linked workflow step, then survives a phase change.
+ events.set(callId,{...events.get(callId),start:{dateTime:'2026-11-19T13:00:00+01:00'},end:{dateTime:'2026-11-19T13:10:00+01:00'},etag:'v'+version++});
+ await page.evaluate(()=>CrmCalendar.changed());
+ await page.waitForFunction(()=>state.activities.find(a=>a.type==='Telefon').time==='13:00',{timeout:15000});
+ assert.equal(await page.evaluate(()=>state.activities.find(a=>a.type==='Telefon').automation.manualDate),true);
+ await page.evaluate(()=>{state.opportunities[0].automation.paused=true;persist();});
+ await page.waitForFunction(()=>state.activities.filter(a=>a.automation).every(a=>a.calendarLink.base.summary.startsWith('⏸ ')),{timeout:15000});
+ assert(phaseIds.every(id=>events.get(id).transparency==='transparent'));
+ await page.evaluate(()=>{state.opportunities[0].automation.paused=false;persist();});
+ await page.waitForFunction(()=>state.activities.filter(a=>a.automation).every(a=>!a.calendarLink.base.summary.startsWith('⏸ ')),{timeout:15000});
+ // Repeated save does not generate another task or event.
+ await page.evaluate(()=>{updateOpportunityStatus(500,'Podpis');persist();});
+ await review();assert.equal(events.size,2);
+ await page.evaluate(()=>updateOpportunityStatus(500,'Zrušeno'));
+ await page.waitForFunction(()=>state.activities.filter(a=>a.automation).every(a=>a.calendarLink.base.summary.startsWith('× ')),{timeout:15000});
+ assert.equal(events.size,2);assert(phaseIds.every(id=>events.get(id).transparency==='transparent'));
+ assert.equal(await page.evaluate(()=>state.activities.filter(a=>a.automation).some(a=>a.outcome==='realized')),false,'cancel is not performed work');
+ await page.evaluate(()=>CrmCalendar.toggleAuto());
  assert.deepEqual(errors,[]);
  await page.screenshot({path:'/tmp/filip-calendar-qa.png',fullPage:true});
  console.log('PASS: preview without writes, deterministic IDs, idempotency, both sync directions, reload, conflicts, ETag race, deletion, explicit duplicate pairing, local concurrent edit, all-day and Prague timezone. Synthetic data; no real Google requests.');

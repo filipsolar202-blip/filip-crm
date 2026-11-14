@@ -34,6 +34,34 @@ const root=path.resolve(__dirname,'../..'),fixture=require('./fixture.cjs');
   });
   for(const k of ['noDuplicate','notCompleted','offerCompleted','eventDedup','manual','historyLocked','cancelled','manualTask','reopened','paused','resumed','mailDedup','noEarlyReminder','oneReminder','safeSms','replyCloses','caseIsolation','signed','identity','restoreStable'])assert.equal(engine[k],true,k);
   assert.equal(engine.follow,'2026-10-26');assert.equal(engine.weekend,'2026-10-28');assert.equal(engine.calendar,'2026-10-26');assert.equal(engine.dst,'2026-04-01');assert.equal(engine.prague,'2026-10-25');assert.equal(engine.math.saving,25);assert.equal(engine.math.assistant,35);assert.equal(engine.math.chosenMe,5);assert.equal(engine.math.done,0);
+  const stages=await page.evaluate(()=>{
+    const W=CrmWorkflow,s=normalizeState({nextId:100,clients:[{id:1,name:'QA'}],activities:[],opportunities:[],deals:[]});
+    const o={id:10,clientId:1,category:'Hypotéka',status:'Opportunity'};s.opportunities.push(o);
+    o.status='Scoring';W.stageChanged(s,o,'Opportunity','2026-11-13');W.reconcile(s,'2026-11-13');
+    const scoring=s.activities[0],initial=s.activities.length;W.stageChanged(s,o,'Scoring');W.reconcile(s,'2026-11-13');
+    const result={scoringDate:scoring.date,noReplay:s.activities.length===initial&&initial===1};
+    o.status='Kompletace';W.reconcile(s,'2026-11-13');result.retired=scoring.automation.status==='cancelled'&&scoring.outcome!=='realized';
+    const manual={id:90,syncId:'manual-call',clientId:1,sourceOpportunityId:10,type:'Telefon',text:'Volat kvůli podpisu hypotéky',date:'2026-11-16',time:'13:00',recordKind:'activity',completed:false,calendarLink:{eventId:'existing-event'}};s.activities.push(manual);
+    o.status='Podpis';W.reconcile(s,'2026-11-14');W.reconcile(s,'2026-11-14');
+    result.adopted=s.activities.filter(a=>a.type==='Telefon').length===1&&manual.automation?.origin==='adopted'&&manual.date==='2026-11-16'&&manual.time==='13:00'&&manual.calendarLink.eventId==='existing-event';
+    manual.date='2026-11-19';W.reconcile(s,'2026-11-14');o.status='K zadání (BeTy)';W.reconcile(s,'2026-11-14');result.manualKept=!manual.completed&&manual.date==='2026-11-19';
+    result.registration=s.activities.some(a=>a.text==='Zkontrolovat zadání obchodu do BeTy'&&a.date==='2026-11-16');
+    o.status='Zrušeno';W.reconcile(s,'2026-11-14');result.closed=s.activities.every(a=>a.completed);
+    const before=s.activities.length;W.reconcile(s,'2026-11-14');result.closedStable=s.activities.length===before;
+    // Two matching manual tasks block creation instead of silently creating a third.
+    const ambiguous={id:11,clientId:1,category:'Hypotéka',status:'Podpis'};s.opportunities.push(ambiguous);
+    for(let n=0;n<2;n++)s.activities.push({id:200+n,syncId:'ambiguous'+n,clientId:1,sourceOpportunityId:11,type:'Telefon',text:'Volat kvůli podpisu',date:'2026-11-16',completed:false});
+    W.attach(s,ambiguous,false,'2026-11-14',true);W.reconcile(s,'2026-11-14');result.ambiguous=s.activities.filter(a=>a.sourceOpportunityId===11&&a.type==='Telefon').length===2&&ambiguous.automation.steps.some(x=>x.needsReview);
+    // Old unmodified templates upgrade; existing plans gain future rules without backfill.
+    const old=W.defaultTemplate('Hypotéka',1),legacy=normalizeState({nextId:500,clients:[{id:1}],activities:[],deals:[],opportunities:[],workflowTemplates:[structuredClone(old)]});
+    const prior={id:12,clientId:1,category:'Hypotéka',status:'Podpis'};legacy.opportunities.push(prior);legacy.workflowTemplates.find(t=>t.category==='Hypotéka').steps=structuredClone(old.steps);legacy.workflowTemplates.find(t=>t.category==='Hypotéka').version=1;
+    // Construct a persisted v1 plan without going through normalize/attach again.
+    prior.automation={id:'legacy',version:1,templateId:old.id,enabled:true,paused:false,lastStage:'Podpis',events:[{id:'old-event',type:'stage:Podpis',date:'2026-10-01'}],history:[],steps:old.steps.map(x=>({id:x.key,key:x.key,spec:structuredClone(x),status:'planned',enabled:true}))};
+    prior.automation.steps.forEach(x=>x.status='cancelled');W.normalize(legacy);W.reconcile(legacy,'2026-11-14');result.noBackfill=legacy.activities.length===0&&prior.automation.version===2;
+    const custom=W.defaultTemplate('Auto',1);custom.steps[0].offset=9;const customized={workflowTemplates:[custom]};W.normalize(customized);result.customKept=custom.version===1&&custom.steps[0].offset===9;
+    return result;
+  });
+  assert.equal(stages.scoringDate,'2026-11-16');for(const [k,v] of Object.entries(stages))if(k!=='scoringDate')assert.equal(v,true,k);
   // Real UI creates a new case; existing one remains untouched.
   await page.evaluate(()=>openOpportunityModal(1));await page.locator('#oCategory').selectOption('Život');await page.locator('#oProduct').fill('QA automatizované životní pojištění');await page.evaluate(()=>saveOpportunity());
   const id=await page.evaluate(()=>state.opportunities.find(o=>o.product==='QA automatizované životní pojištění').id);
@@ -83,6 +111,9 @@ const root=path.resolve(__dirname,'../..'),fixture=require('./fixture.cjs');
   await page.setViewportSize({width:390,height:844});await page.waitForTimeout(250);await page.screenshot({path:'/private/tmp/crm-workflow-mobile.png',fullPage:false});
   
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2),true,'mobile no horizontal overflow');
+  await page.evaluate(()=>{state.opportunities.find(o=>o.id===301).status='Podpis';openCaseDetail(301);});
+  await page.locator('#workflowCase [data-wf-action="preview"]').click();await page.locator('[data-wf-action="apply-preview"]').click();
+  assert.equal(await page.evaluate(()=>state.activities.filter(a=>a.sourceOpportunityId===301&&!a.completed).length),2,'existing case preview starts only its current phase');
   await page.evaluate(()=>showView('dashboard'));assert.deepEqual(await page.locator('[data-dashboard-section]').evaluateAll(xs=>xs.map(x=>x.dataset.dashboardSection)),['daily','weekly','charts','stats','tasks']);
   assert.deepEqual(errors,[]);assert.deepEqual(dialogs,[]);
   console.log(JSON.stringify({ok:true,engine,merged,screenshots:['/private/tmp/crm-workflow-desktop.png','/private/tmp/crm-workflow-mobile.png']},null,2));
