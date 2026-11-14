@@ -63,3 +63,5 @@ Detail případu → Podrobný produktový postup. Náhled a zapnutí po jednom 
 Bez nové placené služby. Kalendář nadále používá stávající synchronizaci při otevřeném CRM a platném přihlášení; případný konflikt se řeší ve stávajícím náhledu. Nové funkce nespouštějí samostatný plánovač na pozadí.
 
 2026.11.14-12: Dvouhodinový limit započítává i otevřené vlastní pracovní úkoly, které už mají čas, a nepočítá je podruhé z denních priorit. Domluvené schůzky jsou mimo tento limit. Ověřeno UI návrhu/uložení týdne, převzetí do stávajícího finančního plánu, plánovací logika, servisní návaznosti, import ID, smazání, produktové závislosti a kalendářní mapování v practice-automation.cjs, work-capacity.cjs, calendar-sync.cjs, workflow-automation.cjs, focus-dashboard.cjs a static.cjs.
+
+2026.11.14-13: Vstup Plánování a servis zůstává v záhlaví Úkolů i po hledání a přepínání filtrů. Ověřeno přes uživatelské ovládání.

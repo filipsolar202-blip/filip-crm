@@ -28,7 +28,7 @@ const {chromium,launchOptions}=require('./runtime.cjs'),root=path.resolve(__dirn
  state=s;persist();showView('tasks');return r;
  });
  for(const[k,v]of Object.entries(result))assert.equal(v,true,k);
- await page.getByRole('button',{name:'Plánování a servis',exact:true}).click();await page.getByRole('button',{name:'Načíst kalendář a navrhnout týden'}).click();assert.match(await page.locator('#practiceStatus').innerText(),/Bez ověření/);assert.equal(await page.locator('[data-practice=apply-plan]').count(),0);
+ await page.locator('[data-task-filter=all]').click();assert.equal(await page.getByRole('button',{name:'Plánování a servis',exact:true}).count(),1);await page.getByRole('button',{name:'Plánování a servis',exact:true}).click();await page.getByRole('button',{name:'Načíst kalendář a navrhnout týden'}).click();assert.match(await page.locator('#practiceStatus').innerText(),/Bez ověření/);assert.equal(await page.locator('[data-practice=apply-plan]').count(),0);
  await page.evaluate(()=>{state.dailyPriorities=[];CrmCalendar.availability=async()=>[];persist();});
  await page.locator('#practiceWeek').fill('2026-11-16');await page.getByRole('button',{name:'Načíst kalendář a navrhnout týden'}).click();assert.ok(await page.locator('[data-practice=apply-plan]').count());
  const nativeCount=await page.evaluate(()=>state.activities.length);await page.getByRole('button',{name:'Použít návrh a aktualizovat stejné úkoly'}).click();assert.equal(await page.evaluate(()=>state.activities.length),nativeCount);assert.ok(await page.evaluate(()=>state.dailyPriorities.length)>0);
