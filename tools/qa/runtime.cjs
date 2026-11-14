@@ -1,5 +1,10 @@
 const path = require('node:path');
 const os = require('node:os');
+// macOS aborts Chrome during application registration inside Codex Seatbelt,
+// before any CRM page loads, and displays a misleading user-facing crash alert.
+if (process.platform === 'darwin' && process.env.CODEX_SANDBOX === 'seatbelt') {
+  throw new Error('CRM QA: Chrome nelze spustit v macOS Codex sandboxu. Použij schválené spuštění testu mimo sandbox; prohlížeč nebyl spuštěn.');
+}
 let playwright;
 try { playwright = require('playwright'); }
 catch { playwright = require(path.join(os.homedir(), '.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright')); }

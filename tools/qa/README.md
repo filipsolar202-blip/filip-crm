@@ -1,5 +1,16 @@
 # Ověření CRM
 
+Na macOS nespouštějte prohlížečové testy uvnitř Codex Seatbelt sandboxu.
+Chrome zde může skončit při registraci aplikace ještě před načtením stránky
+a macOS zobrazí hlášku o pádu. Sdílený `runtime.cjs` takový start odmítne
+bez spuštění Chromu. Pro test použijte schválené spuštění mimo sandbox
+s dočasným testovacím profilem; nikdy běžný profil uživatele. Neobcházejte
+pojistku změnou proměnné `CODEX_SANDBOX`.
+
+Ověřeno 14. 11. 2026: pád PID 61329 v 10:58 odpovídal testovacímu startu;
+test synchronizace následně mimo sandbox prošel. Čtyři starší dostupné
+reporty Chromu měly shodný stack `_RegisterApplication` / `SIGABRT`.
+
 Spouštět z kořene repozitáře:
 
 ```sh
