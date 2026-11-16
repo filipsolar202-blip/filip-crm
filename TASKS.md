@@ -75,3 +75,9 @@ Bez nové placené služby. Kalendář nadále používá stávající synchroni
 2026.11.16-4: Výročí v kompaktních řádcích; chybějící e-mail jako červená ikona. Vyřazeny smlouvy v řešení, výpovědi a již kontaktované smlouvy podle konkrétní vazby a historie daného cyklu. Staré e-maily nezakrývají další roční cyklus.
 
 2026.11.16-5: Dokončené kroky zobrazují přiřazenou osobu i potvrzeného řešitele. Ruční odškrtnutí potvrdí přiřazeného řešitele; volba Splnil umožní opravu s historií. Starší nedoložený řešitel se označí Neevidováno.
+
+## 2026-11-16 · verze 2026.11.16-6 · Podklady banky
+- Formuláře: ČS, KB a ČSOB podle dodaných vzorů; upravitelné položky, vyžádat / už mám, vlastní podklady.
+- Uložení checklistu u klienta, volitelná vazba na úvěrový případ, tykání/vykání a přehled dokončených kroků do e-mailu.
+- Příprava bez odeslání; výslovné potvrzení zaznamená historii zprávy a připomínku (výchozí +5 dnů). Bankovní soubory zatím nedodány, přílohy se přidávají ručně.
+- Ověření: bank-documents.cjs, bank-documents-ui.cjs (izolovaná data, reload, mobil, potvrzené odeslání).
