@@ -67,3 +67,5 @@ Bez nové placené služby. Kalendář nadále používá stávající synchroni
 2026.11.14-13: Vstup Plánování a servis zůstává v záhlaví Úkolů i po hledání a přepínání filtrů. Ověřeno přes uživatelské ovládání.
 
 2026.11.16-1: Kompaktní pracovní checklist s odškrtnutím; podklady se rozbalují přímo v postupu. Jedno zaškrtnutí znamená přijetí, administrativní kontrola zůstává samostatná. Vedlejší akce a vazby na soubory pod nabídkou. Ověřeno ukládání, obnovení, historie, návaznosti a mobilní zobrazení na syntetických datech.
+
+2026.11.16-2: Hlavní nadpis obchodního případu je jméno klienta s proklikem na kartu; produkt je pod jménem. Odstraněno globální plovoucí tlačítko Aktivita, běžné vstupy zůstávají.
