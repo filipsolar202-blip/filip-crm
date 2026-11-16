@@ -6,6 +6,19 @@ window.CrmAnniversaries=(()=>{
   const parts=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Prague',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(now).map(x=>[x.type,x.value]));
   const d=new Date(Date.UTC(+parts.year,+parts.month-1,+parts.day));let back=(d.getUTCDay()+6)%7;if(!back&&+parts.hour<9)back=7;d.setUTCDate(d.getUTCDate()-back);return d.toISOString().slice(0,10);
  }
+ function handled(contract,client,cycle,s){
+  const statuses=getStatuses(contract);
+  if(statuses.some(x=>['reseni','prepojistit','vypoved','nabidka','ceka_nabidka','ceka_podklady','domluveno','nechce','neprepojistuje'].includes(x)))return true;
+  if((contract.terminations||[]).some(t=>['client','submitted','received','confirmed'].includes(t.status)))return true;
+  if((s.opportunities||[]).some(o=>same(o.clientId,contract.clientId)&&[o.contractId,o.replacesContractId].some(id=>id!=null&&same(id,contract.id))&&isOpenOpportunity(o)))return true;
+  const previous=cycle?new Date(cycle+'T12:00:00Z'):null;if(previous)previous.setUTCFullYear(previous.getUTCFullYear()-contractReviewYears(contract));
+  const inCycle=date=>!date||!previous||String(date).slice(0,10)>previous.toISOString().slice(0,10);
+  const mails=(contract.log||[]).filter(x=>/^(email klientovi|odeslán e-mail|odeslan email|stav: e-?mail)/i.test(x.t||''));
+  if(mails.some(x=>inCycle(x.d)))return true;
+  // An old generic Email status must not hide every future annual review.
+  if(statuses.includes('email')&&!mails.length&&!(client?.clientForms||[]).some(r=>same(r.contractId,contract.id)&&r.sentDate))return true;
+  return (s.activities||[]).some(a=>a.completed&&a.type==='Email'&&same(a.clientId,contract.clientId)&&[a.contractId,a.sourceContractId].some(id=>id!=null&&same(id,contract.id))&&inCycle(a.completedAt||a.date));
+ }
  function rows(s=state,now=new Date()){
   const cutoff=monday(now);if(cutoff<start)return [];
   const limit=new Date(cutoff+'T12:00:00Z');limit.setUTCDate(limit.getUTCDate()+80);const end=limit.toISOString().slice(0,10),out=[];
@@ -17,9 +30,8 @@ window.CrmAnniversaries=(()=>{
    const sent=(client?.clientForms||[]).filter(r=>r.anniversary&&same(r.contractId,contract.id)&&r.sentDate);
    let guard=0;while(cycle&&cycle<=end&&sent.some(r=>r.reviewCycle===cycle||(!r.reviewCycle&&r.sentDate<=cycle&&(new Date(cycle)-new Date(r.sentDate))/86400000<=80))&&guard++<100){cycle=contractReviewDate({...contract,lastReviewAnniversary:cycle},start);}
    if(cycle&&cycle>end)continue;
+   if(handled(contract,client,cycle,s))continue;
    const warnings=[];if(!cycle)warnings.push('Doplnit výročí');if(!client)warnings.push('Chybí klient');else if(!client.email)warnings.push('Doplnit e-mail');
-   if(getStatuses(contract).some(x=>['vypoved','nechce','neprepojistuje'].includes(x))||(contract.terminations||[]).some(t=>['submitted','received'].includes(t.status)))warnings.push('Ověřit stav smlouvy / výpověď');
-   if(getStatuses(contract).includes('email')&&!sent.length)warnings.push('Ověřit dřívější odeslání');
    out.push({contract,client,cycle,warnings,key:contract.id+'|'+(cycle||'unknown')});
   }return out.sort((a,b)=>(a.cycle||'9999').localeCompare(b.cycle||'9999')||clientName(a.client).localeCompare(clientName(b.client),'cs'));
  }
@@ -27,7 +39,7 @@ window.CrmAnniversaries=(()=>{
  function render(query=''){
   const all=rows(),list=all.filter(r=>!query||norm([clientName(r.client),r.client?.email,r.contract.number,r.contract.company,r.contract.product].join(' ')).includes(query));
   byId('contractMetrics').innerHTML=`<div class="metric"><span class="note">K oslovení</span><b>${all.length}</b></div><div class="metric"><span class="note">Nutná kontrola</span><b>${all.filter(r=>r.warnings.length).length}</b></div>`;
-  const html=`<div class="notice"><b>Výročí · pondělní výběr ${esc(monday())}</b><p>Auta každý rok, majetek každé dva roky, 80 dnů před výročím. Nevyřízené položky zůstávají až do potvrzení odeslání. Příprava e-mailu nic neodesílá.</p></div>`+list.map(({contract:s,client:c,cycle,warnings})=>`<article class="mini-card" style="margin:12px 0"><div class="toolbar"><div><h3>${esc(c?clientName(c):'Klient chybí')}</h3><b>${esc(s.product||s.type)}</b> · ${esc(s.company||'')}<p class="note">Smlouva ${esc(s.number||'bez čísla')} · Výročí ${esc(cycle||'neuvedeno')} · ${esc(c?.email||'bez e-mailu')}</p><div class="chips">${warnings.map(w=>`<span class="badge orange">${esc(w)}</span>`).join('')}</div></div><div class="actions">${c&&cycle?`<button class="btn primary" onclick="CrmAnniversaries.prepare(${Number(s.id)})">Připravit e-mail</button>`:''}${c?`<button class="btn" onclick="openClientModal(${Number(c.id)})">Upravit kontakt</button>`:''}<button class="btn" onclick="openContractModal(${Number(s.clientId)},${Number(s.id)})">Smlouva</button></div></div></article>`).join('')+(list.length?'':'<p>Žádné smlouvy k oslovení v tomto výběru.</p>');
+  const html=`<p class="note anniversary-caption">Pondělní výběr ${esc(monday())} · pouze smlouvy k prvnímu oslovení</p>`+list.map(({contract:s,client:c,cycle})=>`<article class="anniversary-row"><div class="anniversary-client"><b>${esc(c?clientName(c):'Klient chybí')}</b>${c&&!c.email?`<button class="anniversary-missing-email" title="Chybí e-mail – doplnit kontakt" aria-label="Chybí e-mail – doplnit kontakt" onclick="openClientModal(${Number(c.id)})"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m4 7 8 6 8-6"/></svg></button>`:''}</div><div class="anniversary-policy"><span>${esc(s.product||s.type)}${s.company?' · '+esc(s.company):''}</span><small>Smlouva ${esc(s.number||'bez čísla')}</small></div><div class="anniversary-date"><small>Výročí</small><b>${esc(cycle?cycle.split('-').reverse().join('. '):'Doplnit datum')}</b></div><div class="actions">${c&&cycle?`<button class="btn slim primary" onclick="CrmAnniversaries.prepare(${Number(s.id)})">Připravit e-mail</button>`:''}<button class="btn slim" onclick="openContractModal(${Number(s.clientId)},${Number(s.id)})">Smlouva</button></div></article>`).join('')+(list.length?'':'<p>Žádné smlouvy k oslovení v tomto výběru.</p>');
   const wrap=byId('contractsTable')?.closest('.table-wrap');if(wrap)wrap.outerHTML='<div class="contracts-list" id="contractsList"></div>';byId('contractsList').innerHTML=html;
  }
  return {rows,monday,render,prepare};
