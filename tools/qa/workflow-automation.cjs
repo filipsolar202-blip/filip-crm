@@ -68,7 +68,7 @@ const root=path.resolve(__dirname,'../..'),fixture=require('./fixture.cjs');
   assert.equal(await page.evaluate(id=>!!state.opportunities.find(o=>o.id===id).automation,id),true);
   await page.evaluate(id=>openCaseDetail(id),id);await page.locator('#workflowCase').waitFor();
   await page.locator('#workflowCase [data-wf-action="event"][data-event="offer"]').click();await page.locator('#workflowModal [data-wf-action="save-event"]').click();
-  await page.locator('#workflowCase [data-wf-action="email"]').click();await page.locator('#wfMailTopic').fill('QA kontrola nabídky');await page.locator('#wfMailSent').fill('2026-10-23');await page.locator('#wfMailDue').fill('2026-10-26');await page.locator('[data-wf-action="save-email"]').click();
+  await page.locator('#workflowCase [data-wf-action="email"]').evaluate(el=>{for(let p=el.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;});await page.locator('#workflowCase [data-wf-action="email"]').click();await page.locator('#wfMailTopic').fill('QA kontrola nabídky');await page.locator('#wfMailSent').fill('2026-10-23');await page.locator('#wfMailDue').fill('2026-10-26');await page.locator('[data-wf-action="save-email"]').click();
   assert.equal(await page.evaluate(()=>state.activities.filter(a=>a.emailSms).length),1);
   await page.locator('#workflowCase [data-wf-action="sms"]').click();await page.locator('#wfSmsText').fill('QA ručně upravená zpráva');await page.locator('[data-wf-action="save-sms"]').click();
   assert.equal(await page.evaluate(()=>state.activities.find(a=>a.emailSms).emailSms.text),'QA ručně upravená zpráva');
@@ -83,7 +83,7 @@ const root=path.resolve(__dirname,'../..'),fixture=require('./fixture.cjs');
   assert.equal(await page.evaluate(()=>state.activities.filter(a=>a.type==='SMS').length),1);
   // Saving a new email fails atomically; form remains available and no phantom task/contact is added.
   const beforeFailure=await page.evaluate(()=>JSON.stringify(state));
-  await page.locator('#workflowCase [data-wf-action="email"]').click();await page.locator('#wfMailTopic').fill('QA nesmí být uloženo');
+  await page.locator('#workflowCase [data-wf-action="email"]').evaluate(el=>{for(let p=el.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;});await page.locator('#workflowCase [data-wf-action="email"]').click();await page.locator('#wfMailTopic').fill('QA nesmí být uloženo');
   await page.evaluate(()=>{window.qaOriginalSet=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){if(k==='filip_crm_main_v1')throw Error('QA disk full');return qaOriginalSet.call(this,k,v);};});
   await page.locator('[data-wf-action="save-email"]').click();
   assert.equal(await page.evaluate(()=>JSON.stringify(state)),beforeFailure,'failed save rolls back steps, contacts and IDs');
@@ -92,10 +92,10 @@ const root=path.resolve(__dirname,'../..'),fixture=require('./fixture.cjs');
   assert.equal(dialogs.filter(x=>x.includes('nepovedlo uložit')).length,1);dialogs.length=0;
   // A template edit is versioned and does not rewrite existing plans until preview/apply.
   const planVersion=await page.evaluate(id=>state.opportunities.find(o=>o.id===id).automation.version,id);
-  await page.locator('#workflowCase [data-wf-action="templates"]').click();
+  await page.locator('#workflowCase [data-wf-action="templates"]').evaluate(el=>{for(let p=el.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;});await page.locator('#workflowCase [data-wf-action="templates"]').click();
   await page.locator('#wfTemplateSteps details').first().locator('summary').click();await page.locator('#wft0solo').fill('45');await page.locator('[data-wf-action="save-template"]').click();
   assert.equal(await page.evaluate(id=>state.opportunities.find(o=>o.id===id).automation.version,id),planVersion);
-  await page.locator('#workflowCase [data-wf-action="preview"]').click();await page.locator('[data-wf-action="apply-preview"]').click();
+  await page.locator('#workflowCase [data-wf-action="preview"]').evaluate(el=>{for(let p=el.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;});await page.locator('#workflowCase [data-wf-action="preview"]').click();await page.locator('[data-wf-action="apply-preview"]').click();
   assert.equal(await page.evaluate(id=>state.opportunities.find(o=>o.id===id).automation.version,id),planVersion+1);
   // Backup merge twice preserves stable workflow/task identities.
   const merged=await page.evaluate(()=>{const backup=structuredClone(state),before=state.activities.length;mergeIncomingState(backup);mergeIncomingState(backup);persist();return {before,after:state.activities.length,flows:state.opportunities.filter(o=>o.automation).length};});assert.equal(merged.before,merged.after);assert.equal(merged.flows,1);
@@ -107,12 +107,12 @@ const root=path.resolve(__dirname,'../..'),fixture=require('./fixture.cjs');
     mergeIncomingState(incoming);persist();return {stableActivities:state.activities.length===before,stableCases:state.opportunities.length===flows,correctLinks:state.activities.filter(a=>a.automation?.flowId).every(a=>state.opportunities.some(o=>o.automation?.id===a.automation.flowId&&o.clientId===a.clientId)||state.deals.some(o=>o.automation?.id===a.automation.flowId&&o.clientId===a.clientId))};
   });assert.deepEqual(remapped,{stableActivities:true,stableCases:true,correctLinks:true});
   await page.reload();await page.waitForFunction(()=>typeof state==='object');assert.equal(await page.evaluate(()=>state.opportunities.filter(o=>o.automation).length),1);
-  await page.evaluate(id=>openCaseDetail(id),id);await page.screenshot({path:'/private/tmp/crm-workflow-desktop.png',fullPage:false});
+  await page.evaluate(id=>openCaseDetail(id),id);await page.locator('#workflowCase input[data-wf-action=done]').first().click();assert.equal(await page.evaluate(()=>state.opportunities.find(o=>o.automation)?.automation.steps.some(s=>s.status==='done')),true);await page.screenshot({path:'/private/tmp/crm-workflow-desktop.png',fullPage:false});
   await page.setViewportSize({width:390,height:844});await page.waitForTimeout(250);await page.screenshot({path:'/private/tmp/crm-workflow-mobile.png',fullPage:false});
   
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2),true,'mobile no horizontal overflow');
   await page.evaluate(()=>{state.opportunities.find(o=>o.id===301).status='Podpis';openCaseDetail(301);});
-  await page.locator('#workflowCase [data-wf-action="preview"]').click();await page.locator('[data-wf-action="apply-preview"]').click();
+  await page.locator('#workflowCase [data-wf-action="preview"]').evaluate(el=>{for(let p=el.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;});await page.locator('#workflowCase [data-wf-action="preview"]').click();await page.locator('[data-wf-action="apply-preview"]').click();
   assert.equal(await page.evaluate(()=>state.activities.filter(a=>a.sourceOpportunityId===301&&!a.completed).length),2,'existing case preview starts only its current phase');
   await page.evaluate(()=>showView('dashboard'));assert.deepEqual(await page.locator('[data-dashboard-section]').evaluateAll(xs=>xs.map(x=>x.dataset.dashboardSection)),['daily','weekly','charts','stats','tasks']);
   assert.deepEqual(errors,[]);assert.deepEqual(dialogs,[]);

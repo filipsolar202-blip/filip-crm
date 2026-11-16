@@ -65,3 +65,5 @@ Bez nové placené služby. Kalendář nadále používá stávající synchroni
 2026.11.14-12: Dvouhodinový limit započítává i otevřené vlastní pracovní úkoly, které už mají čas, a nepočítá je podruhé z denních priorit. Domluvené schůzky jsou mimo tento limit. Ověřeno UI návrhu/uložení týdne, převzetí do stávajícího finančního plánu, plánovací logika, servisní návaznosti, import ID, smazání, produktové závislosti a kalendářní mapování v practice-automation.cjs, work-capacity.cjs, calendar-sync.cjs, workflow-automation.cjs, focus-dashboard.cjs a static.cjs.
 
 2026.11.14-13: Vstup Plánování a servis zůstává v záhlaví Úkolů i po hledání a přepínání filtrů. Ověřeno přes uživatelské ovládání.
+
+2026.11.16-1: Kompaktní pracovní checklist s odškrtnutím; podklady se rozbalují přímo v postupu. Jedno zaškrtnutí znamená přijetí, administrativní kontrola zůstává samostatná. Vedlejší akce a vazby na soubory pod nabídkou. Ověřeno ukládání, obnovení, historie, návaznosti a mobilní zobrazení na syntetických datech.
