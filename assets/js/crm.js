@@ -446,7 +446,7 @@ function clientMailFallbackUrl(draft) {
   return 'mailto:'+encodeURIComponent(draft.to)+'?'+query;
 }
 function prepareClientEmail(clientOrId, message={}) {
-  clientMailDrafts=[{clientId:(typeof clientOrId==='object'?clientOrId?.id:clientOrId)||null,externalTracking:!!message.externalTracking,from:clientSenderEmail(clientOrId),to:message.to??clientEmails(typeof clientOrId==='object'?clientOrId:findClient(clientOrId))[0]??'',subject:message.subject||'',body:message.body||'',bcc:message.bcc||[],pdfDocument:message.pdfDocument||null}];
+  clientMailDrafts=[{clientId:(typeof clientOrId==='object'?clientOrId?.id:clientOrId)||null,externalTracking:!!message.externalTracking,from:['f.solar@fair-life.cz','filip.solar@mantra-finance.cz'].includes(message.from)?message.from:clientSenderEmail(clientOrId),to:message.to??clientEmails(typeof clientOrId==='object'?clientOrId:findClient(clientOrId))[0]??'',subject:message.subject||'',body:message.body||'',bcc:message.bcc||[],pdfDocument:message.pdfDocument||null}];
   showClientMailDrafts();
 }
 function clientMailHtml(draft) {
@@ -16102,7 +16102,7 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.11.16-6';
+const VERSION = '2026.11.16-7';
 const VERSION_NOTE = 'Plánování 2 h denně, servis klientů, podklady k plánu a podrobné produktové návaznosti.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';

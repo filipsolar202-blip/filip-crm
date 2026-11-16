@@ -81,3 +81,8 @@ Bez nové placené služby. Kalendář nadále používá stávající synchroni
 - Uložení checklistu u klienta, volitelná vazba na úvěrový případ, tykání/vykání a přehled dokončených kroků do e-mailu.
 - Příprava bez odeslání; výslovné potvrzení zaznamená historii zprávy a připomínku (výchozí +5 dnů). Bankovní soubory zatím nedodány, přílohy se přidávají ručně.
 - Ověření: bank-documents.cjs, bank-documents-ui.cjs (izolovaná data, reload, mobil, potvrzené odeslání).
+
+## 2026-11-16 · verze 2026.11.16-7
+- Podklady banky: přímá volba FairLife / Mantra v checklistu i e-mailu, předání zvolené adresy pomocníkovi Apple Mail a uložení do historie.
+- Přehled postupu viditelně nad podklady, u nových checklistů zapnutý; volba aktuální fáze vedle hotových a zbývajících kroků.
+- Ověřeno izolovanými testy včetně přepnutí odesílatele a obsahu zprávy.
