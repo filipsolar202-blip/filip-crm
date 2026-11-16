@@ -4687,7 +4687,7 @@ function contractEmailButton(c, s = null) {
   return `<button class="btn slim" onclick="event.preventDefault();composeEmailForContract(${c?.id || 'null'},${s?.id || 'null'})">Email</button>` + CrmTerminations.button(c,s);
 }
 function contractTabDefs() {
-  return [{
+  return [{id:'vyroci',label:'Výročí',icon:'◷'},{
     id: 'auta',
     label: 'Auta + majetek',
     icon: '♢'
@@ -4724,7 +4724,7 @@ function isWorseMortgageRate(s) {
   return r && r > marketMortgageRate() + .5;
 }
 function contractSectionMatch(s, sec) {
-  return !sec || sectionForContract(s) === sec;
+  return sec==='vyroci'?CrmAnniversaries.rows().some(r=>String(r.contract.id)===String(s.id)):!sec || sectionForContract(s) === sec;
 }
 function contractSectionTitle(sec) {
   return {
@@ -4738,7 +4738,7 @@ function renderContractTabs() {
   const current = val('contractSection') || 'auta',
     tabs = contractTabDefs(),
     counts = {};
-  tabs.forEach(t => counts[t.id] = state.contracts.filter(s => contractSectionMatch(s, t.id)).length);
+  tabs.forEach(t => counts[t.id] = t.id==='vyroci'?CrmAnniversaries.rows().length:state.contracts.filter(s => contractSectionMatch(s, t.id)).length);
   const el = byId('contractTabs');
   if (!el) return;
   el.innerHTML = tabs.map(t => '<button class="contract-tab ' + (current === t.id ? 'active' : '') + '" onclick="setContractSection(\'' + t.id + '\')">' + t.icon + ' ' + esc(t.label) + ' <span class="badge ' + (current === t.id ? 'blue' : '') + '">' + num(counts[t.id] || 0) + '</span></button>').join('');
@@ -4794,6 +4794,8 @@ function renderContracts() {
     st = val('contractStatusFilter');
   renderContractTabs();
   renderMortgageRatePanel(sec);
+  byId('contractStatusFilter').style.display=sec==='vyroci'?'none':'';
+  if(sec==='vyroci'){CrmAnniversaries.render(q);return;}
   let rows = state.contracts.map(s => ({
     s,
     c: findClient(s.clientId),
@@ -16100,7 +16102,7 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.11.16-2';
+const VERSION = '2026.11.16-3';
 const VERSION_NOTE = 'Plánování 2 h denně, servis klientů, podklady k plánu a podrobné produktové návaznosti.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
