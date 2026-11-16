@@ -96,3 +96,8 @@ Bez nové placené služby. Kalendář nadále používá stávající synchroni
 - Klientský přehled od zvolené aktuální fáze: dřívější kroky skryté v HTML i prostém textu, evidence beze změny.
 - Otevření bankovního e-mailu nejprve kopíruje HTML do schránky; při selhání se zastaví. Jasné instrukce v poštovním dialogu pro vložení vzhledu do Apple Mailu. Native helper nadále vytváří prostý text, nevydáváme to za automatický HTML přenos.
 - Ověření unit a izolovaného browser testu včetně HTML obsahu schránky.
+
+## 2026-11-16 · verze 2026.11.16-10
+- Bankovní e-mail: kopírování HTML + prázdný koncept se správným adresátem/odesílatelem a předmětem aktuální fáze. Podpis zůstává podle nastavení Apple Mailu.
+- Tlačítko E-mail odeslán klientovi ukládá obsah, HTML, aktuální fázi a dokončené kroky do historie u klienta; aktivita obsahuje předmět. Samotná příprava odeslání nepotvrzuje.
+- Izolované testy ověřují prázdné tělo v native i mailto, obsah schránky, předmět, historii a reload.
