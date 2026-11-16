@@ -446,10 +446,11 @@ function clientMailFallbackUrl(draft) {
   return 'mailto:'+encodeURIComponent(draft.to)+'?'+query;
 }
 function prepareClientEmail(clientOrId, message={}) {
-  clientMailDrafts=[{clientId:(typeof clientOrId==='object'?clientOrId?.id:clientOrId)||null,externalTracking:!!message.externalTracking,from:['f.solar@fair-life.cz','filip.solar@mantra-finance.cz'].includes(message.from)?message.from:clientSenderEmail(clientOrId),to:message.to??clientEmails(typeof clientOrId==='object'?clientOrId:findClient(clientOrId))[0]??'',subject:message.subject||'',body:message.body||'',bcc:message.bcc||[],pdfDocument:message.pdfDocument||null}];
+  clientMailDrafts=[{clientId:(typeof clientOrId==='object'?clientOrId?.id:clientOrId)||null,externalTracking:!!message.externalTracking,html:message.html||'',from:['f.solar@fair-life.cz','filip.solar@mantra-finance.cz'].includes(message.from)?message.from:clientSenderEmail(clientOrId),to:message.to??clientEmails(typeof clientOrId==='object'?clientOrId:findClient(clientOrId))[0]??'',subject:message.subject||'',body:message.body||'',bcc:message.bcc||[],pdfDocument:message.pdfDocument||null}];
   showClientMailDrafts();
 }
 function clientMailHtml(draft) {
+ if(draft.html)return draft.html;
  const paragraphs=String(draft.body||'').split(/\n\n+/).map(part=>{
   const match=part.match(/^Vyplnit dotazník:\n(https:\/\/filipsolar202-blip\.github\.io\/filip-crm\/\S+)$/);
   return match?`<p style="margin:24px 0"><a href="${esc(match[1])}" style="display:inline-block;background:#174d70;color:#ffffff;text-decoration:none;padding:14px 22px;border-radius:10px;font-weight:600">Vyplnit dotazník →</a></p>`:`<p style="margin:0 0 18px">${esc(part).replace(/\n/g,'<br>')}</p>`;
@@ -16102,7 +16103,7 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.11.16-7';
+const VERSION = '2026.11.16-8';
 const VERSION_NOTE = 'Plánování 2 h denně, servis klientů, podklady k plánu a podrobné produktové návaznosti.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';

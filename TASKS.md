@@ -86,3 +86,8 @@ Bez nové placené služby. Kalendář nadále používá stávající synchroni
 - Podklady banky: přímá volba FairLife / Mantra v checklistu i e-mailu, předání zvolené adresy pomocníkovi Apple Mail a uložení do historie.
 - Přehled postupu viditelně nad podklady, u nových checklistů zapnutý; volba aktuální fáze vedle hotových a zbývajících kroků.
 - Ověřeno izolovanými testy včetně přepnutí odesílatele a obsahu zprávy.
+
+## 2026-11-16 · verze 2026.11.16-8
+- Přehled hypotéky dle dodaného fairlife-hypoteka-prehled.html: jedenáct kroků, modrá osa, kruhy, vysvětlení, hotové/aktuální kroky.
+- HTML náhled a kopírování formátovaného e-mailu; prostý text pro běžné otevření pošty. Pomocník Mail automaticky vkládá pouze prostý text, HTML se vkládá ze schránky.
+- Starý šestikrokový stav zachován jako legacyProgress; nové odlišné kroky vyžadují ruční kontrolu. Testy ukládání a UI prošly.
