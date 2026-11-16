@@ -73,3 +73,5 @@ Bez nové placené služby. Kalendář nadále používá stávající synchroni
 2026.11.16-3: Smlouvy → Výročí: týdenní fronta konkrétních smluv včetně chybějících e-mailů, roční/dvouletý cyklus, potvrzené odeslání vyřadí jen cyklus. Neodeslané položky zůstávají i po termínu. Volba oslovení, osobní formulář, historie a připomínka za 5 dní. Splněné kroky zůstávají přímo v případu, s datem a 50% zesvětlením; kulaté checkboxy.
 
 2026.11.16-4: Výročí v kompaktních řádcích; chybějící e-mail jako červená ikona. Vyřazeny smlouvy v řešení, výpovědi a již kontaktované smlouvy podle konkrétní vazby a historie daného cyklu. Staré e-maily nezakrývají další roční cyklus.
+
+2026.11.16-5: Dokončené kroky zobrazují přiřazenou osobu i potvrzeného řešitele. Ruční odškrtnutí potvrdí přiřazeného řešitele; volba Splnil umožní opravu s historií. Starší nedoložený řešitel se označí Neevidováno.
