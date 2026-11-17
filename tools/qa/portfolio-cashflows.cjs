@@ -10,6 +10,7 @@ const cases=await page.evaluate(()=>[
  {current:1100,out:500,paid:1500,gain:100}
 ].map(c=>({expected:c.gain,actual:portfolioTimelineValue({now:10,funds:[{current:c.current,positions:[{date:1,invested:1000},...(c.paid>1000?[{date:8,invested:c.paid-1000}]:[])],withdrawals:[{date:5,amount:c.out}]}]},10).gain})));
 for(const c of cases)assert.equal(c.actual,c.expected);
+assert.equal(await page.evaluate(()=>clientOutput_xRowInvested({invested:-40000,snapshot:{invested:-40000}})),-40000);
 const renderer=await page.evaluate(()=>{
  const item={area:'Investice',product:'Regression fund',reportId:'test',amount:0,invested:1000,realized:1200,rows:[]};
  const html=portfolioTimelineHtml([item]),host=document.createElement('div');host.innerHTML=html;
