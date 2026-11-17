@@ -101,3 +101,10 @@ Bez nové placené služby. Kalendář nadále používá stávající synchroni
 - Bankovní e-mail: kopírování HTML + prázdný koncept se správným adresátem/odesílatelem a předmětem aktuální fáze. Podpis zůstává podle nastavení Apple Mailu.
 - Tlačítko E-mail odeslán klientovi ukládá obsah, HTML, aktuální fázi a dokončené kroky do historie u klienta; aktivita obsahuje předmět. Samotná příprava odeslání nepotvrzuje.
 - Izolované testy ověřují prázdné tělo v native i mailto, obsah schránky, předmět, historii a reload.
+
+## 2026-11-17 · verze 2026.11.17-1 · peněžní toky v grafu
+- Graf investic/FKI zahrnuje datované odkupy; čisté vklady = vklady − odkupy, výsledek = hodnota + odkupy − vklady. Procento vůči historickým vkladům výslovně označeno.
+- Ilustrativní růst oddělen od skoků nákupů/odkupů, dostupný seznam transakcí. Chybějící skutečné datum realizace označeno jako datum záznamu; bez data dnes.
+- Interaktivní report při vypnutí fondu vyloučí i jeho odkupy. Aktuální hodnoty a klientská evidence se nemění.
+
+- QA portfolio-cashflows.cjs: odkup nezmění výsledek; endpoint, read-only audit a izolované UI bez chyb.
