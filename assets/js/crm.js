@@ -451,21 +451,25 @@ function prepareClientEmail(clientOrId, message={}) {
   showClientMailDrafts();
 }
 function clientMailHtml(draft) {
- if(draft.html)return draft.html;
+ const link=(url,label)=>`<a href="${esc(url)}" style="display:inline-block;padding:12px 16px;border-radius:10px;background:#eef2f5;color:#174d70;text-decoration:none;font-weight:700"><strong>${esc(label)}</strong> ↗</a>`;
+ const label=url=>/dotaznik|questionnaire|\/forms\//i.test(url)?'Vyplnit dotazník':'Otevřít odkaz';
+ if(draft.html){const doc=new DOMParser().parseFromString(draft.html,'text/html');doc.querySelectorAll('a[href]').forEach(a=>{if(/^https?:\/\//.test(a.textContent.trim())){a.textContent=label(a.href);a.style.fontWeight='700';}});return doc.body.innerHTML;}
  const paragraphs=String(draft.body||'').split(/\n\n+/).map(part=>{
-  const match=part.match(/^Vyplnit dotazník:\n(https:\/\/filipsolar202-blip\.github\.io\/filip-crm\/\S+)$/);
-  return match?`<p style="margin:24px 0"><a href="${esc(match[1])}" style="display:inline-block;background:#174d70;color:#ffffff;text-decoration:none;padding:14px 22px;border-radius:10px;font-weight:600">Vyplnit dotazník →</a></p>`:`<p style="margin:0 0 18px">${esc(part).replace(/\n/g,'<br>')}</p>`;
+  const match=part.match(/^(?:Vyplnit dotazník|Dotazník):\s*\n(https?:\/\/\S+)$/i);
+  if(match)return `<p style="margin:20px 0">${link(match[1],'Vyplnit dotazník')}</p>`;
+  const tokens=part.split(/(https?:\/\/[^\s<>]+)/g);
+  return `<p style="margin:0 0 16px">${tokens.map(x=>/^https?:\/\//.test(x)?link(x,label(x)):esc(x).replace(/Vyplnit dotazník:/g,'<strong>Vyplnit dotazník:</strong>').replace(/\n/g,'<br>')).join('')}</p>`;
  });
- return `<div style="max-width:600px;font-family:Arial,sans-serif;font-size:16px;line-height:1.6;color:#183247">${paragraphs.join('')}</div>`;
+ return `<div style="max-width:640px;font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.55;color:#183247">${paragraphs.join('')}</div>`;
 }
 async function copyClientMailRich(index) {
- const draft=clientMailDrafts[index];if(!draft)return;
- try{await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([clientMailHtml(draft)],{type:'text/html'}),'text/plain':new Blob([draft.body],{type:'text/plain'})})]);saveToast('Zkopírováno. Vložte do těla konceptu v Mailu pomocí Cmd+V.');}
- catch{alert('Prohlížeč nepovolil kopírování formátovaného textu. Povolte přístup ke schránce nebo použijte prostý text v připraveném e-mailu.');}
+ const draft=clientMailDrafts[index];if(!draft)return false;
+ try{await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([clientMailHtml(draft)],{type:'text/html'}),'text/plain':new Blob([draft.body||''],{type:'text/plain'})})]);saveToast('Text zkopírován. V poště jej vložte nad podpis pomocí Cmd+V.');return true;}
+ catch{alert('Kopírování nebylo povoleno. Povolte prohlížeči schránku a zkuste to znovu, nebo označte a zkopírujte zobrazený náhled.');return false;}
 }
+async function openClientMailNormal(index){const d=clientMailDrafts[index];if(!d)return;if(d.body||d.html){if(!await copyClientMailRich(index))return;}window.location.href=clientMailFallbackUrl({...d,blankCompose:true});}
 function showClientMailDrafts() {
-  const mac=clientMailMacAvailable();
-  crmExtraModal('clientMailDraft','Připravený e-mail',clientMailDrafts.map((d,i)=>`<div class="mini-card"><p><b>Od: ${esc(d.from)}</b><br>Komu: ${esc(d.to||'doplníte v poště')}${d.bcc.length?` · skrytá kopie: ${num(d.bcc.length)} příjemců`:''}</p><p>${esc(d.subject)}</p>${d.blankCompose?'<div class="mini-card"><b>Text je zkopírovaný. Otevřete prázdný e-mail a vložte jej pomocí Cmd+V nad podpis.</b><p>Příjemce, odesílatel a předmět jsou připravené. Podpis vybírá Apple Mail podle nastavení účtu. Po odeslání se vraťte do podkladů a klikněte na E-mail odeslán klientovi.</p></div>':d.html?'<div class="mini-card"><b>Formátovaný e-mail je připravený ke kopírování.</b><p>Po otevření Apple Mailu klikněte do těla zprávy, označte původní text (Cmd+A) a vložte formátovaný obsah (Cmd+V). Nepoužívejte vložení s přizpůsobením stylu. Zpráva musí být ve formátu RTF / formátovaný text, nikoli prostý text. Samotné otevření pošty vloží pouze textovou verzi.</p><button class="btn primary" onclick="copyClientMailRich('+i+')">Kopírovat vzhled znovu</button></div>':''}${d.pdfDocument?`<p><b>Příloha: ${esc(d.pdfDocument.name)}</b><br>Aktualizovaný pomocník na Macu vytvoří PDF a přiloží jej. U běžné pošty a na telefonu přiložte PDF ručně.</p>`:''}<div class="actions">${mac?`<a class="btn primary" href="${esc(clientMailNativeUrl(d))}">${d.pdfDocument?'Otevřít Apple Mail včetně PDF':'Otevřít Apple Mail na Macu'}</a>`:''}<a class="btn ${mac?'':'primary'}" href="${esc(clientMailFallbackUrl(d))}">Běžná pošta – účet vyberte ručně</a>${d.body?`<button class="btn" onclick="copyClientMailRich(${i})">Kopírovat formátovaný text</button>`:''}<button class="btn" onclick="copyText(clientMailDrafts[${i}].from,'Adresa odesílatele')">Kopírovat odesílatele</button></div></div>`).join('')+`${clientMailDrafts.length===1&&clientMailDrafts[0].clientId&&!clientMailDrafts[0].externalTracking?`<div class="form-grid"><label class="field">Datum skutečného odeslání<input id="mailPreparedDate" type="date" value="${today()}" onchange="updateEmailReminder('mailPrepared')"></label><label class="field">Připomenout<input id="mailPreparedReminder" type="date" value="${emailReminderDate(today())}" oninput="this.dataset.manual='1'"></label></div><button class="btn primary" onclick="confirmPreparedClientMail()">Potvrdit skutečné odeslání</button>`:''}<p class="note">${mac?'Pomocník na Macu vybere uvedený účet. Při prvním použití povolte ovládání Mailu.':'Na iPhonu v rozepsané zprávě rozbalte pole Kopie/skrytá, Od a v poli Od vyberte uvedenou adresu.'} Běžné otevření pošty neumí vynutit odesílatele; před odesláním jej zkontrolujte. Nic se neodesílá automaticky.</p>${mac?'<details><summary>Pomocník není na tomto Macu nainstalovaný?</summary><p>Stáhněte ZIP, rozbalte jej, přesuňte FILIP CRM Mail do Aplikací a jednou otevřete. Při otevření e-mailu pak prohlížeči povolte spuštění pomocníka.</p><a class="btn" href="assets/downloads/FILIP-CRM-Mail.zip?v=2026.11.11-1" download>Stáhnout pomocníka pro Mac</a></details>':''}`);
+ crmExtraModal('clientMailDraft','Připravený e-mail',clientMailDrafts.map((d,i)=>`<div class="mini-card"><p><b>V poště vyberte odesílatele: ${esc(d.from)}</b><br>Komu: ${esc(d.to||'doplníte v poště')}${d.bcc.length?` · skrytá kopie: ${num(d.bcc.length)} příjemců`:''}</p><p><b>${esc(d.subject)}</b></p><div class="actions"><button class="btn primary" onclick="openClientMailNormal(${i})">Běžná pošta</button>${d.body||d.html?`<button class="btn" onclick="copyClientMailRich(${i})">Kopírovat formátovaný text</button>`:''}</div><p class="note">Tlačítko zkopíruje text a otevře e-mail s příjemcem a předmětem. Vložte text nad podpis pomocí Cmd+V (na telefonu Vložit). V poli Od vyberte uvedenou adresu. Nic se neodesílá automaticky.</p>${d.pdfDocument?`<p>Přiložte ručně PDF: <b>${esc(d.pdfDocument.name)}</b>.</p>`:''}<details open><summary>Náhled zprávy</summary><div style="padding:20px;background:white;border-radius:12px;margin-top:12px">${clientMailHtml(d)}</div></details></div>`).join('')+`${clientMailDrafts.length===1&&clientMailDrafts[0].clientId&&!clientMailDrafts[0].externalTracking?`<div class="form-grid"><label class="field">Datum skutečného odeslání<input id="mailPreparedDate" type="date" value="${today()}" onchange="updateEmailReminder('mailPrepared')"></label><label class="field">Připomenout<input id="mailPreparedReminder" type="date" value="${emailReminderDate(today())}" oninput="this.dataset.manual='1'"></label></div><button class="btn primary" onclick="confirmPreparedClientMail()">Potvrdit skutečné odeslání</button>`:''}<details><summary>Proč se v poště otevře jiný účet?</summary><p>Běžná pošta vybírá odesílatele sama. Na Macu nastavte Mail → Nastavení → Psaní → Odesílat nové zprávy z: f.solar@fair-life.cz. U klientů Mantry přepněte pole Od na filip.solar@mantra-finance.cz. Na iPhonu rozbalte Kopie/skrytá, Od a vyberte účet. Podpis se řídí nastavením pošty.</p></details>`);
 }
 
 function clientSenderEmail(clientOrId) {
@@ -16104,7 +16108,7 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.11.18-5';
+const VERSION = '2026.11.18-6';
 const VERSION_NOTE = 'Plánování 2 h denně, servis klientů, podklady k plánu a podrobné produktové návaznosti.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
