@@ -1,10 +1,16 @@
-/* Read-only weekly queue. Contract + review cycle is the identity; only confirmed
-   dispatch in CrmForms consumes it. Opening this view never writes client data. */
+/* Read-only weekly queue. Contract + review cycle is the identity; confirmed dispatch or completion consumes it. Opening this view never writes client data. */
 window.CrmAnniversaries=(()=>{
  const start='2026-11-16',same=(a,b)=>String(a)===String(b);
  function monday(now=new Date()){
   const parts=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Prague',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(now).map(x=>[x.type,x.value]));
   const d=new Date(Date.UTC(+parts.year,+parts.month-1,+parts.day));let back=(d.getUTCDay()+6)%7;if(!back&&+parts.hour<9)back=7;d.setUTCDate(d.getUTCDate()-back);return d.toISOString().slice(0,10);
+ }
+ function completedCycle(contract,cycle){
+  if(!cycle||!getStatuses(contract).includes('vyrizeno'))return false;
+  const previous=new Date(cycle+'T12:00:00Z');previous.setUTCFullYear(previous.getUTCFullYear()-contractReviewYears(contract));
+  const entries=(contract.log||[]).filter(x=>/^(Stav: Vyřízeno|Vyřízeno výročí)/i.test(x.t||''));
+  const records=entries.length?entries:[{d:contract.updatedAt}];
+  return records.some(x=>x.reviewCycle?x.reviewCycle===cycle:x.d&&x.d>previous.toISOString().slice(0,10)&&x.d<=cycle);
  }
  function handled(contract,client,cycle,s){
   const statuses=getStatuses(contract);
@@ -13,6 +19,9 @@ window.CrmAnniversaries=(()=>{
   if((s.opportunities||[]).some(o=>same(o.clientId,contract.clientId)&&[o.contractId,o.replacesContractId].some(id=>id!=null&&same(id,contract.id))&&isOpenOpportunity(o)))return true;
   const previous=cycle?new Date(cycle+'T12:00:00Z'):null;if(previous)previous.setUTCFullYear(previous.getUTCFullYear()-contractReviewYears(contract));
   const inCycle=date=>!date||!previous||String(date).slice(0,10)>previous.toISOString().slice(0,10);
+  // Older completed reviews predate the explicit cycle field. Keep them out
+  // of this cycle, but allow the next annual/biennial review to return.
+  if(statuses.includes('vyrizeno')){const done=(contract.log||[]).filter(x=>/^(Stav: Vyřízeno|Vyřízeno výročí)/i.test(x.t||''));if(done.length?done.some(x=>x.reviewCycle?x.reviewCycle===cycle:inCycle(x.d)):inCycle(contract.updatedAt))return true;}
   const mails=(contract.log||[]).filter(x=>/^(email klientovi|odeslán e-mail|odeslan email|stav: e-?mail)/i.test(x.t||''));
   if(mails.some(x=>inCycle(x.d)))return true;
   // An old generic Email status must not hide every future annual review.
@@ -28,7 +37,7 @@ window.CrmAnniversaries=(()=>{
    // Older confirmed sends might not yet have lastReviewAnniversary. Consume
    // their exact cycle from the dispatch history without changing the contract.
    const sent=(client?.clientForms||[]).filter(r=>r.anniversary&&same(r.contractId,contract.id)&&r.sentDate);
-   let guard=0;while(cycle&&cycle<=end&&sent.some(r=>r.reviewCycle===cycle||(!r.reviewCycle&&r.sentDate<=cycle&&(new Date(cycle)-new Date(r.sentDate))/86400000<=80))&&guard++<100){cycle=contractReviewDate({...contract,lastReviewAnniversary:cycle},start);}
+   let guard=0;while(cycle&&cycle<=end&&(completedCycle(contract,cycle)||sent.some(r=>r.reviewCycle===cycle||(!r.reviewCycle&&r.sentDate<=cycle&&(new Date(cycle)-new Date(r.sentDate))/86400000<=80)))&&guard++<100){cycle=contractReviewDate({...contract,lastReviewAnniversary:cycle},start);}
    if(cycle&&cycle>end)continue;
    if(handled(contract,client,cycle,s))continue;
    const warnings=[];if(!cycle)warnings.push('Doplnit výročí');if(!client)warnings.push('Chybí klient');else if(!client.email)warnings.push('Doplnit e-mail');

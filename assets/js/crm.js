@@ -6906,6 +6906,7 @@ function fkiSync_before_saveContract() {
     })),
     updatedAt: today()
   });
+  if(contractDoneCycle && newStatus==='vyrizeno'){s.lastReviewAnniversary=contractDoneCycle;s.log||=[];s.log.push({d:today(),t:'Vyřízeno výročí · '+contractDoneCycle,reviewCycle:contractDoneCycle});}
   if (investmentUpdate) storeContractInvestmentFields(s, investmentUpdate);
   if (confirmedDuplicates.length) markDuplicateVerified('contract', [s, ...confirmedDuplicates]);
   if (!s.log) s.log = [];
@@ -6932,12 +6933,17 @@ function fkiSync_before_saveContract() {
   renderAll();
   saveToast('Smlouva uložena · příloh ' + num(contractAttachments(s).length));
 }
+let contractDoneCycle = null;
 function markContractDone() {
   setVal('sStatus', 'vyrizeno');
-  const type = val('sType'),
-    anniv = val('sAnniv');
-  if ((type === 'auto' || type === 'majetek') && anniv) setVal('sAnniv', nextAnnualDateString(anniv));
-  saveContract();
+  const type=val('sType'),anniv=val('sAnniv');
+  const current=state.contracts.find(x=>x.id===editingContractId);
+  const queued=window.CrmAnniversaries?.rows().find(r=>r.contract.id===editingContractId)?.cycle;
+  const cycle=queued||contractReviewDate({...current,type,anniv},today());
+  contractDoneCycle=['auto','majetek'].includes(type)&&cycle?cycle:null;
+  if(contractDoneCycle)setVal('sAnniv',contractReviewDate({type,anniv:cycle,lastReviewAnniversary:cycle},today()));
+  try {saveContract();} finally {contractDoneCycle=null;}
+
 }
 function crmDeleteMutation(change) {
   const before = JSON.parse(JSON.stringify(state));
@@ -16098,7 +16104,7 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.11.18-4';
+const VERSION = '2026.11.18-5';
 const VERSION_NOTE = 'Plánování 2 h denně, servis klientů, podklady k plánu a podrobné produktové návaznosti.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
