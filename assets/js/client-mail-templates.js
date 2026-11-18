@@ -1,6 +1,7 @@
 /* Client-facing copy shared by all questionnaire entry points. */
 window.ClientMailTemplates=(()=>{
  const topics={
+  investments:['Investiční plán podle Vašich cílů','Investiční plán podle Tvých cílů','abych mohl připravit investiční plán, potřebuji vědět, na co mají peníze sloužit, kdy je budete potřebovat a jak velké výkyvy zvládnete. Odpovědi spolu projdeme.','abych mohl připravit investiční plán, potřebuji vědět, na co mají peníze sloužit, kdy je budeš potřebovat a jak velké výkyvy zvládneš. Odpovědi spolu projdeme.'],
   life:['Připravíme životní pojištění podle Vaší situace','Připravíme životní pojištění podle Tvé situace','abych mohl připravit vhodné životní pojištění, potřebuji znát pár informací o rodině, příjmech a současném zajištění.'],
   family:['Připravíme přehled majetku a další plán','Připravíme přehled majetku a další plán','abych mohl připravit přehled majetku a návrh dalšího postupu, potřebuji znát pár informací o rodině, majetku a závazcích.'],
   loans:['Připravíme možnosti financování','Připravíme možnosti financování','abych mohl porovnat vhodné možnosti financování, potřebuji znát pár informací o plánovaném záměru, příjmech a současných závazcích.'],

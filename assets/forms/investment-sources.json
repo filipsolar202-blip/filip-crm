@@ -1,0 +1,10 @@
+{
+  "reviewedAt": "2026-11-18",
+  "purpose": "Srozumitelný vstupní podklad pro rozhovor s poradcem; bez automatického investičního profilu či nahrazení dotazníku poskytovatele.",
+  "sources": [
+    {"title":"ČNB – test vhodnosti", "url":"https://www.cnb.cz/cs/dohled-financni-trh/legislativni-zakladna/stanoviska-k-regulaci-financniho-trhu/RS2020-0004", "usedFor":"Cíle, finanční situace, schopnost nést ztrátu, znalosti a zkušenosti."},
+    {"title":"Fio – investiční dotazník", "url":"https://www1.fio.cz/docs/cz/I_investicni_dotaznik.pdf", "usedFor":"Okruhy znalostí, zkušeností, rizika, finančního zázemí a udržitelnosti; formulace nejsou přebírány doslovně."},
+    {"title":"ČSSZ – Informativní důchodová aplikace", "url":"https://eportal.cssz.cz/web/portal/-/sluzby/informativni-duchodova-aplikace", "usedFor":"Přímý odkaz a popis orientačního odhadu důchodu v klientském reportu."},
+    {"title":"Investicni-dotaznik.pdf dodaný uživatelem", "usedFor":"Okruhy cílů, horizontu, znalostí, zkušeností, majetku, příjmů, výdajů a investičních preferencí; bez převzetí skórování."}
+  ]
+}
