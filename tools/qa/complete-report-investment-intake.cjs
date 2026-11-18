@@ -35,4 +35,29 @@ await q.locator('#file').setInputFiles({name:'draft.json',mimeType:'application/
 assert.equal(await q.evaluate(d=>InvestmentIntake.parse(d).attachments.length,data),1);assert.equal(await q.evaluate(d=>{try{InvestmentIntake.parse({...d,formId:'car'});return false}catch{return true}},data),true);
 await p.evaluate(d=>CrmForms.preview(d,'odpovedi.json',1),data);await p.locator('#formsIdentity').check();await p.evaluate(()=>CrmForms.receive());assert.equal(await p.evaluate(()=>findClient(1).clientForms.filter(r=>r.formId==='investments').length),1);await p.evaluate(d=>CrmForms.preview(d,'odpovedi.json',1),data);await p.locator('#formsIdentity').check();await p.evaluate(()=>CrmForms.receive());assert.equal(await p.evaluate(()=>findClient(1).clientForms.filter(r=>r.formId==='investments').length),1);
 const family=await p.evaluate(async()=>{const m=await import('./assets/family-plan/src/intake-contract.js'),d=m.newIntake();d.self.name='Ukázková Jana';d.crmFormRequest=findClient(1).clientForms.find(r=>r.source==='client-report').id;return d;});await p.evaluate(d=>CrmForms.preview(d,'rodinny-plan.json'),family);assert.equal(await p.locator('#formsReceiveClient').inputValue(),'1');await p.locator('#formsIdentity').check();await p.evaluate(()=>CrmForms.receive());assert(await p.evaluate(()=>state.activities.some(a=>a.text.includes('Zájem o dědický'))));
+// Generating a report must not create a contact; explicit dispatch is idempotent.
+const beforeDispatch=await p.evaluate(()=>{document.querySelectorAll('.modal.show').forEach(m=>closeModal(m.id));CrmCompleteReport.open(1);window.savedDownload=downloadHtmlFile;downloadHtmlFile=()=>{};return state.activities.length;});
+await p.evaluate(()=>CrmCompleteReport.download());
+assert.equal(await p.evaluate(()=>state.activities.length),beforeDispatch);
+assert.equal(await p.evaluate(()=>findClient(1).completeReportHistory.length),1);
+await p.evaluate(()=>CrmCompleteReport.prepareMail());
+assert.match(await p.locator('#reportMailBody').inputValue(),/posílám Vám/);
+await p.locator('#reportMailTone').selectOption('informal');
+assert.match(await p.locator('#reportMailBody').inputValue(),/posílám Ti/);
+assert.equal(await p.locator('#reportMailSubject').inputValue(),'Tvůj finanční přehled');
+await p.evaluate(()=>{window.previousMail=prepareClientEmail;prepareClientEmail=(c,d)=>{window.mailPreview=d;};CrmCompleteReport.mail();});
+assert.equal(await p.evaluate(()=>mailPreview.externalTracking),true);
+assert.equal(await p.evaluate(()=>state.activities.length),beforeDispatch);
+await p.evaluate(()=>CrmCompleteReport.sent());
+assert.equal(await p.evaluate(()=>state.activities.length),beforeDispatch);
+await p.locator('#reportMailConfirmed').check();
+await p.evaluate(()=>CrmCompleteReport.sent());
+assert.equal(await p.evaluate(()=>state.activities.length),beforeDispatch+2);
+assert(await p.evaluate(()=>findClient(1).completeReportHistory[0].sentDate));
+await p.evaluate(()=>CrmCompleteReport.sent());
+assert.equal(await p.evaluate(()=>state.activities.length),beforeDispatch+2);
+await p.evaluate(()=>{CrmCompleteReport.open(1);});
+await p.getByText('Historie přehledů a odeslání',{exact:true}).click();
+assert.match(await p.locator('#completeReport').innerText(),/Odesláno/);
+
 assert.deepEqual(errors,[]);console.log('PASS complete report selection/privacy/save, charts, PDF, mobile, investment intake/prefill/attachments/import/dedup');}finally{await browser.close()}})().catch(e=>{console.error(e);process.exit(1)});
