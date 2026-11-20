@@ -6858,10 +6858,11 @@ function openContractModal(clientId = null, id = null) {
   renderContractAttachments();
   byId('deleteContractBtn').style.display = id ? 'inline-flex' : 'none';
   byId('contractModalTitle').textContent = id ? 'Správa smlouvy' : 'Nová smlouva';
+  byId('bookContractDealBtn').textContent = linkedDealForContract(s) ? 'Otevřít propojený obchod' : 'Zapsat do obchodů';
   byId('sReplacementActions').innerHTML=id?`<button class="btn primary" type="button" onclick="startReplacementCase(${Number(s.id)})">Nový obchodní případ</button><div class="note">Označení smlouvy k řešení ji nepřidá do Pipeline. Po podpisu nové smlouvy vyberte tuto původní smlouvu jako náhradu: nová smlouva se ihned zobrazí u klienta a tato se uloží do její historie.</div>${CrmTerminations.button(null,s)}${replacementHistoryHtml(s)}`:'';
   openModal('contractModal');
 }
-function fkiSync_before_saveContract() {
+function fkiSync_before_saveContract(options = {}) {
   const isPension=['DPS','DIP'].includes(val('sType'));
   let pensionUpdate;try{if(isPension)pensionUpdate=pensionReadFields('sPension');}catch(e){return alert(e.message);}
   let caseVolume, investmentUpdate;
@@ -6883,7 +6884,7 @@ function fkiSync_before_saveContract() {
   }
   const oldStatus = s.status,
     newStatus = val('sStatus'),
-    shouldCreateDeal = newStatus === 'podepsano' && val('sCreateDeal') === 'yes';
+    shouldCreateDeal = options.bookDeal === true || (val('sCreateDeal') === 'yes' && (newStatus === 'podepsano' || !linkedDealForContract(s)));
   // Capture the old account balance before general contract fields change.
   if(isPension)pensionStoreValuation(s,pensionUpdate);
   Object.assign(s, {
@@ -6899,7 +6900,7 @@ function fkiSync_before_saveContract() {
     amount: val('sAmount').trim(),
     caseVolume,
     rate: val('sRate').trim(),
-    createDeal: val('sCreateDeal'),
+    createDeal: options.bookDeal ? 'yes' : val('sCreateDeal'),
     dealDate: val('sDealDate') || today(),
     dealBj: parseMoney(val('sDealBj')),
     expectedCommission: parseMoney(val('sDealCommission')),
@@ -6921,7 +6922,7 @@ function fkiSync_before_saveContract() {
   });
   if (shouldCreateDeal) s.log.push({
     d: today(),
-    t: 'Podepsáno · připraveno k propsání do obchodů'
+    t: 'Připraveno k zápisu do obchodů'
   });
   if (!editingContractId) s.log.push({
     d: today(),
@@ -6929,7 +6930,7 @@ function fkiSync_before_saveContract() {
   });
   selectedClientId = clientId;
   addActivity(clientId, 'Smlouva', (editingContractId ? 'Upravena ' : 'Přidána ') + (s.product || s.type), true);
-  persist();
+  if (!persist()) return;
   if (shouldCreateDeal) {
     openDealFromContract(s);
     return;
@@ -7351,6 +7352,11 @@ function openDealFromOpportunity(o) {
   openModal('dealModal');
   toast('Doplň BJ/provizi a ulož obchod.');
 }
+function bookContractDeal() {
+  setVal('sCreateDeal', 'yes');
+  toggleContractDealFields();
+  return saveContract({bookDeal:true});
+}
 function openDealFromContract(s) {
   if (!s) return;
   pendingContractToDealId = s.id;
@@ -7382,6 +7388,7 @@ function openDealFromContract(s) {
     };
   setVal('dClient', d.clientId || s.clientId || '');
   setVal('dCategory', d.category || category);
+  setVal('dManagementPartner', d.managementPartnerId || clientManagementId(s.clientId));
   setVal('dDate', d.date || pref.date || today());
   setVal('dCompany', d.company || s.company || '');
   setVal('dProduct', d.product || s.product || s.type || '');
@@ -7405,14 +7412,14 @@ function openDealFromContract(s) {
   setVal('dContractAnniv', s.anniv || nextAnnualDateString(pref.date || today()));
   setVal('dContractAmount', s.amount || dealContractAmountText(d));
   setVal('dContractRate', s.rate || '');
-  setVal('dContractStatus', 'podepsano');
+  setVal('dContractStatus', s.status || '');
   setVal('dContractNote', s.note || '');
   syncDealOwnerDefaults();
   updateDealExpectedCommission();
   toggleDealContractFields();
   byId('deleteDealBtn').style.display = editingDealId ? 'inline-flex' : 'none';
   byId('moveDealToOppBtn').style.display = 'none';
-  byId('dealModalTitle').textContent = 'Podepsanou smlouvu propsat do obchodu';
+  byId('dealModalTitle').textContent = existing ? 'Upravit propojený obchod' : 'Zapsat smlouvu do obchodů';
   closeModal('contractModal');
   fillDealReplacement();
   openModal('dealModal');
@@ -8094,7 +8101,7 @@ function fkiSync_before_saveDeal() {
     d.contractId = pendingContractToDealId;
     const s = state.contracts.find(x => String(x.id) === String(pendingContractToDealId));
     if (s) {
-      s.status = 'podepsano';
+      s.status = val('dContractStatus');
       s.createDeal = 'yes';
       s.dealDate = d.date;
       s.dealBj = dealGrossBJ(d);
@@ -8106,7 +8113,7 @@ function fkiSync_before_saveDeal() {
       s.log = s.log || [];
       s.log.push({
         d: d.date,
-        t: 'Podepsáno · propsáno do obchodu'
+        t: 'Zapsáno do obchodů'
       });
       if (state.contractOpportunityStatuses) delete state.contractOpportunityStatuses[s.id];
       addActivity(clientId, 'Obchod', 'Smlouva propsána do obchodu: ' + (d.product || d.category) + ' · ' + num(dealBJ(d)) + ' BJ', true);
@@ -16109,7 +16116,7 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.11.20-1';
+const VERSION = '2026.11.20-2';
 const VERSION_NOTE = 'Plánování 2 h denně, servis klientů, podklady k plánu a podrobné produktové návaznosti.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
