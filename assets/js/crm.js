@@ -18,7 +18,7 @@ function renderActiveViewContent() {
       dashboard: [['Dashboard', renderDashboard]],
       tasks: [['Úkoly', CrmTasks.render]],
       clients: [['Klienti', renderClients]],
-      ideas: [['Nápady a plány', CrmIdeas.render]],
+      ideas: [['Rozvoj firmy', CrmIdeas.render]],
       notes: [['Poznámky', renderNotes]],
       campaigns: [['Kampaně', renderCampaigns]],
       forms: [['Formuláře', CrmForms.render]],
@@ -3113,12 +3113,15 @@ function renderDuplicateWarnings() {
   el.innerHTML = `<thead><tr><th>Typ duplicity</th><th>Klient</th><th>Detail</th><th>Oprava</th></tr></thead><tbody>${rows.join('') || '<tr><td colspan="4" class="note">Vypadá to čistě. Nenašel jsem stejné klienty, smlouvy ani obchody.</td></tr>'}</tbody>`;
 }
 function showView(id, options = {}) {
+  const jumpToTasks = id === 'tasks';
+  if (jumpToTasks) id = 'dashboard';
   if (!CrmLoans.flush()) return;
   if (id === 'clients') clientDirectoryMode = options.directory === true ? true : selectedClientId ? false : true;
   const navId = id === 'caseDetail' ? (caseDetailReturnView === 'opportunities' ? 'opportunities' : 'pipeline') : id;
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === navId));
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === id));
   renderActiveView();
+  if (jumpToTasks) byId('dashboardTasks')?.scrollIntoView({block:'start'});
 }
 function noteTags(n) {
   return String(n.tags || '').split(',').map(x => x.trim()).filter(Boolean);
@@ -3838,7 +3841,7 @@ function renderDashboardMetrics() {
   setText('kpiMortgageYear', money(deals.filter(d => d.category === 'Hypotéky').reduce((s, d) => s + dealVolume(d), 0)));
   setText('kpiDealsYear', num(deals.filter(isOtherDashboardDeal).length));
   renderCharts(year, deals);
-  if(byId('dashboardStats')?.open)renderDuplicateWarnings();
+  if(byId('dashboardStats'))renderDuplicateWarnings();
 }
 function dashboardActivityTypes() {
   return new Set(['Telefon', 'Hovor', 'Volání', 'WhatsApp', 'Email', 'Schůzka', 'Úkol']);
@@ -15311,6 +15314,7 @@ function renderDailyPriorities() {
   const days=[...new Set(state.dailyPriorities.map(x=>x.date))].sort().reverse();
   byId('dailyFocusHistoryList').innerHTML=days.map(d=>{const rows=state.dailyPriorities.filter(x=>x.date===d);return `<button class="btn" onclick="setVal('dailyFocusDate','${esc(d)}');renderDailyPriorities()">${esc(d)} · ${rows.filter(p=>focusPriorityStatus(p)==='Hotovo').length}/3 hotovo</button>`;}).join(' ') || '<p class="note">Uložené priority tu zůstanou i bez uzavření dne.</p>';
   renderFocusUnfinished();
+  if(byId('ideas')?.classList.contains('active'))CrmIdeas.render();
 }
 function openDailyPriority(slot) {
   focusEditingDay=focusDay();focusEditingSlot=slot;
@@ -15352,7 +15356,7 @@ function toggleDailyPriority(slot) {
     // Reopening a linked priority also reopens its task, so the two never disagree.
     p.status='Čeká';delete p.completedAt;const a=focusActivity(p);if(a){a.completed=false;a.outcome='agreed';a.completedAt='';a.updatedAt=dashboardToday();}
   }else{p.status='Hotovo';p.completedAt=dashboardToday();focusCompleteLinkedActivity(p);}
-  p.updatedAt=new Date().toISOString();persist();renderDashboard();
+  p.updatedAt=new Date().toISOString();persist();renderDashboard();if(byId('ideas')?.classList.contains('active')){renderDailyPriorities();renderWeeklyGoals();}
 }
 function moveDailyPriority(slot,delta) {
   const p=focusPriorityFor(slot),next=slot+delta;if(!p || next<1 || next>3)return;
@@ -15389,7 +15393,7 @@ function resolveFocusItem(kind,id,action) {
     else source.taskId=a.id;
     source.resolution='task';
   }else if(action==='cancelled')source.resolution='cancelled';else return;
-  source.resolvedAt=new Date().toISOString();persist();renderDashboard();
+  source.resolvedAt=new Date().toISOString();persist();renderDashboard();if(byId('ideas')?.classList.contains('active')){renderDailyPriorities();renderWeeklyGoals();}
 }
 function focusCurrentAum() {return managementInvestmentItems(ownManagementId()).reduce((s,x)=>s+(+x.amount||0),0);}
 function focusCaptureAum() {
@@ -15540,6 +15544,7 @@ function renderWeeklyGoals() {
   }).join('');
   renderFocusUnfinished();
   renderWeeklyGoalsHistory();
+  if(byId('ideas')?.classList.contains('active'))CrmIdeas.render();
 }
 function completeWeeklyFocus(slot) {
   const goal=weeklyGoalForSlot(slot);if(!goal || weeklyReviewFor(activeWeeklyGoalsWeek()) || goal.target!=null)return;
@@ -15638,13 +15643,8 @@ function carryWeeklyGoalForward(slot) {
 }
 function renderDashboard() {
   focusCaptureAum();
-  renderDailyPriorities();renderWeeklyGoals();
   renderDashboardMetrics();
-  try {
-    renderDashboardWorkQueue();
-  } catch (e) {
-    console.error('Render denních úkolů', e);
-  }
+  CrmTasks.render();
 }
 function createActivityFromOpportunity() {
   const clientId = +activities_aVal('oClient');
@@ -16120,7 +16120,7 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.11.20-4';
+const VERSION = '2026.11.20-5';
 const VERSION_NOTE = 'Plánování 2 h denně, servis klientů, podklady k plánu a podrobné produktové návaznosti.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';

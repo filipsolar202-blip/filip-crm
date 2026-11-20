@@ -582,7 +582,7 @@ h1,h2,h3,h4,.detail-title,.client-row b,.portfolio-card b,.contact-value{color:#
 
 /* Daily and weekly focus: compact rows, details loaded only on demand. */
 /* Fixed section slots: changing data or expanding a panel must not reorder the dashboard. */
-#dashboardLayout{display:grid;grid-template-columns:minmax(0,1fr);grid-template-areas:"daily" "weekly" "charts" "stats" "tasks";gap:14px}
+#dashboardLayout{display:grid;grid-template-columns:minmax(0,1fr);grid-template-areas:"charts" "stats" "tasks";gap:14px}
 #dashboardLayout>[data-dashboard-section]{min-width:0}
 #dashboardLayout>#dashboardDailyPriorities{grid-area:daily}
 #dashboardLayout>#dashboardWeeklyGoals{grid-area:weekly}
@@ -640,3 +640,5 @@ h1,h2,h3,h4,.detail-title,.client-row b,.portfolio-card b,.contact-value{color:#
 @media(max-width:600px){.bank-doc-row{grid-template-columns:1fr 1fr}.bank-doc-row>input{grid-column:1/-1;grid-row:1}}
 .bank-progress-step{margin-left:11px;padding:0 0 16px 22px;border-left:2px solid #16496d;color:#16496d}.bank-progress-step label{display:flex;align-items:center;gap:10px;margin-left:-34px}.bank-progress-step input{appearance:none;width:22px;height:22px;min-width:22px;border:2px solid #16496d;border-radius:50%;background:white;margin:0}.bank-progress-step input:checked{background:#16496d}.bank-progress-step input:checked:after{content:'✓';display:block;text-align:center;color:white;font-size:14px}.bank-progress-step p{font-size:13px;margin:6px 0 0}.bank-progress-step:last-of-type{border-color:transparent}#bdRichPreview{padding:20px;background:white;border-radius:14px;margin:12px 0}
 #bdRichPreview table{min-width:0;border:0;background:white}#bdRichPreview td{border:0;text-align:left}#bdRichPreview td strong{font-size:13px}#bdRichPreview tr:hover{background:transparent}
+
+#dashboardStats>h2{font-size:14px;margin:8px 10px 16px}#developmentPlanTools{margin-top:14px}#developmentPlanTools>.focus-dashboard{margin-top:14px}
