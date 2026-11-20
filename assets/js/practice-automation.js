@@ -108,8 +108,8 @@ function productTemplate(row){
  // Existing first steps keep identity; new dependent work activates only after real completion.
  if(life){
   add('health','Zkontrolovat zdravotní dotazník a potřebu lékařských zpráv','stage:Scoring',['scoring'],true,25);
-  add('preassessment','Připravit podklady pro předoocenění pojišťovnou','stage:Scoring',['detail:health']);
-  add('result','Posoudit výsledek předoocenění a výluky','stage:Schvalování',['approval'],true,25);
+  add('preassessment','Připravit podklady pro předběžné ocenění pojišťovnou','stage:Scoring',['detail:health']);
+  add('result','Posoudit výsledek předběžného ocenění a výluky','stage:Schvalování',['approval'],true,25);
   add('consent','Projednat upravenou nabídku a zaznamenat souhlas klienta','stage:Schvalování',['detail:result'],true,20);
  }else if(loan){
   add('income','Odborně ověřit příjmy, závazky a předpoklady financování','stage:Scoring',['scoring'],true,30);

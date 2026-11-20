@@ -14,7 +14,7 @@ window.ClientMailTemplates=(()=>{
  };
  function build({formId,tone='formal',url='',anniversary=false,product=''}){
   const t=topics[formId];if(!t)throw Error('Pro tento formulář zatím není e-mailová šablona.');
-  const informal=tone==='informal',insurance=!['loans','family','claims'].includes(formId);
+  const informal=tone==='informal',insurance=!['loans','family','claims','investments'].includes(formId);
   const greeting=informal?'Ahoj,':'Dobrý den,';
   let intro=(informal?(t[3]||t[2]):t[2]).replace(/^abych mohl/,informal?'abych Ti mohl':'abych Vám mohl'),subject=t[informal?1:0];
   if(anniversary){subject='Kontrola smlouvy'+(product?' – '+product:'');intro=informal?'rád bych s Tebou zkontroloval, zda smlouva stále odpovídá Tvé aktuální situaci.':'rád bych s Vámi zkontroloval, zda smlouva stále odpovídá Vaší aktuální situaci.';intro+='\n\n'+(informal?'Pošli mi prosím aktuální podklady':'Zašlete mi prosím aktuální podklady')+(insurance?' od pojišťovny, případně nové předpisy pojistného.':' ke smlouvě.')+' '+(informal?'Případné změny můžeš doplnit v krátkém dotazníku. Pokud kontrolu nyní řešit nechceš, dej mi prosím vědět.':'Případné změny můžete doplnit v krátkém dotazníku. Pokud kontrolu nyní řešit nechcete, dejte mi prosím vědět.');}

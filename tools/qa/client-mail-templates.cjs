@@ -1,6 +1,6 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const context={window:{}};vm.runInNewContext(fs.readFileSync('assets/js/client-mail-templates.js','utf8'),context);
-const t=context.window.ClientMailTemplates,url='https://example.invalid/personal-link';assert.equal(t.formIds.length,9);
+const t=context.window.ClientMailTemplates,url='https://example.invalid/personal-link';assert.equal(t.formIds.length,10);
 for(const formId of t.formIds)for(const tone of ['formal','informal'])for(const anniversary of [false,true]){
  const d=t.build({formId,tone,url,anniversary,product:'Test smlouva'});
  assert(d.subject&&!d.subject.includes('undefined'));assert.equal(d.body.split(url).length,2);
@@ -9,5 +9,6 @@ for(const formId of t.formIds)for(const tone of ['formal','informal'])for(const 
  assert(d.body.startsWith(tone==='informal'?'Ahoj,':'Dobrý den,'));
  if(tone==='formal')assert(!/\b(Ti|Tvé|Tebe|Tebou)\b/u.test(d.body));else assert(!/\b(Vám|Vaší|Vámi|Vaše)\b/u.test(d.body));
 }
-assert.throws(()=>t.build({formId:'investments'}));
-console.log('PASS all 9 questionnaire templates × 2 tones × standard/contract contexts, return instructions and single signature.');
+assert.throws(()=>t.build({formId:'unknown'}));
+assert(!t.build({formId:'investments',anniversary:true}).body.includes('od pojišťovny'));
+console.log('PASS all 10 questionnaire templates × 2 tones × standard/contract contexts, return instructions and single signature.');

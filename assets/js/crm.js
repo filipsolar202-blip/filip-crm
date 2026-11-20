@@ -18,6 +18,7 @@ function renderActiveViewContent() {
       dashboard: [['Dashboard', renderDashboard]],
       tasks: [['Úkoly', CrmTasks.render]],
       clients: [['Klienti', renderClients]],
+      ideas: [['Nápady a plány', CrmIdeas.render]],
       notes: [['Poznámky', renderNotes]],
       campaigns: [['Kampaně', renderCampaigns]],
       forms: [['Formuláře', CrmForms.render]],
@@ -997,7 +998,7 @@ function fillPeopleList() {
   if (el) el.innerHTML = knownPeople().map(x => `<option value="${esc(x)}"></option>`).join('');
 }
 function leadTypeLabel(t) {
-  return t === 'tipar' ? 'Typař' : t === 'referral' ? 'Doporučení' : 'Volný klient';
+  return t === 'tipar' ? 'Tipař' : t === 'referral' ? 'Doporučení' : 'Volný klient';
 }
 function leadSourceBadge(c) {
   if (clientManagementId(c) === 'mantra') return '<span class="badge purple">Klient od Mantry</span>';
@@ -1006,7 +1007,7 @@ function leadSourceBadge(c) {
   return `<span class="badge ${cls}">${esc(leadTypeLabel(c.leadType))}: ${esc(c.leadSource || 'bez jména')}</span>`;
 }
 function referrerBadge(c) {
-  if (c?.referrerRole === 'tipar') return `<span class="badge purple">Je typař${c.referrerCommissionPct ? ' · ' + num(c.referrerCommissionPct) + ' %' : ''}</span>`;
+  if (c?.referrerRole === 'tipar') return `<span class="badge purple">Je tipař${c.referrerCommissionPct ? ' · ' + num(c.referrerCommissionPct) + ' %' : ''}</span>`;
   if (c?.referrerRole === 'referral') return '<span class="badge green">Dává doporučení</span>';
   return '';
 }
@@ -2336,7 +2337,7 @@ function leadSourceType(c) {
 }
 function leadSourceName(type) {
   if (type === 'mantra') return 'Mantra';
-  return type === 'tipar' ? 'Typař' : type === 'referral' ? 'Doporučení' : 'Volný klient';
+  return type === 'tipar' ? 'Tipař' : type === 'referral' ? 'Doporučení' : 'Volný klient';
 }
 function fillDashboardFilters() {
   const typeEl = byId('dashDealTypeFilter'),
@@ -2377,7 +2378,7 @@ function dealOwnerType(d) {
 function dealOwnerLabel(d) {
   if (isMantraDeal(d)) return 'Mantra';
   if (!d.owner) return '';
-  return `${d.owner}${dealOwnerType(d) === 'referral' ? ' (doporučení)' : dealOwnerType(d) === 'tipar' ? ' (typař)' : ''}`;
+  return `${d.owner}${dealOwnerType(d) === 'referral' ? ' (doporučení)' : dealOwnerType(d) === 'tipar' ? ' (tipař)' : ''}`;
 }
 function dealOwnerPct(d) {
   return dealOwnerType(d) === 'tipar' ? +d.ownerCommissionPct || referrerCommissionFor(d.owner) || 0 : 0;
@@ -2995,7 +2996,7 @@ function openClientMergeModal(ids) {
   body.innerHTML = `<div class="merge-warning"><b>Důvod duplicity: ${esc(reason)}.</b><br><span class="note">${reason === 'Rodné číslo / IČO' ? 'Tuhle skupinu je vhodné sloučit. Rodné číslo/IČO bereme jako nejsilnější identifikátor klienta.' : 'Tady raději zkontroluj, jestli jde opravdu o stejného člověka. Stejný telefon nebo e-mail může být i u rodiny.'}</span></div><div class="merge-grid"><div class="merge-client-box"><h3>1. Vyber hlavního klienta</h3><div class="field"><label>Do této karty se vše sloučí</label><select id="mergeMaster">${clients.map(c => `<option value="${c.id}" ${c.id === master.id ? 'selected' : ''}>${esc(mergeClientOptionLabel(c))}</option>`).join('')}</select></div><div class="divider"></div>${clients.map(c => {
     const n = mergeLinkCounts(c.id);
     return `<div class="event"><small>${esc(c.birthId || 'bez RČ')}</small><div><b>${esc(clientName(c))}</b><br><span class="note">${esc([c.phone, c.email, c.altEmails, c.address].filter(Boolean).join(' · ') || 'bez kontaktů')}</span><div class="chips"><span class="chip">${num(n.contracts)} smluv</span><span class="chip">${num(n.deals)} obchodů</span><span class="chip">${num(n.opps)} obchodních případů</span><span class="chip">${num(n.fki)} FKI záznamů</span><span class="chip">${num(n.snapshots)} aktualizací investic</span>${leadSourceBadge(c)}</div></div></div>`;
-  }).join('')}</div><div class="merge-client-box"><h3>2. Vyber správné údaje</h3>${mergeFieldSelect('name', 'Jméno / firma', clients)}${mergeFieldSelect('birthId', 'RČ / IČO', clients)}${mergeFieldSelect('phone', 'Telefon', clients)}${mergeFieldSelect('email', 'E-mail', clients)}${mergeFieldSelect('altEmails', 'Další e-maily', clients)}${mergeFieldSelect('contactPref', 'Preferovaný kontakt', clients)}${mergeFieldSelect('address', 'Adresa', clients)}${mergeFieldSelect('leadType', 'Zdroj klienta', clients)}${mergeFieldSelect('leadSource', 'Typař / doporučil', clients)}${mergeFieldSelect('leadDate', 'Datum doporučení', clients)}${mergeFieldSelect('leadCommissionPct', 'Provize typaři %', clients)}${mergeFieldSelect('referrerRole', 'Role typaře/doporučitele', clients)}${mergeFieldSelect('referrerCommissionPct', 'Domluvená provize typaři %', clients)}${mergeFieldSelect('cooperationScope', 'Rozsah spolupráce', clients)}${mergeFieldSelect('note', 'Poznámka', clients)}</div></div><div class="divider"></div><h3>Možné stejné smlouvy při sloučení</h3><div class="table-wrap"><table class="compact-table"><thead><tr><th>Smlouva</th><th>Klienti</th><th>Co se stane</th></tr></thead><tbody>${conflicts.map(g => `<tr class="row-soon"><td><b>${esc(g[0].number || 'bez čísla')}</b><br><span class="note">${esc([g[0].type, g[0].company, g[0].product].filter(Boolean).join(' · '))}</span></td><td>${g.map(s => esc(clientName(findClient(s.clientId)))).join('<br>')}</td><td>Obě smlouvy zůstanou zachované pod hlavní kartou. CRM nic automaticky nesmaže.</td></tr>`).join('') || '<tr><td colspan="3" class="note">Nevidím stejné číslo smlouvy ani stejnou smlouvu mezi těmito klienty.</td></tr>'}</tbody></table></div><div class="actions" style="justify-content:flex-end;margin-top:12px"><button class="btn" onclick="closeModal('mergeClientModal')">Zrušit</button><button class="btn primary" onclick="mergeClientsFromModal()">Sloučit klienty</button></div>`;
+  }).join('')}</div><div class="merge-client-box"><h3>2. Vyber správné údaje</h3>${mergeFieldSelect('name', 'Jméno / firma', clients)}${mergeFieldSelect('birthId', 'RČ / IČO', clients)}${mergeFieldSelect('phone', 'Telefon', clients)}${mergeFieldSelect('email', 'E-mail', clients)}${mergeFieldSelect('altEmails', 'Další e-maily', clients)}${mergeFieldSelect('contactPref', 'Preferovaný kontakt', clients)}${mergeFieldSelect('address', 'Adresa', clients)}${mergeFieldSelect('leadType', 'Zdroj klienta', clients)}${mergeFieldSelect('leadSource', 'Tipař / doporučil', clients)}${mergeFieldSelect('leadDate', 'Datum doporučení', clients)}${mergeFieldSelect('leadCommissionPct', 'Provize tipaři %', clients)}${mergeFieldSelect('referrerRole', 'Role tipaře/doporučitele', clients)}${mergeFieldSelect('referrerCommissionPct', 'Domluvená provize tipaři %', clients)}${mergeFieldSelect('cooperationScope', 'Rozsah spolupráce', clients)}${mergeFieldSelect('note', 'Poznámka', clients)}</div></div><div class="divider"></div><h3>Možné stejné smlouvy při sloučení</h3><div class="table-wrap"><table class="compact-table"><thead><tr><th>Smlouva</th><th>Klienti</th><th>Co se stane</th></tr></thead><tbody>${conflicts.map(g => `<tr class="row-soon"><td><b>${esc(g[0].number || 'bez čísla')}</b><br><span class="note">${esc([g[0].type, g[0].company, g[0].product].filter(Boolean).join(' · '))}</span></td><td>${g.map(s => esc(clientName(findClient(s.clientId)))).join('<br>')}</td><td>Obě smlouvy zůstanou zachované pod hlavní kartou. CRM nic automaticky nesmaže.</td></tr>`).join('') || '<tr><td colspan="3" class="note">Nevidím stejné číslo smlouvy ani stejnou smlouvu mezi těmito klienty.</td></tr>'}</tbody></table></div><div class="actions" style="justify-content:flex-end;margin-top:12px"><button class="btn" onclick="closeModal('mergeClientModal')">Zrušit</button><button class="btn primary" onclick="mergeClientsFromModal()">Sloučit klienty</button></div>`;
   openModal('mergeClientModal');
 }
 function selectedMergeClientFor(field) {
@@ -4251,7 +4252,7 @@ function clientReferralOverview(c) {
     const target = r.clientId ? findClient(r.clientId) : findClientByName(r.to);
     return `<div class="product-row"><div><b>${esc(r.to)}</b><span class="note">${esc([r.topic, r.date].filter(Boolean).join(' · ') || 'bez doplněných podrobností')}</span></div>${target ? `<button class="btn slim" onclick="selectedClientId=${target.id};clientSection='overview';renderClients()">Otevřít klienta</button>` : '<span class="badge orange">bez karty klienta</span>'}</div>`;
   }).join('') || '<p class="note">Žádná jména.</p>'}</div>`;
-  return `<div class="mini-card referral-overview" style="margin-top:12px"><div class="toolbar"><div><div class="eyebrow">Vazby klienta</div><h3>Tipy a doporučení</h3></div><button class="btn slim" onclick="clientSection='recommendations';renderClientDetail()">Úplný přehled</button></div>${c.leadSource ? `<div class="product-row referral-source-row"><div><b>${c.leadType === 'tipar' ? 'Klienta přivedl typař' : c.leadType === 'referral' ? 'Klient přišel na doporučení' : 'Zdroj klienta'}</b><span class="note">${esc(c.leadSource)}${c.leadDate ? ' · ' + esc(c.leadDate) : ''}</span></div>${sourceClient ? `<button class="btn slim" onclick="selectedClientId=${sourceClient.id};clientSection='overview';renderClients()">Otevřít zdroj</button>` : '<span class="badge orange">bez karty</span>'}</div>` : ''}<div class="split" style="margin-top:10px">${group('Koho natipoval', tips, 'purple')}${group('Koho doporučil', recommendations, 'green')}</div></div>`;
+  return `<div class="mini-card referral-overview" style="margin-top:12px"><div class="toolbar"><div><div class="eyebrow">Vazby klienta</div><h3>Tipy a doporučení</h3></div><button class="btn slim" onclick="clientSection='recommendations';renderClientDetail()">Úplný přehled</button></div>${c.leadSource ? `<div class="product-row referral-source-row"><div><b>${c.leadType === 'tipar' ? 'Klienta přivedl tipař' : c.leadType === 'referral' ? 'Klient přišel na doporučení' : 'Zdroj klienta'}</b><span class="note">${esc(c.leadSource)}${c.leadDate ? ' · ' + esc(c.leadDate) : ''}</span></div>${sourceClient ? `<button class="btn slim" onclick="selectedClientId=${sourceClient.id};clientSection='overview';renderClients()">Otevřít zdroj</button>` : '<span class="badge orange">bez karty</span>'}</div>` : ''}<div class="split" style="margin-top:10px">${group('Koho natipoval', tips, 'purple')}${group('Koho doporučil', recommendations, 'green')}</div></div>`;
 }
 function fillReferralTargetSelect(selected = '') {
   const el = byId('crExistingClient');
@@ -4955,7 +4956,7 @@ function renderDeals() {
   const newClients = newClientsInMonth(y, selectedMonth),
     table = byId('dealsTable');
   table.className = 'compact-table';
-  table.innerHTML = `<thead><tr><th>Klient / správa</th><th>Kategorie</th><th>Společnost</th><th>Produkt</th><th>Datum</th><th>Objem Kč</th><th>BJ</th><th>Oček. provize</th><th class="paid-col">Zapl.</th><th>Skutečná provize</th><th>Zdroj / spolupráce</th><th>Skrýt</th><th></th></tr></thead><tbody>${rows.map(x => `<tr class="${dealRowClass(x.d)}"><td><b>${esc(clientName(x.c))}</b><br>${managementBadge(x.d)}${x.d.hidden ? '<br><span class="badge">skryto</span>' : isLateUnpaid(x.d) ? '<br><span class="badge red">3+ měsíce bez provize</span>' : ''}</td><td>${esc(x.d.category || areaLabel(areaForDeal(x.d)))}</td><td>${esc(x.d.company || '')}</td><td><b>${esc(x.d.product || '')}</b></td><td>${esc(x.d.date || '')}</td><td class="money">${money(dealVolume(x.d))}</td><td class="num">${decimal(dealBJ(x.d))}${isMantraDeal(x.d)?`<br><small>z ${num(dealGrossBJ(x.d))} BJ · ${num(mantraDealShare(x.d)*100)} %</small>`:""}</td><td class="money">${money(dealCash(x.d, y))}</td><td class="paid-col"><input class="paid-check" type="checkbox" ${dealPaid(x.d) ? 'checked' : ''} onchange="toggleDealPaid(${x.d.id},this.checked)"></td><td class="money">${money(dealNetCommission(x.d, y))}</td><td><b>${esc(dealOwnerLabel(x.d) || '')}</b>${dealOwnerType(x.d) === 'tipar' ? `<br><span class="note">${num(dealOwnerPct(x.d))} % · ${money(dealOwnerPayout(x.d, y))} · ${x.d.ownerPaid ? 'vyplaceno' : 'nevyplaceno'}</span>` : ''}</td><td class="paid-col"><input class="paid-check" type="checkbox" ${x.d.hidden ? 'checked' : ''} onchange="toggleDealHidden(${x.d.id},this.checked)"></td><td><button class="icon-btn" title="Upravit obchod" onclick="selectedClientId=${x.c?.id || 'null'};openDealModal(${x.d.clientId},${x.d.id})">✎</button> <button class="btn slim red" onclick="deleteDeal(${x.d.id})">Smazat</button></td></tr>`).join('') || '<tr><td colspan="13" class="note">V tomto měsíci zatím nejsou žádné viditelné obchody.</td></tr>'}<tr><th colspan="5">Celkem za ${MONTHS[selectedMonth]}<br><span class="note">Noví klienti: ${num(newClients)} · skryto: ${num(totalHidden)}</span></th><th class="money">Investice ${money(totals.inv)}<br>Hypotéky ${money(totals.mort)}</th><th class="num">${num(totals.bj)}</th><th class="money">${money(totals.cash)}</th><th></th><th class="money">${money(totals.net)}</th><th colspan="3">Typaři ${money(totals.payout)} · ${num(totals.count)} viditelných obchodů</th></tr></tbody>`;
+  table.innerHTML = `<thead><tr><th>Klient / správa</th><th>Kategorie</th><th>Společnost</th><th>Produkt</th><th>Datum</th><th>Objem Kč</th><th>BJ</th><th>Oček. provize</th><th class="paid-col">Zapl.</th><th>Skutečná provize</th><th>Zdroj / spolupráce</th><th>Skrýt</th><th></th></tr></thead><tbody>${rows.map(x => `<tr class="${dealRowClass(x.d)}"><td><b>${esc(clientName(x.c))}</b><br>${managementBadge(x.d)}${x.d.hidden ? '<br><span class="badge">skryto</span>' : isLateUnpaid(x.d) ? '<br><span class="badge red">3+ měsíce bez provize</span>' : ''}</td><td>${esc(x.d.category || areaLabel(areaForDeal(x.d)))}</td><td>${esc(x.d.company || '')}</td><td><b>${esc(x.d.product || '')}</b></td><td>${esc(x.d.date || '')}</td><td class="money">${money(dealVolume(x.d))}</td><td class="num">${decimal(dealBJ(x.d))}${isMantraDeal(x.d)?`<br><small>z ${num(dealGrossBJ(x.d))} BJ · ${num(mantraDealShare(x.d)*100)} %</small>`:""}</td><td class="money">${money(dealCash(x.d, y))}</td><td class="paid-col"><input class="paid-check" type="checkbox" ${dealPaid(x.d) ? 'checked' : ''} onchange="toggleDealPaid(${x.d.id},this.checked)"></td><td class="money">${money(dealNetCommission(x.d, y))}</td><td><b>${esc(dealOwnerLabel(x.d) || '')}</b>${dealOwnerType(x.d) === 'tipar' ? `<br><span class="note">${num(dealOwnerPct(x.d))} % · ${money(dealOwnerPayout(x.d, y))} · ${x.d.ownerPaid ? 'vyplaceno' : 'nevyplaceno'}</span>` : ''}</td><td class="paid-col"><input class="paid-check" type="checkbox" ${x.d.hidden ? 'checked' : ''} onchange="toggleDealHidden(${x.d.id},this.checked)"></td><td><button class="icon-btn" title="Upravit obchod" onclick="selectedClientId=${x.c?.id || 'null'};openDealModal(${x.d.clientId},${x.d.id})">✎</button> <button class="btn slim red" onclick="deleteDeal(${x.d.id})">Smazat</button></td></tr>`).join('') || '<tr><td colspan="13" class="note">V tomto měsíci zatím nejsou žádné viditelné obchody.</td></tr>'}<tr><th colspan="5">Celkem za ${MONTHS[selectedMonth]}<br><span class="note">Noví klienti: ${num(newClients)} · skryto: ${num(totalHidden)}</span></th><th class="money">Investice ${money(totals.inv)}<br>Hypotéky ${money(totals.mort)}</th><th class="num">${num(totals.bj)}</th><th class="money">${money(totals.cash)}</th><th></th><th class="money">${money(totals.net)}</th><th colspan="3">Tipaři ${money(totals.payout)} · ${num(totals.count)} viditelných obchodů</th></tr></tbody>`;
   renderOwners(y);
   renderReferrals(y);
 }
@@ -6188,7 +6189,7 @@ function avgPct(x) {
 }
 function renderOwners(y) {
   const rows = ownerRows(y),
-    html = `<thead><tr><th>Typař</th><th>BJ celkem</th><th>Oček. provize z BJ</th><th>Domluveno</th><th>Typaři celkem</th><th>Čistá provize</th><th>Obchodů</th><th>Vyplaceno</th><th>Nevyplaceno</th></tr></thead><tbody>${rows.map(([name, x]) => `<tr><td><button class="btn slim" onclick="openOwnerLedger(decodeURIComponent('${esc(encodeURIComponent(name))}'))">${esc(name)} · Výplaty obchodů</button></td><td class="num">${num(x.bj)}</td><td class="money">${money(x.cash)}</td><td class="num">${avgPct(x).toFixed(0)} %</td><td class="money">${money(x.payout)}</td><td class="money">${money(x.net)}</td><td class="num">${num(x.count)}</td><td class="money">${num(x.paid)} · ${money(x.paidAmount)}</td><td class="money">${num(x.unpaid)} · ${money(x.unpaidAmount)}</td></tr>`).join('') || `<tr><td colspan="9" class="note">Zatím nemáš žádného typaře s obchodem.</td></tr>`}</tbody>`;
+    html = `<thead><tr><th>Tipař</th><th>BJ celkem</th><th>Oček. provize z BJ</th><th>Domluveno</th><th>Tipaři celkem</th><th>Čistá provize</th><th>Obchodů</th><th>Vyplaceno</th><th>Nevyplaceno</th></tr></thead><tbody>${rows.map(([name, x]) => `<tr><td><button class="btn slim" onclick="openOwnerLedger(decodeURIComponent('${esc(encodeURIComponent(name))}'))">${esc(name)} · Výplaty obchodů</button></td><td class="num">${num(x.bj)}</td><td class="money">${money(x.cash)}</td><td class="num">${avgPct(x).toFixed(0)} %</td><td class="money">${money(x.payout)}</td><td class="money">${money(x.net)}</td><td class="num">${num(x.count)}</td><td class="money">${num(x.paid)} · ${money(x.paidAmount)}</td><td class="money">${num(x.unpaid)} · ${money(x.unpaidAmount)}</td></tr>`).join('') || `<tr><td colspan="9" class="note">Zatím nemáš žádného tipaře s obchodem.</td></tr>`}</tbody>`;
   ['ownerTable', 'dealsOwnerTable'].forEach(id => {
     const el = byId(id);
     if (el) el.innerHTML = html;
@@ -6210,7 +6211,7 @@ function saveReferrerPayout() {
     amount = parseMoney(val('rpAmount')),
     date = val('rpDate') || today(),
     note = val('rpNote').trim();
-  if (!name) return alert('Vyplň typaře.');
+  if (!name) return alert('Vyplň tipaře.');
   if (!amount) return alert('Vyplň částku provize.');
   state.referrerPayouts = state.referrerPayouts || [];
   state.referrerPayouts.push({
@@ -6222,14 +6223,14 @@ function saveReferrerPayout() {
     createdAt: today()
   });
   const c = findPersonClient(name);
-  if (c) addActivity(c.id, 'Typař', 'Vyplacena provize mimo obchod: ' + money(amount) + (note ? ' · ' + note : ''), true);
+  if (c) addActivity(c.id, 'Tipař', 'Vyplacena provize mimo obchod: ' + money(amount) + (note ? ' · ' + note : ''), true);
   closeModal('referrerPayoutModal');
   persist();
   renderAll();
-  saveToast('Provize typaři uložena');
+  saveToast('Provize tipaři uložena');
 }
 function deleteReferrerPayout(id) {
-  if (!confirm('Smazat ruční provizi typaři?')) return;
+  if (!confirm('Smazat ruční provizi tipaři?')) return;
   state.referrerPayouts = (state.referrerPayouts || []).filter(p => String(p.id) !== String(id));
   persist();
   renderAll();
@@ -6444,15 +6445,15 @@ function renderReferrerHubCore() {
     const total = owners.reduce((s, [, x]) => s + x.payout, 0),
       unpaid = owners.reduce((s, [, x]) => s + x.unpaidAmount, 0),
       leadClients = state.clients.filter(c => c.leadType === 'tipar' || c.leadType === 'referral' || c.referrerRole).length;
-    metrics.innerHTML = `<div class="metric"><span class="note">Zdrojových klientů</span><b>${num(leadClients)}</b></div><div class="metric"><span class="note">Typaři k výplatě</span><b>${money(total)}</b></div><div class="metric"><span class="note">Nevyplaceno</span><b class="orange">${money(unpaid)}</b></div><div class="metric"><span class="note">Doporučení / tipů</span><b>${num(recRows.length)}</b></div>`;
+    metrics.innerHTML = `<div class="metric"><span class="note">Zdrojových klientů</span><b>${num(leadClients)}</b></div><div class="metric"><span class="note">Tipaři k výplatě</span><b>${money(total)}</b></div><div class="metric"><span class="note">Nevyplaceno</span><b class="orange">${money(unpaid)}</b></div><div class="metric"><span class="note">Doporučení / tipů</span><b>${num(recRows.length)}</b></div>`;
   }
   const t = byId('referrerHubTable');
-  if (t) t.innerHTML = `<thead><tr><th>Typař</th><th>Přivedl klientů</th><th>Obchodů</th><th>BJ celkem</th><th>Oček. provize z BJ</th><th>Investice objem</th><th>Hypotéky objem</th><th>Domluveno</th><th>K výplatě</th><th>Vyplaceno</th><th>Mimo obchod</th><th>Nevyplaceno</th><th>Čistá provize</th><th>Akce</th></tr></thead><tbody>${owners.map(([name, x]) => {
+  if (t) t.innerHTML = `<thead><tr><th>Tipař</th><th>Přivedl klientů</th><th>Obchodů</th><th>BJ celkem</th><th>Oček. provize z BJ</th><th>Investice objem</th><th>Hypotéky objem</th><th>Domluveno</th><th>K výplatě</th><th>Vyplaceno</th><th>Mimo obchod</th><th>Nevyplaceno</th><th>Čistá provize</th><th>Akce</th></tr></thead><tbody>${owners.map(([name, x]) => {
     const clients = state.clients.filter(c => c.leadType === 'tipar' && norm(c.leadSource) === norm(name)).length;
     return `<tr><td><button class="btn slim" onclick="openOwnerLedger(decodeURIComponent('${esc(encodeURIComponent(name))}'))">${esc(name)} · Výplaty obchodů</button></td><td class="num">${num(clients)}</td><td class="num">${num(x.count)}</td><td class="num">${num(x.bj)}</td><td class="money">${money(x.cash)}</td><td class="money">${money(x.inv)}</td><td class="money">${money(x.mort)}</td><td class="num">${avgPct(x).toFixed(0)} %</td><td class="money">${money(x.payout)}</td><td class="money">${num(x.paid)} · ${money(x.paidAmount)}</td><td class="money">${money(x.extraPaid || 0)}</td><td class="money">${num(x.unpaid)} · ${money(x.unpaidAmount)}</td><td class="money">${money(x.net)}</td><td><button class="btn slim" onclick="openReferrerPayoutModal(decodeURIComponent('${esc(encodeURIComponent(name))}'))">+ Mimo obchod</button></td></tr>`;
-  }).join('') || '<tr><td colspan="14" class="note">Zatím tu není žádný typař. Označ klienta jako „Je typař“ v kartě klienta a tady se objeví i s domluvenou provizí.</td></tr>'}</tbody>`;
+  }).join('') || '<tr><td colspan="14" class="note">Zatím tu není žádný tipař. Označ klienta jako „Je tipař“ v kartě klienta a tady se objeví i s domluvenou provizí.</td></tr>'}</tbody>`;
   const r = byId('recommendationHubTable');
-  if (r) r.innerHTML = `<thead><tr><th>Typ</th><th>Doporučil / typař</th><th>Koho</th><th>Co</th><th>Datum</th><th>Obchodů</th><th>BJ</th><th>Oček. provize</th><th>Investice</th><th>Hypotéky</th><th>Klient</th></tr></thead><tbody>${recRows.map(x => {
+  if (r) r.innerHTML = `<thead><tr><th>Typ</th><th>Doporučil / tipař</th><th>Koho</th><th>Co</th><th>Datum</th><th>Obchodů</th><th>BJ</th><th>Oček. provize</th><th>Investice</th><th>Hypotéky</th><th>Klient</th></tr></thead><tbody>${recRows.map(x => {
     const s = referralRecordStats(x, y);
     return `<tr><td>${x.type === 'tipar' ? '<span class="badge purple">Tipař</span>' : '<span class="badge green">Doporučení</span>'}</td><td><b>${esc(x.from)}</b></td><td>${esc(x.to)}</td><td>${esc(x.topic || '')}</td><td>${esc(x.date || '')}</td><td class="num">${num(s.count)}</td><td class="num">${num(s.bj)}</td><td class="money">${money(s.cash)}</td><td class="money">${money(s.inv)}</td><td class="money">${money(s.mort)}</td><td>${s.target ? `<button class="btn slim" onclick="selectedClientId=${s.target.id};showView('clients')">Otevřít</button>` : '<span class="note">bez karty</span>'}</td></tr>`;
   }).join('') || '<tr><td colspan="11" class="note">Zatím tu není doporučení ani tip.</td></tr>'}</tbody>`;
@@ -11430,7 +11431,7 @@ function liquidity_fillRedemptionSourceOptions(clientId, key, selected = '') {
   el.innerHTML = buys.map((r, i) => {
     const rk = invRecordKey(r);
     return `<option value="${esc(rk)}" ${String(selected) === String(rk) ? 'selected' : ''}>${esc(liquidity_redemptionSourceLabel(r, i, alloc.remaining(r)))}</option>`;
-  }).join('') || '<option value="">Nejdřív musí existovat nákupová pozice</option>';
+  }).join('') || '<option value="">Nejdřív musí existovat nákupní pozice</option>';
 }
 function liquidity_readRules(prefix) {
   return {
@@ -16108,7 +16109,7 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.11.18-6';
+const VERSION = '2026.11.20-1';
 const VERSION_NOTE = 'Plánování 2 h denně, servis klientů, podklady k plánu a podrobné produktové návaznosti.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
