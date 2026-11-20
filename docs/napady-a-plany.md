@@ -33,3 +33,5 @@ Priority vytvořené přímo na dashboardu se automaticky propojí s Nápady a p
 U každého propojení je období, stav, datum dokončení a tlačítko pro otevření
 na dashboardu. Starší dokončení bez zaznamenaného data datum nevymýšlí.
 Nové ruční týdenní cíle z nápadů lze dokončit jedním kliknutím.
+
+Přehled zobrazuje nahoře nezařazené nápady a pod nimi jednu tabulku na týden: dny a pod nimi tři týdenní cíle. Minulé týdny jsou sbalené. Priorita Velká je červená, Střední oranžová, Malá (zobrazená jako Nízká) zelená.
