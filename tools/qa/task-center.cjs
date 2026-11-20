@@ -54,5 +54,18 @@ const {chromium,launchOptions}=require('./runtime.cjs'),root=path.resolve(__dirn
  assert.equal(await page.evaluate(()=>state.activities.find(a=>a.automation?.origin==='email').automation.assignee),'assistant');
  await page.locator('#taskCenter [data-wf-action=queue]').click();await page.screenshot({path:'/tmp/crm-email-waiting.png',fullPage:false});
  await page.locator('[data-wf-action=wait][data-result=answered]').click();assert.equal(await page.evaluate(()=>state.activities.find(a=>a.emailWait).emailWait.status),'answered');
+ await page.locator('#workflowModal [data-wf-action=close]').click();
+ await page.evaluate(()=>{const row={id:999100,clientId:1,category:'Hypotéka',status:'Kompletace'};state.opportunities.push(row);CrmWorkflow.attach(state,row,false,CrmWorkflow.day(),true);persist();showView('tasks');});
+ await page.locator('[data-task-filter=all]').click();const linkedId=await page.evaluate(()=>state.activities.find(a=>a.automation?.flowId===state.opportunities.find(r=>r.id===999100).automation.id&&!a.completed).id);await page.locator(`[data-task-complete="${linkedId}"]`).click();
+ assert(await page.evaluate(id=>{const a=state.activities.find(a=>a.id===id),row=state.opportunities.find(r=>r.id===999100),step=row.automation.steps.find(s=>s.id===a.automation.stepId);return a.completed&&step.status==='done'&&step.completion.by===a.completion.by;},linkedId));
+ const compact=await page.evaluate(()=>{
+  const a={id:999001,type:'Úkol',text:'Kontrola provize QA',date:'2026-11-12',completed:false,taskAssignment:{owner:'assistant'}};state.activities.push(a);
+  const days=CrmTasks.overdueDays(a,'2026-11-20'),weekend=CrmTasks.overdueDays({...a,date:'2026-11-13'},'2026-11-16'),future=CrmTasks.overdueDays({...a,date:'2026-12-01'},'2026-11-20');
+  CrmTasks.complete(a.id);const saved=state.activities.find(x=>x.id===a.id);CrmTasks.complete(a.id);
+  return {days,weekend,future,done:saved.completed,by:saved.completion.by,assigned:saved.completion.assigned,date:saved.completedAt,history:saved.completion.history.length,tag:CrmTasks.taskTag(saved)};
+ });assert.equal(compact.days,5);assert.equal(compact.weekend,1);assert.equal(compact.future,0);assert(compact.done&&compact.date);assert.equal(compact.by,'assistant');assert.equal(compact.assigned,'assistant');assert.equal(compact.history,1);assert.equal(compact.tag,'Provize');
+ await page.evaluate(()=>{closeModal('workflowModal');showView('tasks');});await page.locator('[data-task-filter=all]').click();await page.locator('#taskPeriod').selectOption('done');assert(await page.locator('.task-check[aria-checked=true]').count());
+ await page.locator('#taskPeriod').selectOption('open');await page.locator('[data-task-action=burning]').click();assert.equal(await page.locator('#taskPeriod').inputValue(),'burning');await page.locator('#taskOrdering').selectOption('desc');
+ await page.setViewportSize({width:1440,height:1000});await page.locator('#taskPeriod').selectOption('open');await page.locator('#taskCenter').screenshot({path:'/private/tmp/crm-compact-tasks.png'});
  assert.deepEqual(errors,[]);console.log('PASS task center: one ledger, assignment, preference evidence, opt-in rules, exceptions, restore, merge, UI and mobile');
  }finally{await browser.close();}})().catch(e=>{console.error(e);process.exit(1);});
