@@ -5523,7 +5523,11 @@ function renderCompanyPortfolio(items, area) {
   const rows = [...groups.values()].sort((a,b)=>b.amount-a.amount), total = rows.reduce((sum,g)=>sum+Math.max(0,g.amount),0);
   let start = 0;
   const gradient = rows.map((g,i)=>{const end=start+(total?Math.max(0,g.amount)/total*100:0),part=`${palette[i%palette.length]} ${start}% ${end}%`;start=end;return part;}).join(',');
-  return `<div class="investment-allocation"><div class="allocation-donut" style="background:conic-gradient(${total?gradient:'#cbd5e1 0 100%'})"><div class="allocation-center"><span>AUM</span>${money(rows.reduce((sum,g)=>sum+g.amount,0))}</div></div><div><div class="eyebrow">Rozložení podle společností</div><p class="note">Rozkliknutím společnosti zobrazíte její klienty a produkty.</p>${rows.map((g,i)=>{
+  return `<div class="investment-allocation"><div class="allocation-donut" style="background:conic-gradient(${total?gradient:'#cbd5e1 0 100%'})"><div class="allocation-center"><span>AUM</span>${money(rows.reduce((sum,g)=>sum+g.amount,0))}</div></div><div><div class="eyebrow">Rozložení podle společností</div><p class="note">Rozkliknutím společnosti zobrazíte ${area==='fki'?'její fondy':'její klienty a produkty'}.</p>${rows.map((g,i)=>{
+    if (area === 'fki') {
+      const funds = g.items.map(f => `<div class="product-row"><b>${esc(f.product)}</b><strong>${money(f.amount)}</strong></div>`).join('');
+      return `<details class="company-portfolio"><summary><span class="allocation-dot" style="background:${palette[i%palette.length]}"></span><b>${esc(g.name)}</b><span>Fondů: ${g.items.length}</span><strong>${money(g.amount)}</strong><span>${total?(g.amount/total*100).toFixed(1):'0.0'} %</span></summary><div class="company-clients">${funds}</div></details>`;
+    }
     const clients = new Map();
     g.items.forEach(x=>{const id=x.clientId || x.client?.id;if(!id)return;if(!clients.has(id))clients.set(id,{id,amount:0,products:new Set()});const c=clients.get(id);c.amount+=+x.amount||0;c.products.add(x.product||x.type||'Investice');});
     return `<details class="company-portfolio"><summary><span class="allocation-dot" style="background:${palette[i%palette.length]}"></span><b>${esc(g.name)}</b><span>${clients.size} klientů</span><strong>${money(g.amount)}</strong><span>${total?(Math.max(0,g.amount)/total*100).toFixed(1):'0.0'} %</span></summary><div class="company-clients">${[...clients.values()].sort((a,b)=>b.amount-a.amount).map(c=>`<div class="product-row"><div><b>${esc(clientName(findClient(c.id)))}</b><div class="note">${esc([...c.products].join(' · '))}</div></div><div class="actions"><strong>${money(c.amount)}</strong><button class="btn slim" onclick="${area==='pensions'?'selectPensionClient':'selectInvestmentClient'}(${Number(c.id)})">Klient</button></div></div>`).join('')}</div></details>`;
@@ -5657,7 +5661,7 @@ function renderFkAum(funds) {
   const total = Object.values(groups).reduce((s, x) => s + x.total, 0);
   const settlementHeader=investmentSettlementAumHeader('fki',Object.values(groups).reduce((sum,g)=>sum+g.raw,0));
   if(investmentSettlementTabs['fki']==='pending')return settlementHeader+investmentPendingPanel(null,'fki');
-  return `${settlementHeader}<div class="table-wrap"><table class="compact-table"><thead><tr><th>Společnost</th><th>AUM FK</th><th>Skutečná hodnota</th><th>Fondů</th><th>Klientů</th><th>Podíl</th></tr></thead><tbody>${Object.values(groups).sort((a, b) => b.total - a.total).map(g => `<tr><td><b>${esc(g.provider)}</b></td><td class="money">${money(g.total)}</td><td class="money">${money(g.raw)}</td><td class="num">${num(g.funds)}</td><td class="num">${num(g.clients.size)}</td><td class="num">${total ? (g.total / total * 100).toFixed(1) : '0.0'} %</td></tr>`).join('') || '<tr><td colspan="6" class="note">Zatím nejsou FK data k AUM.</td></tr>'}</tbody></table></div>`;
+  return `${settlementHeader}${renderCompanyPortfolio(funds, 'fki')}<div class="table-wrap"><table class="compact-table"><thead><tr><th>Společnost</th><th>AUM FK</th><th>Skutečná hodnota</th><th>Fondů</th><th>Klientů</th><th>Podíl</th></tr></thead><tbody>${Object.values(groups).sort((a, b) => b.total - a.total).map(g => `<tr><td><b>${esc(g.provider)}</b></td><td class="money">${money(g.total)}</td><td class="money">${money(g.raw)}</td><td class="num">${num(g.funds)}</td><td class="num">${num(g.clients.size)}</td><td class="num">${total ? (g.total / total * 100).toFixed(1) : '0.0'} %</td></tr>`).join('') || '<tr><td colspan="6" class="note">Zatím nejsou FK data k AUM.</td></tr>'}</tbody></table></div>`;
 }
 function fillFkFundSelect(selected = '') {
   const el = byId('fkFundSelect');
@@ -16128,7 +16132,7 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.11.20-9';
+const VERSION = '2026.11.20-10';
 const VERSION_NOTE = 'Plánování 2 h denně, servis klientů, podklady k plánu a podrobné produktové návaznosti.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';

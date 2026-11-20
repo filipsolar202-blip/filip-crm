@@ -1,6 +1,8 @@
 /* Client-facing copy shared by all questionnaire entry points. */
 window.ClientMailTemplates=(()=>{
  const topics={
+  'investment-first':['Co od investování očekáváte?','Co od investování očekáváš?','posílám pár krátkých otázek o tom, na co chcete spořit a jak se cítíte při kolísání investice. Odpovědi spolu projdeme.','posílám pár krátkých otázek o tom, na co chceš spořit a jak se cítíš při kolísání investice. Odpovědi spolu projdeme.'],
+  'life-first':['Koho a co chcete chránit?','Koho a co chceš chránit?','posílám krátký dotazník k tomu, co by pro Vaši domácnost znamenal delší výpadek příjmu. Podle odpovědí spolu probereme, co má smysl chránit.','posílám krátký dotazník k tomu, co by pro Tvou domácnost znamenal delší výpadek příjmu. Podle odpovědí spolu probereme, co má smysl chránit.'],
   investments:['Investiční plán podle Vašich cílů','Investiční plán podle Tvých cílů','abych mohl připravit investiční plán, potřebuji vědět, na co mají peníze sloužit, kdy je budete potřebovat a jak velké výkyvy zvládnete. Odpovědi spolu projdeme.','abych mohl připravit investiční plán, potřebuji vědět, na co mají peníze sloužit, kdy je budeš potřebovat a jak velké výkyvy zvládneš. Odpovědi spolu projdeme.'],
   life:['Připravíme životní pojištění podle Vaší situace','Připravíme životní pojištění podle Tvé situace','abych mohl připravit vhodné životní pojištění, potřebuji znát pár informací o rodině, příjmech a současném zajištění.'],
   family:['Připravíme přehled majetku a další plán','Připravíme přehled majetku a další plán','abych mohl připravit přehled majetku a návrh dalšího postupu, potřebuji znát pár informací o rodině, majetku a závazcích.'],

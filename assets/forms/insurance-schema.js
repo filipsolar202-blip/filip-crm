@@ -19,3 +19,240 @@ window.InsuranceForms.consumer = {
     {id:'notes',label:'Co dalšího má poradce vědět?',type:'textarea',step:3}
   ]
 };
+
+Object.assign(window.InsuranceForms, {
+  "investment-first": {
+    "title": "Investice · první představa",
+    "steps": [
+      "Kontakt",
+      "Můj cíl",
+      "Kolik a na jak dlouho",
+      "Jak snáším nejistotu",
+      "Moje odpovědi"
+    ],
+    "fields": [
+      {
+        "id": "clientName",
+        "label": "Jméno a příjmení",
+        "type": "text",
+        "step": 0,
+        "required": true
+      },
+      {
+        "id": "email",
+        "label": "E-mail",
+        "type": "email",
+        "step": 0
+      },
+      {
+        "id": "goal",
+        "label": "Na co si chci našetřit?",
+        "type": "text",
+        "step": 1
+      },
+      {
+        "id": "target",
+        "label": "Kolik má můj cíl stát (Kč)?",
+        "type": "number",
+        "step": 1
+      },
+      {
+        "id": "start",
+        "label": "Kolik můžu dát stranou hned (Kč)?",
+        "type": "number",
+        "step": 2
+      },
+      {
+        "id": "monthly",
+        "label": "Kolik můžu odkládat každý měsíc (Kč)?",
+        "type": "number",
+        "step": 2
+      },
+      {
+        "id": "years",
+        "label": "Za kolik let budu peníze potřebovat?",
+        "type": "number",
+        "step": 2
+      },
+      {
+        "id": "reserve",
+        "label": "Mám peníze stranou pro nečekané výdaje?",
+        "type": "select",
+        "step": 3,
+        "options": [
+          [
+            "1",
+            "Ano"
+          ],
+          [
+            "2",
+            "Jen malou rezervu"
+          ],
+          [
+            "3",
+            "Zatím ne"
+          ]
+        ]
+      },
+      {
+        "id": "drop",
+        "label": "Ze 100 000 Kč je teď 80 000 Kč. Co udělám?",
+        "type": "select",
+        "step": 3,
+        "options": [
+          [
+            "1",
+            "Peníze chci vybrat"
+          ],
+          [
+            "2",
+            "Počkám"
+          ],
+          [
+            "3",
+            "Zvážím další nákup"
+          ],
+          [
+            "4",
+            "Nevím, chci to probrat"
+          ]
+        ]
+      },
+      {
+        "id": "priority",
+        "label": "Co je pro mě důležitější?",
+        "type": "select",
+        "step": 3,
+        "options": [
+          [
+            "1",
+            "Klid a menší výkyvy"
+          ],
+          [
+            "2",
+            "Rovnováha mezi klidem a růstem"
+          ],
+          [
+            "3",
+            "Možnost většího růstu i za cenu výkyvů"
+          ],
+          [
+            "4",
+            "Zatím nevím"
+          ]
+        ]
+      }
+    ],
+    "documents": ""
+  },
+  "life-first": {
+    "title": "Životní pojištění · co chci chránit",
+    "steps": [
+      "Kontakt",
+      "Koho chráním",
+      "Když příjem vypadne",
+      "Co chci zachovat",
+      "Moje odpovědi"
+    ],
+    "fields": [
+      {
+        "id": "clientName",
+        "label": "Jméno a příjmení",
+        "type": "text",
+        "step": 0,
+        "required": true
+      },
+      {
+        "id": "email",
+        "label": "E-mail",
+        "type": "email",
+        "step": 0
+      },
+      {
+        "id": "why",
+        "label": "Co mě přivedlo k úvaze o pojištění?",
+        "type": "text",
+        "step": 1
+      },
+      {
+        "id": "family",
+        "label": "Kdo počítá s mým příjmem?",
+        "type": "text",
+        "step": 1
+      },
+      {
+        "id": "gap",
+        "label": "Kdybych dlouho nemohl/a pracovat, kolik by doma každý měsíc chybělo (Kč)?",
+        "type": "number",
+        "step": 2
+      },
+      {
+        "id": "months",
+        "label": "Na kolik měsíců by nám vystačily úspory?",
+        "type": "number",
+        "step": 2
+      },
+      {
+        "id": "debt",
+        "label": "Kolik ještě potřebujeme splatit na úvěrech (Kč)?",
+        "type": "number",
+        "step": 2
+      },
+      {
+        "id": "assets",
+        "label": "Kdyby úspory došly, připadal by v úvahu prodej majetku?",
+        "type": "select",
+        "step": 3,
+        "options": [
+          [
+            "1",
+            "Ano"
+          ],
+          [
+            "2",
+            "Jen kdyby nebyla jiná možnost"
+          ],
+          [
+            "3",
+            "Ne"
+          ],
+          [
+            "4",
+            "Nevím"
+          ]
+        ]
+      },
+      {
+        "id": "risk",
+        "label": "Čeho se obávám nejvíc?",
+        "type": "select",
+        "step": 3,
+        "options": [
+          [
+            "1",
+            "Dlouhé nemoci"
+          ],
+          [
+            "2",
+            "Trvalé ztráty příjmu"
+          ],
+          [
+            "3",
+            "Že rodina zůstane bez mé podpory"
+          ],
+          [
+            "4",
+            "Chci to společně probrat"
+          ]
+        ]
+      },
+      {
+        "id": "protect",
+        "label": "Co bych chtěl/a rodině zachovat?",
+        "type": "text",
+        "step": 3
+      }
+    ],
+    "documents": ""
+  }
+});
