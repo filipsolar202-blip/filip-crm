@@ -4,7 +4,7 @@ V nabídce Práce → Nápady a plány je osobní zásobník. Každý záznam m�
 text, oblast Pracovní/Osobní, prioritu Malá/Střední/Velká, fázi a volitelný den.
 Řadit lze podle priority, plánovaného dne nebo od nejnovějších.
 
-„Zařadit do plánu“ přidá denní prioritu nebo ručně měřený týdenní cíl do
+„Na den“ a „Na týden“ otevřou výběr data a přidají denní prioritu nebo ručně měřený týdenní cíl do
 prvního volného místa ze tří. Obsazená místa ani uzavřené týdny nepřepisuje.
 Stejný nápad nelze do stejného období přidat dvakrát. Původní poznámka zůstává
 v zásobníku i v běžných poznámkách a ukazuje návaznosti. Dokončení všech
@@ -28,3 +28,8 @@ Soukromé poznámky se neukládají do veřejného repozitáře.
 Technicky jsou záznamy v existujícím state.notes s metadaty idea.key,
 idea.priority, idea.area, idea.stage a idea.date. Denní a týdenní plány mají
 ideaId odkazující na stabilní idea.key. Běžná záloha CRM obsahuje obě strany.
+
+Priority vytvořené přímo na dashboardu se automaticky propojí s Nápady a plány.
+U každého propojení je období, stav, datum dokončení a tlačítko pro otevření
+na dashboardu. Starší dokončení bez zaznamenaného data datum nevymýšlí.
+Nové ruční týdenní cíle z nápadů lze dokončit jedním kliknutím.

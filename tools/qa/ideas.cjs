@@ -13,4 +13,18 @@ const guards=await page.evaluate(()=>{const notices=[];window.alert=m=>notices.p
 
 await page.reload();await page.waitForFunction(()=>typeof CrmIdeas!=='undefined'&&typeof state!=='undefined');
 assert.equal(await page.evaluate(()=>state.notes.filter(n=>n.idea).length),2);await page.evaluate(()=>showView('ideas'));
+const syncResult=await page.evaluate(()=>{
+state.dailyPriorities.push({id:uid(),date:today(),slot:2,title:'Z dashboardu',note:'Test',status:'Čeká'});
+state.weeklyGoals.push({id:uid(),weekKey:weekKey(),slot:2,title:'Zjednodušit CRM',metricType:'manual',target:null,status:'Nezahájeno'});
+state.weeklyGoals.push({id:uid(),weekKey:'2025-01-06',slot:1,title:'Starý dokončený',metricType:'manual',target:null,status:'Splněno'});
+persist();const n=state.notes.find(n=>n.title==='Z dashboardu'),g=state.weeklyGoals.find(g=>g.title==='Zjednodušit CRM');
+setVal('dailyFocusDate',today());toggleDailyPriority(2);
+selectWeeklyGoalsWeek(weekKey());completeWeeklyFocus(2);
+const day=CrmIdeas.links(n)[0],week=CrmIdeas.links(state.notes.find(n=>n.idea.key===g.ideaId))[0];
+const firstCount=state.notes.length;persist();persist();
+const old=state.weeklyGoals.find(g=>g.title==='Starý dokončený');
+const result={dayDone:day.done,dayDate:day.date,weekDone:week.done,weekDate:week.date,today:today(),stable:firstCount===state.notes.length,oldDate:old.completedAt||''};
+completeWeeklyFocus(2);result.reopened=!state.weeklyGoals.find(x=>x.id===g.id).completedAt;
+showView('ideas');return result;
+});assert(syncResult.dayDone&&syncResult.weekDone&&syncResult.stable&&syncResult.reopened);assert.equal(syncResult.dayDate,syncResult.today);assert.equal(syncResult.weekDate,syncResult.today);assert.equal(syncResult.oldDate,'');
 await page.screenshot({path:'/private/tmp/ideas-desktop.png'});await page.setViewportSize({width:390,height:844});await page.screenshot({path:'/private/tmp/ideas-mobile.png'});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2));assert.deepEqual(errors,[]);console.log('PASS ideas import deduplication, daily/weekly planning, completion, persistence, mobile');}finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

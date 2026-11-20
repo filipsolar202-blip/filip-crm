@@ -499,6 +499,7 @@ function managementBadge(clientOrId) {
   return `<span class="badge ${p.own ? 'blue' : 'purple'}">${esc(p.company || p.name)}</span>`;
 }
 function persist() {
+  if (window.CrmIdeas) CrmIdeas.sync(state);
   CrmWorkflow.reconcile(state);
   CrmDocuments.reconcile(state);
   CrmCapacity.reconcile(state);
@@ -15542,7 +15543,7 @@ function renderWeeklyGoals() {
 }
 function completeWeeklyFocus(slot) {
   const goal=weeklyGoalForSlot(slot);if(!goal || weeklyReviewFor(activeWeeklyGoalsWeek()) || goal.target!=null)return;
-  goal.status=goal.status==='Splněno'?'Nezahájeno':'Splněno';goal.updatedAt=new Date().toISOString();persist();renderWeeklyGoals();
+  goal.status=goal.status==='Splněno'?'Nezahájeno':'Splněno';goal.completedAt=goal.status==='Splněno'?dashboardToday():'';goal.updatedAt=new Date().toISOString();persist();renderWeeklyGoals();
 }
 function renderWeeklyGoalsHistory() {
   const box=byId('weeklyGoalsHistory');if(!box)return;
@@ -15583,6 +15584,9 @@ function saveWeeklyGoal() {
   let goal = weeklyGoalForSlot(weeklyGoalEditingSlot, key);
   if (!goal) { goal = {id:uid(), weekKey:key, slot:weeklyGoalEditingSlot, createdAt:new Date().toISOString()}; state.weeklyGoals.push(goal); }
   Object.assign(goal, {title, why, category:val('wgCategory'), metricType:val('wgMetricType'), kpiLabel:val('wgKpiLabel').trim(), target:val('wgTarget') === '' ? null : target, manualActual:+val('wgManualActual') || 0, dueDate:val('wgDueDate'), status:val('wgStatus'), updatedAt:new Date().toISOString()});
+  const goalDone=weeklyGoalDisplayStatus(goal,weeklyGoalProgress(goal,key),false)==='Splněno';
+  if(goalDone&&!goal.completedAt)goal.completedAt=dashboardToday();
+  if(!goalDone)delete goal.completedAt;
   focusClearDraft('weeklyGoalModal');if(!persist())return; renderWeeklyGoals(); renderDailyPriorities(); fillWeeklyGoalEditor(); saveToast('Týdenní cíl uložen');
 }
 function weeklyReviewAutoSummary(goals, key) {
@@ -16116,7 +16120,7 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.11.20-2';
+const VERSION = '2026.11.20-3';
 const VERSION_NOTE = 'Plánování 2 h denně, servis klientů, podklady k plánu a podrobné produktové návaznosti.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
