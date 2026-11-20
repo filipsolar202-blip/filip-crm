@@ -6120,6 +6120,7 @@ function ownerRows(y) {
       payout: 0,
       paidAmount: 0,
       unpaidAmount: 0,
+      ready: 0, readyAmount: 0, pending: 0, pendingAmount: 0,
       extraPaid: 0,
       net: 0,
       pcts: []
@@ -6141,6 +6142,7 @@ function ownerRows(y) {
       payout: 0,
       paidAmount: 0,
       unpaidAmount: 0,
+      ready: 0, readyAmount: 0, pending: 0, pendingAmount: 0,
       extraPaid: 0,
       net: 0,
       pcts: []
@@ -6160,6 +6162,9 @@ function ownerRows(y) {
     } else {
       map[k].unpaid++;
       map[k].unpaidAmount += payout;
+      const bucket = dealPaid(d) ? 'ready' : 'pending';
+      map[k][bucket]++;
+      map[k][bucket + 'Amount'] += payout;
     }
   });
   (state.referrerPayouts || []).filter(p => yearOf(p.date) === y).forEach(p => {
@@ -6177,6 +6182,7 @@ function ownerRows(y) {
       payout: 0,
       paidAmount: 0,
       unpaidAmount: 0,
+      ready: 0, readyAmount: 0, pending: 0, pendingAmount: 0,
       extraPaid: 0,
       net: 0,
       pcts: []
@@ -6193,7 +6199,7 @@ function avgPct(x) {
 }
 function renderOwners(y) {
   const rows = ownerRows(y),
-    html = `<thead><tr><th>Tipař</th><th>BJ celkem</th><th>Oček. provize z BJ</th><th>Domluveno</th><th>Tipaři celkem</th><th>Čistá provize</th><th>Obchodů</th><th>Vyplaceno</th><th>Nevyplaceno</th></tr></thead><tbody>${rows.map(([name, x]) => `<tr><td><button class="btn slim" onclick="openOwnerLedger(decodeURIComponent('${esc(encodeURIComponent(name))}'))">${esc(name)} · Výplaty obchodů</button></td><td class="num">${num(x.bj)}</td><td class="money">${money(x.cash)}</td><td class="num">${avgPct(x).toFixed(0)} %</td><td class="money">${money(x.payout)}</td><td class="money">${money(x.net)}</td><td class="num">${num(x.count)}</td><td class="money">${num(x.paid)} · ${money(x.paidAmount)}</td><td class="money">${num(x.unpaid)} · ${money(x.unpaidAmount)}</td></tr>`).join('') || `<tr><td colspan="9" class="note">Zatím nemáš žádného tipaře s obchodem.</td></tr>`}</tbody>`;
+    html = `<thead><tr><th>Tipař</th><th>BJ celkem</th><th>Oček. provize z BJ</th><th>Domluveno</th><th>Tipaři celkem</th><th>Čistá provize</th><th>Obchodů</th><th>Vyplaceno</th><th>Nevyplaceno celkem</th><th>K výplatě nyní</th><th>Čeká na moji provizi</th></tr></thead><tbody>${rows.map(([name, x]) => `<tr><td><button class="btn slim" onclick="openOwnerLedger(decodeURIComponent('${esc(encodeURIComponent(name))}'))">${esc(name)} · Výplaty obchodů</button></td><td class="num">${num(x.bj)}</td><td class="money">${money(x.cash)}</td><td class="num">${avgPct(x).toFixed(0)} %</td><td class="money">${money(x.payout)}</td><td class="money">${money(x.net)}</td><td class="num">${num(x.count)}</td><td class="money">${num(x.paid)} · ${money(x.paidAmount)}</td><td class="money">${num(x.unpaid)} · ${money(x.unpaidAmount)}</td><td class="money"><b>${num(x.ready)} · ${money(x.readyAmount)}</b></td><td class="money">${num(x.pending)} · ${money(x.pendingAmount)}</td></tr>`).join('') || `<tr><td colspan="11" class="note">Zatím nemáš žádného tipaře s obchodem.</td></tr>`}</tbody>`;
   ['ownerTable', 'dealsOwnerTable'].forEach(id => {
     const el = byId(id);
     if (el) el.innerHTML = html;
@@ -6448,14 +6454,16 @@ function renderReferrerHubCore() {
   if (metrics) {
     const total = owners.reduce((s, [, x]) => s + x.payout, 0),
       unpaid = owners.reduce((s, [, x]) => s + x.unpaidAmount, 0),
+      ready = owners.reduce((s, [, x]) => s + x.readyAmount, 0),
+      pending = owners.reduce((s, [, x]) => s + x.pendingAmount, 0),
       leadClients = state.clients.filter(c => c.leadType === 'tipar' || c.leadType === 'referral' || c.referrerRole).length;
-    metrics.innerHTML = `<div class="metric"><span class="note">Zdrojových klientů</span><b>${num(leadClients)}</b></div><div class="metric"><span class="note">Tipaři k výplatě</span><b>${money(total)}</b></div><div class="metric"><span class="note">Nevyplaceno</span><b class="orange">${money(unpaid)}</b></div><div class="metric"><span class="note">Doporučení / tipů</span><b>${num(recRows.length)}</b></div>`;
+    metrics.innerHTML = `<div class="metric"><span class="note">Zdrojových klientů</span><b>${num(leadClients)}</b></div><div class="metric"><span class="note">Tipaři celkem</span><b>${money(total)}</b></div><div class="metric"><span class="note">Nevyplaceno</span><b class="orange">${money(unpaid)}</b></div><div class="metric"><span class="note">K výplatě nyní</span><b>${money(ready)}</b></div><div class="metric"><span class="note">Čeká na moji provizi</span><b>${money(pending)}</b></div><div class="metric"><span class="note">Doporučení / tipů</span><b>${num(recRows.length)}</b></div>`;
   }
   const t = byId('referrerHubTable');
-  if (t) t.innerHTML = `<thead><tr><th>Tipař</th><th>Přivedl klientů</th><th>Obchodů</th><th>BJ celkem</th><th>Oček. provize z BJ</th><th>Investice objem</th><th>Hypotéky objem</th><th>Domluveno</th><th>K výplatě</th><th>Vyplaceno</th><th>Mimo obchod</th><th>Nevyplaceno</th><th>Čistá provize</th><th>Akce</th></tr></thead><tbody>${owners.map(([name, x]) => {
+  if (t) t.innerHTML = `<thead><tr><th>Tipař</th><th>Přivedl klientů</th><th>Obchodů</th><th>BJ celkem</th><th>Oček. provize z BJ</th><th>Investice objem</th><th>Hypotéky objem</th><th>Domluveno</th><th>Tipaři celkem</th><th>Vyplaceno</th><th>Mimo obchod</th><th>Nevyplaceno celkem</th><th>K výplatě nyní</th><th>Čeká na moji provizi</th><th>Čistá provize</th><th>Akce</th></tr></thead><tbody>${owners.map(([name, x]) => {
     const clients = state.clients.filter(c => c.leadType === 'tipar' && norm(c.leadSource) === norm(name)).length;
-    return `<tr><td><button class="btn slim" onclick="openOwnerLedger(decodeURIComponent('${esc(encodeURIComponent(name))}'))">${esc(name)} · Výplaty obchodů</button></td><td class="num">${num(clients)}</td><td class="num">${num(x.count)}</td><td class="num">${num(x.bj)}</td><td class="money">${money(x.cash)}</td><td class="money">${money(x.inv)}</td><td class="money">${money(x.mort)}</td><td class="num">${avgPct(x).toFixed(0)} %</td><td class="money">${money(x.payout)}</td><td class="money">${num(x.paid)} · ${money(x.paidAmount)}</td><td class="money">${money(x.extraPaid || 0)}</td><td class="money">${num(x.unpaid)} · ${money(x.unpaidAmount)}</td><td class="money">${money(x.net)}</td><td><button class="btn slim" onclick="openReferrerPayoutModal(decodeURIComponent('${esc(encodeURIComponent(name))}'))">+ Mimo obchod</button></td></tr>`;
-  }).join('') || '<tr><td colspan="14" class="note">Zatím tu není žádný tipař. Označ klienta jako „Je tipař“ v kartě klienta a tady se objeví i s domluvenou provizí.</td></tr>'}</tbody>`;
+    return `<tr><td><button class="btn slim" onclick="openOwnerLedger(decodeURIComponent('${esc(encodeURIComponent(name))}'))">${esc(name)} · Výplaty obchodů</button></td><td class="num">${num(clients)}</td><td class="num">${num(x.count)}</td><td class="num">${num(x.bj)}</td><td class="money">${money(x.cash)}</td><td class="money">${money(x.inv)}</td><td class="money">${money(x.mort)}</td><td class="num">${avgPct(x).toFixed(0)} %</td><td class="money">${money(x.payout)}</td><td class="money">${num(x.paid)} · ${money(x.paidAmount)}</td><td class="money">${money(x.extraPaid || 0)}</td><td class="money">${num(x.unpaid)} · ${money(x.unpaidAmount)}</td><td class="money"><b>${num(x.ready)} · ${money(x.readyAmount)}</b></td><td class="money">${num(x.pending)} · ${money(x.pendingAmount)}</td><td class="money">${money(x.net)}</td><td><button class="btn slim" onclick="openReferrerPayoutModal(decodeURIComponent('${esc(encodeURIComponent(name))}'))">+ Mimo obchod</button></td></tr>`;
+  }).join('') || '<tr><td colspan="16" class="note">Zatím tu není žádný tipař. Označ klienta jako „Je tipař“ v kartě klienta a tady se objeví i s domluvenou provizí.</td></tr>'}</tbody>`;
   const r = byId('recommendationHubTable');
   if (r) r.innerHTML = `<thead><tr><th>Typ</th><th>Doporučil / tipař</th><th>Koho</th><th>Co</th><th>Datum</th><th>Obchodů</th><th>BJ</th><th>Oček. provize</th><th>Investice</th><th>Hypotéky</th><th>Klient</th></tr></thead><tbody>${recRows.map(x => {
     const s = referralRecordStats(x, y);
@@ -16120,7 +16128,7 @@ var syncCrmFkiDealsToRecords = fkiSync_syncCrmFkiDealsToRecords,
   defaultFundComment = fundPerformance_defaultFundComment,
   defaultFundExpectedRate = fundPerformance_defaultFundExpectedRate,
   completeDashboardItem = completeDashboardTask;
-const VERSION = '2026.11.20-7';
+const VERSION = '2026.11.20-8';
 const VERSION_NOTE = 'Plánování 2 h denně, servis klientů, podklady k plánu a podrobné produktové návaznosti.';
 const STORE = 'filip_crm_main_v1';
 const DISK_STORAGE_URL = 'http://127.0.0.1:48730';
@@ -16398,8 +16406,10 @@ function crmExtraModal(id, title, html) {
 function openOwnerLedger(name, filter='all') {
   const all=state.deals.filter(d=>dealOwnerType(d)==='tipar' && norm(d.owner)===norm(name));
   const rows=all.filter(d=>filter==='all'||(filter==='paid'?d.ownerPaid:!d.ownerPaid)).sort((a,b)=>Number(!!a.ownerPaid)-Number(!!b.ownerPaid)||String(b.date).localeCompare(String(a.date)));
+  const ready=all.filter(d=>!d.ownerPaid&&dealPaid(d)),pending=all.filter(d=>!d.ownerPaid&&!dealPaid(d));
+  const payoutSum=rows=>rows.reduce((sum,d)=>sum+dealOwnerPayout(d,yearOf(d.date)),0);
   const enc=esc(encodeURIComponent(name));
-  crmExtraModal('ownerLedgerModal','Výplaty obchodů · '+name,`<p class="note">Všechny roky, včetně skrytých obchodů. Výplata poradci se načítá z potvrzení a skutečné provize v obchodech. Výplata tipaři je evidována samostatně. Chybějící záznam není potvrzením, že platba neproběhla; před další platbou ověř historii plateb.</p><div class="actions">${[['all','Všechny'],['unpaid','Bez záznamu výplaty'],['paid','Vyplacené']].map(([key,label])=>`<button class="btn ${filter===key?'primary':''}" onclick="openOwnerLedger(decodeURIComponent('${enc}'),'${key}')">${label}</button>`).join('')}</div><p>Vyplaceno: <b>${num(all.filter(d=>d.ownerPaid).length)}</b> obchodů · Bez záznamu výplaty: <b>${num(all.filter(d=>!d.ownerPaid).length)}</b></p><div class="table-wrap"><table><thead><tr><th>Klient / obchod</th><th>Datum obchodu</th><th>Odměna</th><th>Stav výplaty poradci</th><th>Stav výplaty tipaři</th><th>Datum výplaty</th><th>Doklad / poznámka</th><th>Akce</th></tr></thead><tbody>${rows.map(d=>`<tr><td><b>${esc(clientName(findClient(d.clientId)))}</b><br>${esc(d.product||d.category||'')} · ${esc(d.company||'')}${d.hidden?' · skrytý obchod':''}${d.ownerPaymentHistory?.length?`<details><summary>Historie označení (${d.ownerPaymentHistory.length})</summary>${d.ownerPaymentHistory.map(h=>`<p>${esc(h.changedAt)} · ${h.paid?'vyplaceno':'oprava stavu'} · ${esc(h.date||'')} · ${esc(h.note||'')}</p>`).join('')}</details>`:''}</td><td>${esc(d.date||'')}</td><td>${money(dealOwnerPayout(d,yearOf(d.date)))}</td><td class="advisor-payment">${dealPaid(d)?`<span class="badge green">Výplata potvrzena</span><br>${dealActualCommissionIsSet(d)?`<b>${esc(dealActualCommission(d).toLocaleString('cs-CZ',{minimumFractionDigits:0,maximumFractionDigits:2}))} Kč</b>`:'<span class="note">Skutečná částka není doplněna</span>'}`:'<span class="badge orange">Výplata nepotvrzena</span>'}</td><td><span class="badge ${d.ownerPaid?'green':'orange'}">${d.ownerPaid?'Vyplaceno':'Bez záznamu výplaty'}</span></td><td>${esc(d.ownerPaidDate||'—')}</td><td>${esc(d.ownerPaidNote||'—')}</td><td>${!d.ownerPaid?`<button class="btn" onclick="openOwnerPaymentEditor(${d.id})">Zaznamenat výplatu</button>`:''}<button class="btn" title="Upravit výplatu tipaři" aria-label="Upravit výplatu tipaři" onclick="openOwnerPaymentEditor(${d.id})">✎</button></td></tr>`).join('')||'<tr><td colspan="8">Žádné obchody v tomto výběru.</td></tr>'}</tbody></table></div><h3>Samostatné platby mimo obchod</h3><p class="note">Tyto platby nejsou automaticky přiřazené ke konkrétním obchodům.</p>${(state.referrerPayouts||[]).filter(x=>norm(x.name)===norm(name)).map(x=>`<p>${esc(x.date)} · ${money(x.amount)} · ${esc(x.note||'')}</p>`).join('')||'<p class="note">Bez samostatných plateb.</p>'}`);
+  crmExtraModal('ownerLedgerModal','Výplaty obchodů · '+name,`<p class="note">Všechny roky, včetně skrytých obchodů. Výplata poradci se načítá z potvrzení a skutečné provize v obchodech. Výplata tipaři je evidována samostatně. Chybějící záznam není potvrzením, že platba neproběhla; před další platbou ověř historii plateb.</p><div class="actions">${[['all','Všechny'],['unpaid','Bez záznamu výplaty'],['paid','Vyplacené']].map(([key,label])=>`<button class="btn ${filter===key?'primary':''}" onclick="openOwnerLedger(decodeURIComponent('${enc}'),'${key}')">${label}</button>`).join('')}</div><p>Vyplaceno: <b>${num(all.filter(d=>d.ownerPaid).length)}</b> obchodů · Bez záznamu výplaty: <b>${num(all.filter(d=>!d.ownerPaid).length)}</b></p><p><b>K výplatě nyní: ${money(payoutSum(ready))}</b> · ${num(ready.length)} obchodů &nbsp; | &nbsp; Čeká na moji provizi: <b>${money(payoutSum(pending))}</b> · ${num(pending.length)} obchodů</p><div class="table-wrap"><table><thead><tr><th>Klient / obchod</th><th>Datum obchodu</th><th>Odměna</th><th>Stav výplaty poradci</th><th>Stav výplaty tipaři</th><th>Datum výplaty</th><th>Doklad / poznámka</th><th>Akce</th></tr></thead><tbody>${rows.map(d=>`<tr><td><b>${esc(clientName(findClient(d.clientId)))}</b><br>${esc(d.product||d.category||'')} · ${esc(d.company||'')}${d.hidden?' · skrytý obchod':''}${d.ownerPaymentHistory?.length?`<details><summary>Historie označení (${d.ownerPaymentHistory.length})</summary>${d.ownerPaymentHistory.map(h=>`<p>${esc(h.changedAt)} · ${h.paid?'vyplaceno':'oprava stavu'} · ${esc(h.date||'')} · ${esc(h.note||'')}</p>`).join('')}</details>`:''}</td><td>${esc(d.date||'')}</td><td>${money(dealOwnerPayout(d,yearOf(d.date)))}</td><td class="advisor-payment">${dealPaid(d)?`<span class="badge green">Výplata potvrzena</span><br>${dealActualCommissionIsSet(d)?`<b>${esc(dealActualCommission(d).toLocaleString('cs-CZ',{minimumFractionDigits:0,maximumFractionDigits:2}))} Kč</b>`:'<span class="note">Skutečná částka není doplněna</span>'}`:'<span class="badge orange">Výplata nepotvrzena</span>'}</td><td><span class="badge ${d.ownerPaid?'green':'orange'}">${d.ownerPaid?'Vyplaceno':'Bez záznamu výplaty'}</span></td><td>${esc(d.ownerPaidDate||'—')}</td><td>${esc(d.ownerPaidNote||'—')}</td><td>${!d.ownerPaid?`<button class="btn" onclick="openOwnerPaymentEditor(${d.id})">Zaznamenat výplatu</button>`:''}<button class="btn" title="Upravit výplatu tipaři" aria-label="Upravit výplatu tipaři" onclick="openOwnerPaymentEditor(${d.id})">✎</button></td></tr>`).join('')||'<tr><td colspan="8">Žádné obchody v tomto výběru.</td></tr>'}</tbody></table></div><h3>Samostatné platby mimo obchod</h3><p class="note">Tyto platby nejsou automaticky přiřazené ke konkrétním obchodům.</p>${(state.referrerPayouts||[]).filter(x=>norm(x.name)===norm(name)).map(x=>`<p>${esc(x.date)} · ${money(x.amount)} · ${esc(x.note||'')}</p>`).join('')||'<p class="note">Bez samostatných plateb.</p>'}`);
 }
 function openOwnerPaymentEditor(id) {
   const d=state.deals.find(x=>String(x.id)===String(id));if(!d)return;
